@@ -6,6 +6,7 @@ export function initTabs({modules,stopLive}) {
     for(const tab of document.querySelectorAll('[data-module]')){const selected=tab.dataset.module===module;tab.classList.toggle('active',selected);tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;}
     for(const panel of document.querySelectorAll('[role="tabpanel"]'))panel.hidden=panel.id!=='module-'+module;
     if(previous==='analysis')stopLive({quiet:true}).catch(()=>{});
+    modules[previous]?.onLeave?.();
     modules[module]?.onEnter?.();
     try{history.replaceState(null,'','#'+module);}catch{/* Tabs remain usable in embedded contexts. */}
   }

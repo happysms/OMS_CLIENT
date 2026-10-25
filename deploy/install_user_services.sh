@@ -46,6 +46,7 @@ trusted = os.environ.get('OMS_TRUSTED_HOSTS', ','.join(hosts))
 revision = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=3, check=True).stdout.strip()
 values = {'DASHBOARD_STATE_DIR': str(state.resolve()), 'DASHBOARD_DATA_ROOT': os.environ.get('DASHBOARD_DATA_ROOT', '/data'),
           'DASHBOARD_COLLECTOR_DATA_ROOT': os.environ.get('DASHBOARD_COLLECTOR_DATA_ROOT', str(root / 'data' / 'market')),
+          'DASHBOARD_REDIS_URL': os.environ.get('DASHBOARD_REDIS_URL', 'redis://127.0.0.1:6379/0'),
           'DASHBOARD_BEHIND_PROXY': '1', 'DASHBOARD_TRUSTED_HOSTS': trusted, 'OMS_CLIENT_REVISION': revision}
 def quote(value):
     if '\n' in value or '\r' in value:

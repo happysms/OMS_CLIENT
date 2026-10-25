@@ -14,10 +14,12 @@ STATIC_FILES = {
     "features/analysis/controller.js", "features/data/controller.js",
     "features/funding/controller.js",
     "features/files/controller.js",
+    "features/quality/controller.js",
     "features/backtesting/controller.js", "features/paper_trading/controller.js",
 }
 MODULES = [
     {"id": "data", "label": "데이터 확인", "status": "ready"},
+    {"id": "quality", "label": "데이터 품질", "status": "ready"},
     {"id": "funding", "label": "펀딩비율", "status": "ready"},
     {"id": "analysis", "label": "분석", "status": "ready"},
     {"id": "backtest", "label": "백테스트", "status": "ready"},

@@ -290,6 +290,34 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.json['pending_rows'], 2)
         self.assertEqual(self.calls, [])
 
+    def test_quality_endpoints_require_login_csrf_and_keep_other_jobs_independent(self):
+        self.assertEqual(self.client.get('/api/quality/catalog').status_code, 401)
+        for path in ('/api/quality/history', '/api/quality/live'):
+            self.assertEqual(self.client.post(path, json={}).status_code, 401)
+        self.login()
+        for path in ('/api/quality/history', '/api/quality/live'):
+            self.assertEqual(self.client.post(path, json={}).status_code, 403)
+            self.assertEqual(self.client.post(path, json={}, headers={**self.headers(), 'Origin':'https://elsewhere.invalid'}).status_code, 403)
+        history_calls, live_calls = [], []
+        self.app.config['QUALITY_HISTORY_ANALYZER'] = lambda payload: (history_calls.append(payload) or {'mode':'history','series':[],'meta':{'unit':'ms'}})
+        self.app.config['QUALITY_LIVE_ANALYZER'] = lambda payload: (live_calls.append(payload) or {'mode':'live','series':[],'meta':{'unit':'ms'}})
+        history = {'data_kind':'tick','start':'2026-10-25T09:00','end':'2026-10-25T10:00','interval':'1min','threshold_ms':1000}
+        response = self.client.post('/api/quality/history', json=history, headers=self.headers())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json['mode'], 'history')
+        current = {'data_kind':'ob','exchanges':['bithumb'],'threshold_ms':50}
+        response = self.client.post('/api/quality/live', json=current, headers=self.headers())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(live_calls, [current])
+        self.assertEqual(history_calls, [history])
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.client.get('/api/history').json['items'], [])
+
+    def test_invalid_quality_live_requests_fail_before_reading_external_state(self):
+        self.login()
+        self.assertEqual(self.client.post('/api/quality/live', json={'redis_url':'redis://not-allowed'}, headers=self.headers()).status_code, 400)
+        self.assertEqual(self.client.post('/api/quality/history', json={'path':'/etc/passwd'}, headers=self.headers()).status_code, 400)
+
     def test_market_file_browser_auth_metadata_and_file_range_analysis(self):
         self.assertEqual(self.client.get('/api/data/files').status_code, 401)
         self.assertEqual(self.client.get('/api/data/files/info?node=invalid').status_code, 401)
@@ -690,7 +718,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/modules").status_code, 401)
         self.login()
         modules = self.client.get("/api/modules").json["items"]
-        self.assertEqual([item["id"] for item in modules], ["data", "funding", "analysis", "backtest", "paper", "oms"])
+        self.assertEqual([item["id"] for item in modules], ["data", "quality", "funding", "analysis", "backtest", "paper", "oms"])
         self.assertEqual(modules[-1]["status"], "planned")
         self.assertFalse(self.client.get("/api/oms/status").json["live_orders"])
         self.assertEqual(self.client.post("/api/oms/orders", json={}, headers=self.headers()).status_code, 405)
@@ -704,7 +732,7 @@ class ServerTests(unittest.TestCase):
             version = self.client.get("/api/version").json
             self.assertEqual(version["application"], "OMS_CLIENT")
             self.assertEqual(version["revision"], "ab12cd3")
-            self.assertEqual([item["id"] for item in version["modules"]], ["data", "funding", "analysis", "backtest", "paper", "oms"])
+            self.assertEqual([item["id"] for item in version["modules"]], ["data", "quality", "funding", "analysis", "backtest", "paper", "oms"])
             self.assertEqual(self.app.test_client().get("/api/health").json,
                              {"ok": True, "service": "oms-client", "revision": "ab12cd3"})
 
