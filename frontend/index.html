@@ -35,7 +35,9 @@
           <label class="date-label" for="start">시작</label><input id="start" type="datetime-local" required>
           <label class="date-label" for="end">종료</label><input id="end" type="datetime-local" required>
           <p id="available-range" class="tiny-help">저장된 데이터 범위를 확인하고 있습니다.</p>
-          <div class="settings-row"><div><label for="interval">평균 간격</label><select id="interval"><option value="1s">1초</option><option value="10s">10초</option><option value="1min">1분</option><option value="5min" selected>5분</option><option value="1h">1시간</option></select></div><div><label for="ewm-span">EMA 구간 수</label><input id="ewm-span" type="number" min="1" max="1000000" value="60" required></div></div>
+          <label for="analysis-price-mode">호가 조회 방식</label><select id="analysis-price-mode" aria-describedby="analysis-price-help"><option value="last" selected>구간 마지막 원본 호가</option><option value="mean">구간 평균 호가</option></select>
+          <p id="analysis-price-help" class="tiny-help">각 구간의 같은 원본 행에서 마지막 매수·매도 1호가를 가져와 중간가와 조합을 계산합니다.</p>
+          <div class="settings-row"><div><label for="interval">조회 간격</label><select id="interval"><option value="1s">1초</option><option value="10s">10초</option><option value="1min">1분</option><option value="5min" selected>5분</option><option value="1h">1시간</option></select></div><div><label for="ewm-span">EMA 구간 수</label><input id="ewm-span" type="number" min="1" max="1000000" value="60" required></div></div>
         </section>
         <section id="live-controls" hidden><div class="live-note"><span class="dot"></span><strong>실시간 중간가</strong><p>빗썸·업비트·OKX의 호가를 1초마다 조합합니다. 서버에서 계산한 최근 흐름과 소스별 호가를 함께 확인하세요.</p><p>10초 이상 지난 호가는 계산에서 제외합니다.</p></div></section>
         <button id="run-button" class="primary-button" type="submit"><span>▶</span> 분석 실행</button>
@@ -58,7 +60,7 @@
         <div class="chart-wrap large"><canvas id="result-chart" aria-label="시간별 조합 결과. 아래 데이터 표에서도 확인할 수 있습니다." role="img"></canvas><div id="chart-placeholder" class="chart-placeholder"><span class="placeholder-icon">⌁</span><strong>분석 공간을 준비하고 있습니다</strong><p>데이터 소스를 조합하면 이곳에 흐름이 나타납니다.</p></div></div>
         <div class="chart-footer"><span id="cursor-info">차트 위에 마우스를 올려 값을 확인하세요.</span><span>드래그하여 구간 확대 · 모든 시간 KST</span></div>
       </section>
-      <div class="section-heading"><div><h2>소스별 중간가</h2><span>같은 시간의 가격을 함께 확인하세요.</span></div><span class="subtle" id="source-count">— SOURCES</span></div>
+      <div class="section-heading"><div><h2>소스별 중간가</h2><span>선택한 호가 조회 방식과 각 소스의 기준 시각을 확인하세요.</span></div><span class="subtle" id="source-count">— SOURCES</span></div>
       <div id="source-charts" class="source-grid"></div>
       <section class="panel table-panel"><details id="table-details"><summary><span><strong>계산 데이터</strong><small>최근 100개 행 · 전체 데이터는 CSV로 내보내기</small></span><span class="subtle">펼치기 ＋</span></summary><div class="table-scroll"><table><thead id="table-head"></thead><tbody id="table-body"></tbody></table></div></details></section>
       <footer class="main-footer"><span>OMS CLIENT <b>/</b> 내 데이터로 만드는 리서치</span><span id="provenance">과거 호가 분석 · 실시간 조합 · 서버에 저장한 분석 조건</span></footer>

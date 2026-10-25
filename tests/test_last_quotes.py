@@ -82,6 +82,23 @@ class LastQuoteTests(unittest.TestCase):
         self.assertEqual(leg["mid"][0], sum(pair) / 2)
         self.assertEqual(leg["quote_times"], [self.origin + 59_900])
 
+    def test_reported_btc_fractional_prices_are_means_and_last_keeps_thousand_won_ticks(self):
+        path = Path(self.temporary.name) / "bithumb/ob/BTC/2026/10/25/00.parquet"
+        path.parent.mkdir(parents=True)
+        bids = [107_938_000] * 147 + [107_937_000] * 81
+        asks = [107_979_000] * 29 + [107_978_000] * 198 + [107_974_000]
+        timestamps = [self.origin + index * 250 for index in range(227)] + [self.origin + 59_890]
+        pd.DataFrame({"desktopTime": timestamps, "b1_p": bids, "a1_p": asks}).to_parquet(path, index=False)
+        config = {"legs": [{"id": "A", "exchange": "bithumb", "ticker": "BTC"}], "end": "2026-10-25T09:01:00+09:00"}
+        averaged = self.query(**config, price_mode="mean")["legs"][0]
+        self.assertEqual(f"{averaged['bid'][0]:,.3f}", "107,937,644.737")
+        self.assertEqual(f"{averaged['ask'][0]:,.3f}", "107,978,109.649")
+        original = self.query(**config, price_mode="last")["legs"][0]
+        self.assertEqual(original["bid"], [107_937_000])
+        self.assertEqual(original["ask"], [107_974_000])
+        self.assertEqual(original["quote_times"], [self.origin + 59_890])
+        self.assertEqual(original["mid"], [107_955_500])
+
     def test_means_remain_fractional_and_default_loader_call_is_compatible(self):
         with patch.object(parquet, "read_buckets", wraps=parquet.read_buckets) as loader:
             explicit = self.query(price_mode="mean")
