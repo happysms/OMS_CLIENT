@@ -8,7 +8,7 @@ Type=simple
 WorkingDirectory=@APP_ROOT@
 ExecStart="@PYTHON@" "@APP_ROOT@/routing.py" quick
 Environment=PYTHONUNBUFFERED=1
-EnvironmentFile="@STATE_ROOT@/service.env"
+EnvironmentFile=@STATE_ROOT@/service.env
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
