@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from oms_client import routing
+from oms_client.infrastructure import tunnel as routing
 
 
 class RoutingTests(unittest.TestCase):

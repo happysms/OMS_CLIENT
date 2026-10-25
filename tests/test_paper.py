@@ -7,8 +7,8 @@ import time
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from oms_client.store import StateStore
-from oms_client.features.paper import PaperTradingService, PublicQuoteProvider
+from oms_client.storage.state import StateStore
+from oms_client.paper_trading.service import PaperTradingService, PublicQuoteProvider
 
 
 class PaperTests(unittest.TestCase):

@@ -13,10 +13,12 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
+from urllib.parse import urljoin, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from oms_client.features.research import data_service
-from oms_client.web import create_app, _waitress_proxy_options
+from oms_client.analysis import history as data_service
+from oms_client.api import create_app
+from oms_client.cli import _waitress_proxy_options
 from waitress.proxy_headers import proxy_headers_middleware
 
 
@@ -142,6 +144,31 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(self.live.closed)
         self.assertEqual(self.client.get("/api/session").status_code, 401)
 
+    def test_nested_browser_modules_load_without_exposing_source_or_docs(self):
+        self.assertEqual(self.client.get("/features/analysis/controller.js").status_code, 302)
+        self.login()
+        pending, visited = ["/app.js"], set()
+        while pending:
+            path = pending.pop()
+            if path in visited:
+                continue
+            visited.add(path)
+            with self.subTest(asset=path), self.client.get(path) as response:
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("javascript", response.mimetype)
+                module = response.get_data(as_text=True)
+                for relative in re.findall(r"(?:from\s+|import\s*)['\"]([^'\"]+)['\"]", module):
+                    self.assertTrue(relative.startswith("."), relative)
+                    pending.append(urlsplit(urljoin("http://localhost" + path, relative)).path)
+        self.assertIn("/features/paper_trading/controller.js", visited)
+        with self.client.get("/styles.css") as response:
+            self.assertEqual(response.status_code, 200)
+        for path in ["/README.md", "/package.json", "/scripts/check.mjs",
+                     "/features/oms/README.md", "/.state/dashboard.sqlite3",
+                     "/oms_client/api/app.py", "/shared/%2e%2e/%2e%2e/server.py"]:
+            with self.subTest(private=path), self.client.get(path) as response:
+                self.assertEqual(response.status_code, 404)
+
     def test_mutations_require_csrf_and_same_origin(self):
         self.login()
         self.assertEqual(self.client.post("/api/analyses", json=self.query()).status_code, 403)
@@ -208,7 +235,7 @@ class ServerTests(unittest.TestCase):
         response = self.client.post("/api/presets", json=payload, headers=self.headers())
         self.assertEqual(response.status_code, 201)
         preset_id = response.json["id"]
-        from oms_client.store import StateStore
+        from oms_client.storage.state import StateStore
         reopened = StateStore(self.temp.name)
         self.assertEqual(reopened.presets()[0]["config"], self.query())
         payload.update(id=preset_id, name="Renamed")

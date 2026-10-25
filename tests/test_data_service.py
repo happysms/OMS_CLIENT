@@ -10,8 +10,11 @@ from unittest.mock import patch
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from oms_client.features.research import data_service as service
-from oms_client.features.research import export_history
+from oms_client.analysis import history as service
+from oms_client.analysis.formulas import FUNCTION_NAMES, formula_ids
+from oms_client.market_data import parquet
+from oms_client.market_data.validation import QueryTimeout
+from oms_client.market_data import export as export_history
 
 
 class DataServiceTests(unittest.TestCase):
@@ -98,12 +101,12 @@ class DataServiceTests(unittest.TestCase):
                 self.request(**change)
 
     def test_bounds_read_actual_timestamps(self):
-        result = service.bounds("bithumb", "CT")
+        result = parquet.bounds("bithumb", "CT")
         self.assertEqual(result["start"], "2026-10-25T09:00:00+09:00")
         self.assertEqual(result["end"], "2026-10-25T09:04:00+09:00")
 
     def test_export_keeps_real_bid_ask_and_source_interval(self):
-        result = service.export_leg("bithumb", "CT", "2026-10-25T09:00:00", "2026-10-25T09:05:00", "1min")
+        result = parquet.export_leg("bithumb", "CT", "2026-10-25T09:00:00", "2026-10-25T09:05:00", "1min")
         self.assertEqual(result["mid"], [10, 20, 30, 40, 50])
         self.assertEqual(result["currency"], "KRW")
         self.assertEqual(result["meta"]["interval"], "1min")
@@ -111,7 +114,7 @@ class DataServiceTests(unittest.TestCase):
 
     def test_export_retains_more_than_chart_point_limit(self):
         self.write("bithumb", "CT", [i * 60 for i in range(7001)], [i + 1 for i in range(7001)])
-        result = service.export_leg("bithumb", "CT", "2026-10-25T09:00:00", "2026-10-30T09:00:00", "1min")
+        result = parquet.export_leg("bithumb", "CT", "2026-10-25T09:00:00", "2026-10-30T09:00:00", "1min")
         self.assertEqual(len(result["times"]), 7001)
         self.assertEqual(result["mid"][6000], 6001)
 
@@ -185,11 +188,11 @@ class DataServiceTests(unittest.TestCase):
                     "MA(A, B)", "MA(A, 1 + 1)", "MA(A, window=2)", "EMA(A)", "DIFF(A, 1, 2)",
                     "SUM(A, 2)", "A.mean()", "ABS(A, 2)", "getattr(A, 'mean')()", "42"]
         for formula in formulas:
-            with self.subTest(formula=formula), patch.object(service, "_load") as loader:
+            with self.subTest(formula=formula), patch.object(parquet, "read_buckets") as loader:
                 with self.assertRaises(service.DataError):
                     self.request(formula=formula)
                 loader.assert_not_called()
-        self.assertEqual(service.formula_ids("EMA(A / B, 60) - ABS(C - D)"), ["A", "B", "C", "D"])
+        self.assertEqual(formula_ids("EMA(A / B, 60) - ABS(C - D)"), ["A", "B", "C", "D"])
 
     def test_full_data_export_survives_sampling_and_function_warmup(self):
         result = self.request(formula="MA(A, 2)", max_points=2, include_full_data=True)
@@ -228,7 +231,7 @@ class DataServiceTests(unittest.TestCase):
         self.assertAlmostEqual(self.request()["correlations"]["A"]["B"], 1)
 
     def test_resolution_and_period_limits_reject_before_reading(self):
-        with patch.object(service, "_load") as loader:
+        with patch.object(parquet, "read_buckets") as loader:
             with self.assertRaisesRegex(service.DataError, "간격"):
                 self.request(formula="A", interval="1s", end="2026-10-28T09:00:00")
             with self.assertRaisesRegex(service.DataError, "31일"):
@@ -243,23 +246,23 @@ class DataServiceTests(unittest.TestCase):
             target.symlink_to(Path(outside), target_is_directory=True)
             self.assertNotIn("ESCAPE", service.catalog()["exchanges"]["bithumb"])
             with self.assertRaises(service.DataError):
-                service.bounds("bithumb", "ESCAPE")
+                parquet.bounds("bithumb", "ESCAPE")
         catalog = service.catalog()
         self.assertEqual(set(catalog["intervals"]), set(service.INTERVALS))
-        self.assertEqual({item["name"] for item in catalog["functions"]}, service.FUNCTION_NAMES)
+        self.assertEqual({item["name"] for item in catalog["functions"]}, FUNCTION_NAMES)
         self.assertEqual(catalog["limits"]["max_range_days"], 31)
 
     def test_query_deadline_interrupts_real_work_and_config_is_validated(self):
         with patch.dict(os.environ, {"DASHBOARD_QUERY_TIMEOUT_SECONDS": "0.02"}):
-            con = service._connection()
+            con = parquet.connection()
             try:
-                with self.assertRaises(service.QueryTimeout), service._query_deadline(con):
+                with self.assertRaises(QueryTimeout), parquet.query_deadline(con):
                     con.execute("SELECT sum(i) FROM range(1000000000000) t(i)").fetchone()
             finally:
                 con.close()
         for changes in [{"DASHBOARD_THREADS": "0"}, {"DASHBOARD_MEMORY_LIMIT": "256MB'; SELECT 1"}]:
             with self.subTest(changes=changes), patch.dict(os.environ, changes), self.assertRaises(service.DataError):
-                service._connection()
+                parquet.connection()
 
 
 if __name__ == "__main__":

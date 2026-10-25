@@ -1,0 +1,1 @@
+"""Private application state persistence."""

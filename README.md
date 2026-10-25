@@ -20,20 +20,41 @@
 server.py                       서버 실행 진입점
 routing.py                      외부 HTTPS 연결 관리 진입점
 oms_client/
-  web.py                        인증, API, 비동기 작업 큐, 기능 메뉴
-  store.py                      로그인·조합·조회 이력의 SQLite 저장
-  routing.py                    임시/고정 HTTPS 터널 관리
-  features/
-    research/data_service.py    Parquet 조회, 시각 정렬, 수식·통계
-    research/live_service.py    실시간 호가 수집·분석
-    backtesting.py             전략·비용·체결 모형과 지표
-    paper.py                   모의 계좌·주문·시세 제공자
+  market_data/                  Parquet 조회, 종목·저장 범위, 공개 실시간 시세
+  analysis/                     수식 계산, 과거·실시간 분석, 차트 샘플링
+  backtesting/                  전략·비용·체결 모형과 성과 계산
+  paper_trading/                모의 주문·잔고·포지션·체결 장부
+  oms/                          OMS 연결 상태와 향후 운영 연동
+  api/                          로그인, HTTP 요청, 작업 큐, 결과 CSV
+    routes/                     데이터·분석·백테스트·모의투자·OMS별 API
+  storage/                      로그인·조합·조회 이력의 SQLite 저장
+  infrastructure/               외부 HTTPS 터널과 프로세스 관리
+  cli.py                        서버 실행·비밀번호 설정 명령
+  paths.py                      저장소 기준 경로
 frontend/
-  app.js                        기존 분석 작업 공간
-  workspace.js                  기능 탭과 데이터·백테스트·모의투자 화면
+  app.js                        브라우저 진입점
+  shell/                        시작 처리와 탭 전환
+  features/                     data·analysis·backtesting·paper_trading·oms 화면
+  shared/                       공통 차트·API 통신·입력·표시 도구
+  scripts/                      개발용 JavaScript 검사 도구
 tests/                          기능·인증·동시성·계산 검증
 deploy/                         사용자 서비스 설치와 설정 원본
 ```
+
+각 기능 폴더의 `README.md`에 담당 로직과 수정 위치를 적었습니다. 계산 규칙은 `oms_client/`의 해당 기능에, 요청·응답은 `api/routes/`에, 화면은 `frontend/features/`의 같은 기능에 추가합니다.
+
+요청 흐름은 `frontend → api/routes → 기능 로직 → market_data 또는 storage`입니다. 시장 데이터 접근은 `market_data/`에 모아 분석·백테스트·모의투자가 공유합니다. 실시간 시세의 연결·파싱은 `market_data/quotes.py`, 수식 계산과 시계열 누적은 `analysis/live.py`가 담당합니다.
+
+| 변경할 내용 | 수정 위치 |
+|---|---|
+| 새로운 데이터 저장 형식·거래소 시세 | `oms_client/market_data/` |
+| 새 분석 함수·통계 | `oms_client/analysis/` |
+| 전략·체결 가정·백테스트 지표 | `oms_client/backtesting/` |
+| 모의 계좌·가상 주문 규칙 | `oms_client/paper_trading/` |
+| OMS 계좌·주문·전략 운영 연결 | `oms_client/oms/` |
+| 로그인·API·실행 작업 관리 | `oms_client/api/` |
+| 각 탭 화면 | `frontend/features/` |
+| 서비스 설치·외부 접속 | `deploy/`, `oms_client/infrastructure/` |
 
 원본 데이터, 인증 정보, 계좌 장부, 결과 CSV, 터널 토큰과 실행 파일은 저장소에서 제외합니다. `.state/`, `.tools/`, `.env`는 Git에 포함하지 않습니다. 프런트엔드는 외부 CDN이나 실행 프레임워크 없이 동작합니다.
 
@@ -102,7 +123,7 @@ ZSCORE(A / B, 60)
 | 모의투자 | `GET /api/paper`, `POST /api/paper/orders`, `POST /api/paper/reset` |
 | OMS | `GET /api/oms/status` — 현재 연결 예정 상태 |
 
-OMS 제어를 추가할 때는 계좌·실주문·전략 제어 어댑터를 별도 기능 모듈로 두고 공통 인증·메뉴에 연결합니다. 모의 장부와 실계좌의 데이터·주문 경로를 구분하고, UI에 실제 연결 상태를 표시하는 구조를 유지합니다. 시장 데이터 조회·전략 계산·체결 어댑터를 분리해 같은 전략을 백테스트와 모의 환경에서 재사용할 수 있도록 확장합니다.
+OMS 제어를 추가할 때는 계좌·실주문·전략 제어 어댑터를 `oms_client/oms/`에 두고 `api/routes/oms.py`와 `frontend/features/oms/`에 연결합니다. 모의 장부와 실계좌의 데이터·주문 경로를 구분하고, UI에 실제 연결 상태를 표시하는 구조를 유지합니다. 현재 백테스트 전략은 `backtesting/engine.py`가 담당하며 이후 공통 전략 실행기가 필요해지면 계산 부분을 추출해 공유할 수 있습니다.
 
 ## 배포와 외부 접속
 

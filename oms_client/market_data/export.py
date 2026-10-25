@@ -1,9 +1,9 @@
 """Export actual local parquet history into a portable dashboard snapshot.
 
 Examples (run with the workspace virtualenv Python):
-    python -m oms_client.features.research.export_history
-    python -m oms_client.features.research.export_history --days 3 --tickers CT BTC ETH
-    python -m oms_client.features.research.export_history --output /private/export/path
+    python -m oms_client.market_data.export
+    python -m oms_client.market_data.export --days 3 --tickers CT BTC ETH
+    python -m oms_client.market_data.export --output /private/export/path
 
 Each symbol keeps its own latest available seven-day window. Missing source
 intervals are omitted; quotes are never forward-filled. The one-minute bid and
@@ -20,7 +20,9 @@ import time
 
 import pandas as pd
 
-from . import data_service
+from . import parquet
+from .validation import DataError, IDENTIFIER, iso_timestamp
+from ..paths import ROOT
 
 
 DEFAULT_TICKERS = ["CT", "BTC", "ETH", "SOL", "XRP", "DOGE"]
@@ -46,8 +48,8 @@ def _names(values: list[str], uppercase: bool = False) -> list[str]:
     for value in values:
         for item in value.split(","):
             item = item.strip().upper() if uppercase else item.strip().lower()
-            if not data_service.IDENTIFIER.fullmatch(item):
-                raise data_service.DataError(f"잘못된 거래소·종목 이름: {item}")
+            if not IDENTIFIER.fullmatch(item):
+                raise DataError(f"잘못된 거래소·종목 이름: {item}")
             if item not in output:
                 output.append(item)
     return output
@@ -59,10 +61,10 @@ def _prices(values) -> list[float]:
 
 def export(output: Path, days: int = 7, tickers=None, exchanges=None) -> dict:
     if not 1 <= days <= 7:
-        raise data_service.DataError("--days는 1~7 범위여야 합니다.")
+        raise DataError("--days는 1~7 범위여야 합니다.")
     tickers = _names(tickers or DEFAULT_TICKERS, uppercase=True)
     exchanges = _names(exchanges or DEFAULT_EXCHANGES)
-    available = data_service._exchanges()
+    available = parquet.list_symbols()
     output = output.resolve()
     generated_at = pd.Timestamp.now(tz="UTC").isoformat()
     catalog = {"version": 1, "generated_at": generated_at, "interval": "1min", "exchanges": {}, "series": {}}
@@ -74,11 +76,11 @@ def export(output: Path, days: int = 7, tickers=None, exchanges=None) -> dict:
                 continue
             timer = time.monotonic()
             try:
-                limits = data_service.bounds(exchange, ticker)
+                limits = parquet.bounds(exchange, ticker)
                 end = pd.Timestamp(limits["end"]) + pd.Timedelta(milliseconds=1)
                 start = max(pd.Timestamp(limits["start"]), end - pd.Timedelta(days=days))
-                leg = data_service.export_leg(exchange, ticker, start.isoformat(), end.isoformat(), "1min")
-            except data_service.DataError as exc:
+                leg = parquet.export_leg(exchange, ticker, start.isoformat(), end.isoformat(), "1min")
+            except DataError as exc:
                 print(f"skip {exchange}:{ticker}: {exc}", flush=True)
                 continue
             filename = f"{exchange}-{ticker}.json"
@@ -94,10 +96,10 @@ def export(output: Path, days: int = 7, tickers=None, exchanges=None) -> dict:
                 "count": len(leg["times"]),
             }
             print(f"{exchange}:{ticker}: {len(leg['times']):,} points, "
-                  f"{data_service._iso(leg['times'][0])} .. {data_service._iso(leg['times'][-1])}, "
+                  f"{iso_timestamp(leg['times'][0])} .. {iso_timestamp(leg['times'][-1])}, "
                   f"{time.monotonic() - timer:.2f}s", flush=True)
     if not catalog["series"]:
-        raise data_service.DataError("내보낼 수 있는 실제 호가 데이터가 없습니다.")
+        raise DataError("내보낼 수 있는 실제 호가 데이터가 없습니다.")
 
     legs = [
         {"id": "A", "exchange": "bithumb", "ticker": "CT"},
@@ -119,8 +121,8 @@ def export(output: Path, days: int = 7, tickers=None, exchanges=None) -> dict:
         "legs": legs,
         "formula": "((A / B) / (C / D) - 1) * 100" if len(legs) == 4 else "A",
         "interval": "5min",
-        "start": data_service._iso(max(common_start, common_end - 24 * 60 * 60 * 1000)),
-        "end": data_service._iso(common_end),
+        "start": iso_timestamp(max(common_start, common_end - 24 * 60 * 60 * 1000)),
+        "end": iso_timestamp(common_end),
     }
     _atomic_json(output / "catalog.json", catalog)
     total_bytes = sum((output / Path(item["file"]).name).stat().st_size for item in catalog["series"].values())
@@ -131,14 +133,14 @@ def export(output: Path, days: int = 7, tickers=None, exchanges=None) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[3] / "exports")
+    parser.add_argument("--output", type=Path, default=ROOT / "exports")
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--tickers", nargs="+", default=DEFAULT_TICKERS)
     parser.add_argument("--exchanges", nargs="+", default=DEFAULT_EXCHANGES)
     args = parser.parse_args()
     try:
         export(args.output, args.days, args.tickers, args.exchanges)
-    except data_service.DataError as exc:
+    except DataError as exc:
         parser.exit(1, f"{exc}\n")
 
 

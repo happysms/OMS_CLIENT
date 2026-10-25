@@ -5,8 +5,9 @@ import time
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from oms_client.features.research import data_service as ds
-from oms_client.features.research.live_service import LiveAnalysisManager, parse_quotes
+from oms_client.market_data import validation as ds
+from oms_client.analysis.live import LiveAnalysisManager
+from oms_client.market_data.quotes import parse_quotes
 
 
 class FakeFeed:

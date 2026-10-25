@@ -9,8 +9,9 @@ import secrets
 import threading
 import time
 
-from .research import data_service as ds
-from .research.live_service import PublicQuoteFeed
+from ..market_data import parquet
+from ..market_data.validation import IDENTIFIER
+from ..market_data.quotes import PublicQuoteFeed
 
 
 EXCHANGES = {"bithumb", "upbit"}
@@ -33,7 +34,7 @@ def _finite(value, label, low=0, high=1e18, *, positive=False):
 def _symbol(exchange, ticker):
     if not isinstance(exchange, str) or exchange not in EXCHANGES:
         raise ValueError("현재 모의투자는 빗썸·업비트의 KRW 현금 매매를 지원합니다.")
-    if not isinstance(ticker, str) or not ds.IDENTIFIER.fullmatch(ticker.strip()) or len(ticker) > 35:
+    if not isinstance(ticker, str) or not IDENTIFIER.fullmatch(ticker.strip()) or len(ticker) > 35:
         raise ValueError("종목 코드를 확인하세요.")
     return exchange, ticker.strip().upper()
 
@@ -148,7 +149,7 @@ class PaperTradingService:
         self.store = store
         self.quote_provider = quote_provider if quote_provider is not None else PublicQuoteProvider()
         self.clock = clock
-        self.symbol_validator = symbol_validator if symbol_validator is not None else ds._validate_symbol
+        self.symbol_validator = symbol_validator if symbol_validator is not None else parquet.validate_symbol
         self.lock = threading.RLock()
         with store.connection() as connection:
             connection.executescript("""

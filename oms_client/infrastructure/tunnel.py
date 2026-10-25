@@ -24,7 +24,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 
-ROOT = Path(__file__).resolve().parents[1]
+from ..paths import ROOT
 SCRIPT = ROOT / "routing.py"
 QUICK_URL = re.compile(r"https://([a-z0-9]+(?:-[a-z0-9]+)*\.trycloudflare\.com)(?![a-zA-Z0-9._:-])")
 

@@ -7,8 +7,8 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from oms_client.features.backtesting import run_backtest
-from oms_client.features.research.data_service import DataError
+from oms_client.backtesting.engine import run_backtest
+from oms_client.market_data.validation import DataError
 
 
 STEP = 60_000
@@ -97,7 +97,7 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(result["meta"]["timestamp_basis"], "bucket_end")
 
     def test_execution_ledger_limit_stops_job_with_actionable_error(self):
-        with patch("oms_client.features.backtesting.MAX_TRADES", 1):
+        with patch("oms_client.backtesting.engine.MAX_TRADES", 1):
             with self.assertRaisesRegex(DataError, "기간을 줄이거나"):
                 self.request([100] * 4, strategy="buy_hold", close_on_end=True)
 
