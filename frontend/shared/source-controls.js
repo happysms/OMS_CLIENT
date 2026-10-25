@@ -23,8 +23,8 @@ export function populateTickers(prefix,getCatalog,reset=false,{catalogKey='excha
 export function createHistoryControls({prefix,api,getCatalog,onChanged,dataType='price'}) {
   const selectedType=()=>typeof dataType==='function'?dataType():dataType;
   const catalogKey=()=>({funding:'funding_exchanges',candle:'candle_exchanges'}[selectedType()]||'exchanges');
-  if(dataType==='funding')$(prefix+'-ticker').dataset.preserveCase='true';
-  const selection=()=>({...source(prefix),...(selectedType()!=='price'?{data_type:selectedType()}:{})});
+  const syncTickerCase=()=>{$(prefix+'-ticker').dataset.preserveCase=String(selectedType()==='funding');};
+  const selection=()=>{syncTickerCase();return {...source(prefix),...(selectedType()!=='price'?{data_type:selectedType()}:{})};};
   let boundsVersion=0;
   async function bounds({setRange=false}={}) {
     const version=++boundsVersion, selected=selection();
@@ -55,7 +55,17 @@ export function createHistoryControls({prefix,api,getCatalog,onChanged,dataType=
     bounds({setRange:true});
   });
   $(prefix+'-latest').addEventListener('click',()=>{onChanged();bounds({setRange:true});});
-  function populate(){populateSource(prefix,getCatalog,{catalogKey:catalogKey()});}
+  let populatedType=selectedType();
+  function populate(){
+    const type=selectedType(),typeChanged=type!==populatedType,previousTicker=$(prefix+'-ticker').value.trim();
+    syncTickerCase();populateSource(prefix,getCatalog,{catalogKey:catalogKey()});
+    if(typeChanged){
+      const tickers=getCatalog()[catalogKey()]?.[$(prefix+'-exchange').value]||[],matching=tickers.find(ticker=>ticker.toUpperCase()===previousTicker.toUpperCase());
+      if(matching)$(prefix+'-ticker').value=matching;
+      else populateTickers(prefix,getCatalog,true,{catalogKey:catalogKey()});
+    }
+    populatedType=type;
+  }
   populate();
   const defaults=getCatalog().defaults||{};
   if(defaults.start) $(prefix+'-start').value=local(stamp(defaults.start));

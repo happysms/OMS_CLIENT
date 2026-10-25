@@ -19,9 +19,8 @@ export async function initWorkspace({api,getCatalog,stopLive}) {
   await Promise.allSettled(Object.values(modules).map(module=>module.ready));
   const tabs=initTabs({modules,stopLive});
   const files=initFiles({api,async onOpenQuery(query){
-    const target=query.data_type==='funding'?'funding':'data';
-    tabs.selectModule(target);
-    await modules[target].openQuery(query);
+    tabs.selectModule('data');
+    await modules.data.openQuery(query);
   }});
   document.addEventListener('oms:catalog',()=>{files.refresh?.();});
 }

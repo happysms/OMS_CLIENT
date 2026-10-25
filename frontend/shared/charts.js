@@ -48,6 +48,15 @@ export class TimeChart {
     for(const s of this.series){
       ctx.strokeStyle=s.color;ctx.lineWidth=s.width||1.3;ctx.setLineDash(s.dashed?[4,5]:[]);ctx.beginPath();let previous=null;
       for(const i of indexes){const v=s.values[i];if(!Number.isFinite(v)){previous=null;continue;}const px=x(this.times[i]),py=y(v);if(previous===null||this.times[i]-this.times[previous]>this.gapMs*1.6)ctx.moveTo(px,py);else ctx.lineTo(px,py);previous=i;}ctx.stroke();
+      if(s.isolatedPoints&&indexes.length>1){
+        ctx.fillStyle=s.color;
+        for(let position=0;position<indexes.length;position++){
+          const i=indexes[position],value=s.values[i],before=indexes[position-1],after=indexes[position+1];if(!Number.isFinite(value))continue;
+          const connectedBefore=Number.isFinite(s.values[before])&&this.times[i]-this.times[before]<=this.gapMs*1.6;
+          const connectedAfter=Number.isFinite(s.values[after])&&this.times[after]-this.times[i]<=this.gapMs*1.6;
+          if(!connectedBefore&&!connectedAfter){ctx.beginPath();ctx.arc(x(this.times[i]),y(value),2.5,0,Math.PI*2);ctx.fill();}
+        }
+      }
       if(indexes.length===1){const i=indexes[0],v=s.values[i];if(Number.isFinite(v)){ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(x(this.times[i]),y(v),3,0,Math.PI*2);ctx.fill();}}
     }
     ctx.setLineDash([]);

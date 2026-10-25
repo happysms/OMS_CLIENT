@@ -7,9 +7,12 @@ export function initData({api,getCatalog}) {
   const state={versions:{data:0},data:null,dataJob:null,selection:null};
   const csv={version:0,busy:false,result:null,controller:null,selection:null,downloading:false};
   const intervalLabels={'1s':'1초','10s':'10초','1min':'1분','5min':'5분','1h':'1시간'};
-  const dataType=()=>$('data-type').value==='candle'?'candle':'price';
-  const selection=()=>({...source('data'),...(dataType()==='candle'?{data_type:'candle'}:{})});
+  const dataType=()=>['candle','funding'].includes($('data-type').value)?$('data-type').value:'price';
+  const selection=()=>({...source('data'),...(dataType()!=='price'?{data_type:dataType()}:{})});
   const originalQuote=value=>Number.isFinite(value)?new Intl.NumberFormat('en-US',{maximumFractionDigits:20}).format(value):'—';
+  const percent=value=>Number.isFinite(value)?number(value,10)+'%':'—';
+  const rawRate=value=>Number.isFinite(value)?number(value,16):'—';
+  const remaining=value=>Number.isFinite(value)?number(value,3)+'초':'—';
   const dataChart=new TimeChart($('data-chart'),{format:price,onHover:t=>dataChart.setCursor(t),onZoom:r=>dataChart.setZoom(r)});
   const job=createJobRunner({api,prefix:'data',getVersion:()=>state.versions.data});
   function sizeColumns(show,unit='USDT',last=true){
@@ -21,16 +24,33 @@ export function initData({api,getCatalog}) {
     $('data-source-help').hidden=!show;
   }
   function describePriceMode(){
-    const last=$('data-price-mode').value==='last',candle=dataType()==='candle';
-    $('data-export-panel').hidden=candle;$('data-candle-csv-help').hidden=!candle;
-    $('data-price-mode-label').textContent=candle?'종가 조회 방식':'호가 조회 방식';
-    $('data-price-mode').querySelector('[value="last"]').textContent=candle?'구간 마지막 완성 분봉 종가':'구간 마지막 원본 호가';
-    $('data-price-mode').querySelector('[value="mean"]').textContent=candle?'구간 내 분봉 종가 평균':'구간 평균 호가';
-    $('data-rows-label').textContent=candle?'조회한 1분봉':'조회한 호가';
+    const last=$('data-price-mode').value==='last',candle=dataType()==='candle',funding=dataType()==='funding';
+    $('data-ticker').dataset.preserveCase=String(funding);
+    dataChart.format=funding?percent:price;
+    $('data-export-panel').hidden=candle||funding;$('data-candle-csv-help').hidden=!candle&&!funding;
+    $('data-candle-csv-help').textContent=funding
+      ?'펀딩비율 CSV는 데이터 조회 후 차트 옆의 조회 결과 CSV에서 다운로드합니다. 전체 집계 구간의 펀딩비율(%)·원본 비율·관측 및 서버 시각·정산 잔여 시간을 함께 보존합니다.'
+      :'분봉 CSV는 데이터 조회 후 차트 옆의 조회 결과 CSV에서 다운로드합니다. 표시 종가와 마지막 원본 분봉의 OHLCV·시각을 함께 보존합니다.';
+    $('data-price-mode-label').textContent=funding?'펀딩비율 조회 방식':candle?'종가 조회 방식':'호가 조회 방식';
+    $('data-price-mode').querySelector('[value="last"]').textContent=funding?'구간 마지막 원본 펀딩비율':candle?'구간 마지막 완성 분봉 종가':'구간 마지막 원본 호가';
+    $('data-price-mode').querySelector('[value="mean"]').textContent=funding?'구간 평균 펀딩비율':candle?'구간 내 분봉 종가 평균':'구간 평균 호가';
+    $('data-rows-label').textContent=funding?'조회한 펀딩 스냅샷':candle?'조회한 1분봉':'조회한 호가';
     for(const option of $('data-interval').options)option.disabled=candle&&milliseconds[option.value]<60000;
     if(candle&&milliseconds[$('data-interval').value]<60000)$('data-interval').value='1min';
-    for(const header of document.querySelectorAll('[data-price-column]'))header.hidden=candle;
+    for(const header of document.querySelectorAll('[data-price-column]'))header.hidden=candle||funding;
     for(const header of document.querySelectorAll('[data-candle-column]'))header.hidden=!candle;
+    for(const header of document.querySelectorAll('[data-funding-column]'))header.hidden=!funding;
+    if(funding){
+      $('data-mid-label').textContent=last?'마지막 원본 펀딩비율':'마지막 구간 평균 펀딩비율';
+      $('data-bidask-label').textContent='조회 구간 최솟값 / 최댓값';
+      $('data-spread-label').textContent='마지막 관측의 정산 잔여 시간';$('data-spread-help').textContent='당시 관측 기준 · 현재 카운트다운과 구분';
+      $('data-price-help').textContent='거래소가 제공한 원천 펀딩주기 기준 비율을 %로 표시합니다. 계좌 정산금액이나 확정 정산률을 뜻하지 않습니다. '+(last?'각 구간의 마지막 원본 펀딩비율을 사용합니다.':'구간 내 펀딩비율 스냅샷을 평균 냅니다.')+' 관측·서버 시각과 정산 잔여 시간은 구간 마지막 관측 기준입니다.';
+      $('data-chart-title').textContent=last?'구간 마지막 원본 펀딩비율':'구간 평균 펀딩비율';$('data-chart-series').textContent='원천 펀딩주기 기준 펀딩비율 (%)';
+      $('data-chart').setAttribute('aria-label','저장된 펀딩비율 차트 · 원천 펀딩주기 기준 퍼센트');
+      $('data-table-title').textContent='펀딩비율 내역과 관측 정보';$('data-table-help').textContent='차트 표본 중 최근 100개 · 전체 집계 구간은 조회 결과 CSV · 정산 잔여 시간은 당시 관측 기준';
+      $('data-table-funding-rate-label').textContent=last?'펀딩비율 (%)':'평균 펀딩비율 (%)';
+      $('data-table-funding-raw-label').textContent=last?'원본 비율':'구간 평균 비율';return;
+    }
     if(candle){
       $('data-mid-label').textContent=last?'마지막 완성 분봉 종가':'분봉 종가 평균';
       $('data-bidask-label').textContent='마지막 원본 분봉 고가 / 저가';
@@ -64,7 +84,7 @@ export function initData({api,getCatalog}) {
   function clearData(message='종목과 기간을 선택한 뒤 데이터 조회를 누르세요.'){
     state.data=null;state.dataJob=null;
     for(const id of ['data-mid','data-spread','data-rows'])$(id).textContent='—';
-    $('data-currency').textContent='조회 후 종목과 통화를 표시합니다.';
+    $('data-currency').textContent=dataType()==='funding'?'조회 후 거래소·종목과 펀딩비율 단위를 표시합니다.':'조회 후 종목과 통화를 표시합니다.';
     $('data-bidask').textContent='— / —';$('data-bucket').textContent='조회 후 원본 기준 시각과 조회 방식을 표시합니다.';
     $('data-sizes').textContent='';$('data-source-help').textContent='';sizeColumns(false);
     $('data-points').textContent='선택한 구간을 조회하세요.';
@@ -72,7 +92,7 @@ export function initData({api,getCatalog}) {
     describePriceMode();
     dataChart.setData([],[]);dataChart.setZoom(null);dataChart.setCursor(null);
     $('data-placeholder').hidden=false;$('data-placeholder').querySelector('strong').textContent=message;
-    tableRows('data-table',[],dataType()==='candle'?10:5,'조회 결과가 없습니다. 조건을 확인한 뒤 데이터 조회를 누르세요.');
+    tableRows('data-table',[],dataType()==='funding'?6:dataType()==='candle'?10:5,'조회 결과가 없습니다. 조건을 확인한 뒤 데이터 조회를 누르세요.');
     $('data-csv').disabled=true;
   }
   function changed(){
@@ -92,15 +112,16 @@ export function initData({api,getCatalog}) {
   }
   async function runData(event) {
     event.preventDefault();const version=++state.versions.data,selected=selectionKey();state.selection=selected;
-    clearError('data');clearData(dataType()==='candle'?'서버에서 선택한 구간의 완성 분봉을 조회하고 있습니다.':'서버에서 선택한 구간의 호가를 조회하고 있습니다.');$('data-run').disabled=true;$('data-run').textContent='조회 중…';
+    clearError('data');clearData(dataType()==='funding'?'서버에서 선택한 구간의 펀딩비율을 조회하고 있습니다.':dataType()==='candle'?'서버에서 선택한 구간의 완성 분봉을 조회하고 있습니다.':'서버에서 선택한 구간의 호가를 조회하고 있습니다.');$('data-run').disabled=true;$('data-run').textContent='조회 중…';
     try{
-      const selectedSource=selection(),config={...range('data'),price_mode:$('data-price-mode').value,legs:[{id:'A',...selectedSource}],formula:'A',unit:currency(selectedSource.exchange),ewm_span:1,max_points:6000};
+      const selectedSource=selection(),config={...range('data'),price_mode:$('data-price-mode').value,legs:[{id:'A',...selectedSource}],formula:'A',unit:dataType()==='funding'?'%':currency(selectedSource.exchange),ewm_span:1,max_points:6000};
       if(dataType()==='candle'&&milliseconds[config.interval]<60000)throw new Error('1분봉 종가는 1분 이상의 조회 간격을 선택해 주세요.');
       const response=await job('/api/analyses',config,version);if(!response||!currentQuery(version,selected))return;
       const r=response.result,leg=r.legs?.[0];if(!leg)throw new Error('조회 결과에 데이터 소스가 없습니다.');
       if(leg.exchange!==selectedSource.exchange||String(leg.ticker).toUpperCase()!==selectedSource.ticker.toUpperCase()||(leg.data_type||'price')!==dataType())throw new Error('요청한 종목·데이터 종류와 조회 결과가 다릅니다. 다시 조회해주세요.');
-      if(r.meta?.price_mode!==config.price_mode)throw new Error('요청한 호가 조회 방식과 결과가 다릅니다. 다시 조회해주세요.');
+      if(r.meta?.price_mode!==config.price_mode)throw new Error('요청한 조회 방식과 결과가 다릅니다. 다시 조회해주세요.');
       state.data=r;state.dataJob=response.id;const i=r.times.length-1;
+      if(dataType()==='funding'){renderFunding(r,leg,config);return;}
       if(dataType()==='candle'){renderCandles(r,leg,config);return;}
       const last=config.price_mode==='last',hasQuoteTimes=last&&Array.isArray(leg.quote_times)&&leg.quote_times.length===r.times.length&&leg.quote_times.every(Number.isFinite);
       const hasSizes=leg.source_kind==='orderbook_1s'&&leg.quantity_unit==='USDT'&&['bid_size','ask_size'].every(key=>Array.isArray(leg[key])&&leg[key].length===r.times.length&&leg[key].every(value=>Number.isFinite(value)&&value>=0));
@@ -132,6 +153,22 @@ export function initData({api,getCatalog}) {
     }catch(error){if(currentQuery(version,selected)){clearData('조회하지 못했습니다. 조건을 확인한 뒤 다시 조회하세요.');errorAt('data',error);$('data-message').textContent='데이터를 조회하지 못했습니다.';}}
     finally{if(currentQuery(version,selected)){$('data-run').disabled=false;$('data-run').textContent='데이터 조회';}}
   }
+  function renderFunding(r,leg,config){
+    const columns=['values','funding_rate','source_times','server_times','next_funding_in_seconds'];
+    if(!columns.every(key=>Array.isArray(leg[key])&&leg[key].length===r.times.length))throw new Error('펀딩비율 결과의 원본 비율과 관측 정보를 확인하지 못했습니다. 다시 조회해주세요.');
+    const i=r.times.length-1,last=config.price_mode==='last',identity=`${exchanges[leg.exchange]||leg.exchange} · ${leg.ticker} · %`,mode=last?'마지막 원본 펀딩비율':'구간 평균 펀딩비율';
+    const observed=Number.isFinite(leg.source_times[i])?`마지막 관측 ${time(leg.source_times[i])} KST`:'원본 관측 시각 없음';
+    $('data-mid').textContent=percent(leg.values[i]);$('data-currency').textContent=identity+' · '+mode;
+    $('data-bidask').textContent=percent(r.stats.min)+' / '+percent(r.stats.max);$('data-bucket').textContent=observed;
+    $('data-spread').textContent=remaining(leg.next_funding_in_seconds[i]);$('data-rows').textContent=number(r.meta.rows_read,0);
+    $('data-points').textContent=`${number(r.meta.aligned_points,0)}개 집계 구간 · 표시 ${number(r.times.length,0)}개`;
+    $('data-chart-label').textContent=`${identity} · ${time(r.times[0])} ~ ${time(r.times.at(-1))} KST · ${intervalLabels[config.interval]||config.interval} · ${mode}`;
+    dataChart.setZoom(null);dataChart.setData(r.times,[{label:mode+' (%)',values:leg.values,color:'#b8a1ed',width:1.8,isolatedPoints:true}],{gapMs:milliseconds[config.interval]*Math.max(1,Math.ceil((r.meta.aligned_points||r.times.length)/Math.max(1,r.times.length)))});
+    $('data-placeholder').hidden=leg.values.some(Number.isFinite);$('data-csv').disabled=!r.times.length;
+    const rows=[];for(let j=i;j>=Math.max(0,r.times.length-100);j--)rows.push([time(r.times[j]),Number.isFinite(leg.source_times[j])?time(leg.source_times[j]):'—',percent(leg.values[j]),rawRate(leg.funding_rate[j]),remaining(leg.next_funding_in_seconds[j]),Number.isFinite(leg.server_times[j])?time(leg.server_times[j]):'—']);
+    tableRows('data-table',rows,6,'선택한 구간에 펀딩비율이 없습니다.');
+    $('data-message').textContent=`${identity} · ${mode} 조회 완료 · ${observed}`+((r.meta.warnings||[]).length?' · '+r.meta.warnings.join(' '):'');
+  }
   function renderCandles(r,leg,config){
     const columns=['values','open','high','low','close','volume','trade_value','candle_times','available_times'];
     if(!columns.every(key=>Array.isArray(leg[key])&&leg[key].length===r.times.length))throw new Error('분봉 결과의 OHLCV와 시각을 확인하지 못했습니다. 다시 조회해주세요.');
@@ -157,16 +194,16 @@ export function initData({api,getCatalog}) {
       if(response.status===401){location.assign('/login?next=%2F');throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');}
       if(!response.ok){let details={};try{details=await response.json();}catch{}throw new Error(typeof details.error==='string'?details.error:'CSV를 내보내지 못했습니다. 다시 조회해주세요.');}
       const blob=await response.blob();if(!currentQuery(version,selection)||state.dataJob!==id)return;
-      const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='oms-data.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=dataType()==='funding'?'oms-funding-rates.csv':'oms-data.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }catch(error){if(currentQuery(version,selection)&&state.dataJob===id)errorAt('data',error);}finally{if(currentQuery(version,selection)&&state.dataJob===id)$('data-csv').disabled=!state.dataJob||!state.data?.times.length;}
   }
   function csvSelection() {
-    if(dataType()==='candle')throw new Error('분봉은 데이터 조회 후 조회 결과 CSV로 내보내세요.');
+    if(dataType()!=='price')throw new Error('분봉·펀딩비율은 데이터 조회 후 조회 결과 CSV로 내보내세요.');
     return {...source('data'),...range('data'),mode:$('data-export-mode').value};
   }
   function invalidateCsv(message='선택 조건이 바뀌었습니다. CSV를 다시 생성하세요.') {
     csv.version++;csv.controller?.abort();csv.controller=null;csv.busy=false;csv.downloading=false;csv.result=null;csv.selection=null;
-    $('data-export-create').disabled=dataType()==='candle';$('data-export-create').textContent='CSV 생성';
+    $('data-export-create').disabled=dataType()!=='price';$('data-export-create').textContent='CSV 생성';
     $('data-export-download').disabled=true;$('data-export-download').textContent='↓ 파일 다운로드';
     $('data-export-result').hidden=true;$('data-export-message').textContent=message;clearError('data-export');
   }
@@ -182,7 +219,7 @@ export function initData({api,getCatalog}) {
       :'선택한 평균 간격의 전체 구간을 내보냅니다. 한국 시간, 거래소·종목·통화, 중간가·매수/매도 호가·스프레드·원본 행 수를 포함합니다. USDT 1초 수집분은 같은 구간의 평균 USDT 수량도 포함합니다.';
   }
   async function createCsv() {
-    if(dataType()==='candle'||csv.busy||!$('data-form').reportValidity())return;
+    if(dataType()!=='price'||csv.busy||!$('data-form').reportValidity())return;
     clearError('data-export');
     const version=++csv.version;let selection;
     try{
@@ -214,7 +251,7 @@ export function initData({api,getCatalog}) {
     finally{if(version===csv.version){csv.busy=false;$('data-export-create').disabled=false;$('data-export-create').textContent='CSV 생성';}}
   }
   async function downloadCsv() {
-    if(dataType()==='candle'||!csv.result||csv.downloading)return;
+    if(dataType()!=='price'||!csv.result||csv.downloading)return;
     const version=csv.version,selection=csv.selection,result=csv.result;
     if(!currentCsv(version,selection))return;
     clearError('data-export');csv.downloading=true;csv.controller?.abort();csv.controller=new AbortController();
@@ -253,8 +290,9 @@ export function initData({api,getCatalog}) {
   state.selection=selectionKey();
   describePriceMode();
   return {ready:controls.ready,refresh:controls.refresh,onEnter(){dataChart.draw();},async openQuery(query){
-    if(!['price','candle'].includes(query.data_type))throw new Error('이 파일은 데이터 조회 화면에서 열 수 없습니다.');
+    if(!['price','candle','funding'].includes(query.data_type))throw new Error('이 파일은 데이터 조회 화면에서 열 수 없습니다.');
     $('data-type').value=query.data_type;
+    describePriceMode();
     controls.applySelection(query);
     const selected=selectionKey();
     await controls.bounds({setRange:false});
