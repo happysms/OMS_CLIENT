@@ -111,6 +111,7 @@ function ensureSourceCards(legs){
 }
 function updateSourcePrice(card,q,mode=resultPriceMode(state.result)){
   if(card.dataset.dataType==='funding'){
+    card.querySelector('.funding-raw').parentElement.firstChild.textContent=mode==='mean'?'평균 비율(원단위)':'원본 비율(원단위)';
     card.querySelector('.source-price>span').textContent=fundingValue(q?.value);
     card.querySelector('.funding-raw').textContent=format(q?.funding_rate,18);
     card.querySelector('.funding-time').textContent=Number.isFinite(q?.source_time)?time(q.source_time,true):'—';
