@@ -98,7 +98,7 @@ class FundingTests(unittest.TestCase):
         info = catalog()
         self.assertIn("xyz:ONLY", info["funding_exchanges"]["hyperliquid"])
         self.assertNotIn("hyperliquid", info["exchanges"])
-        self.assertEqual({item["id"] for item in info["source_types"]}, {"price", "funding"})
+        self.assertEqual({item["id"] for item in info["source_types"]}, {"price", "funding", "candle"})
 
     def test_full_export_keeps_unsampled_rates_and_metadata(self):
         result = self.query(max_points=2, include_full_data=True)

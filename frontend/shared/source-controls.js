@@ -10,7 +10,7 @@ export function populateSource(prefix, getCatalog, {reset=false, allowedExchange
   else if(available.includes('bithumb')) select.value='bithumb';
   if(!$(prefix+'-ticker').value) $(prefix+'-ticker').value=catalog.defaults?.legs?.[0]?.ticker||'BTC';
   const tickers=catalog[catalogKey]?.[select.value]||[];
-  populateTickers(prefix,getCatalog,reset||(catalogKey==='funding_exchanges'&&!tickers.includes($(prefix+'-ticker').value)),{catalogKey});
+  populateTickers(prefix,getCatalog,reset||(catalogKey!=='exchanges'&&!tickers.includes($(prefix+'-ticker').value)),{catalogKey});
 }
 
 export function populateTickers(prefix,getCatalog,reset=false,{catalogKey='exchanges'}={}) {
@@ -21,9 +21,10 @@ export function populateTickers(prefix,getCatalog,reset=false,{catalogKey='excha
 
 // Historical screens share instrument and time-range controls, not result state.
 export function createHistoryControls({prefix,api,getCatalog,onChanged,dataType='price'}) {
-  const catalogKey=dataType==='funding'?'funding_exchanges':'exchanges';
+  const selectedType=()=>typeof dataType==='function'?dataType():dataType;
+  const catalogKey=()=>({funding:'funding_exchanges',candle:'candle_exchanges'}[selectedType()]||'exchanges');
   if(dataType==='funding')$(prefix+'-ticker').dataset.preserveCase='true';
-  const selection=()=>({...source(prefix),...(dataType==='funding'?{data_type:'funding'}:{})});
+  const selection=()=>({...source(prefix),...(selectedType()!=='price'?{data_type:selectedType()}:{})});
   let boundsVersion=0;
   async function bounds({setRange=false}={}) {
     const version=++boundsVersion, selected=selection();
@@ -48,18 +49,18 @@ export function createHistoryControls({prefix,api,getCatalog,onChanged,dataType=
   }
   for(const input of $(prefix+'-form').querySelectorAll('input,select')) input.addEventListener('change',onChanged);
   for(const field of ['exchange','ticker']) $(prefix+'-'+field).addEventListener('change',()=>{
-    if(field==='exchange') populateTickers(prefix,getCatalog,true,{catalogKey});
-    else {const input=$(prefix+'-ticker'),typed=input.value.trim(),tickers=getCatalog()[catalogKey]?.[$(prefix+'-exchange').value]||[];input.value=tickers.find(t=>t.toUpperCase()===typed.toUpperCase())||typed.toUpperCase();}
+    if(field==='exchange') populateTickers(prefix,getCatalog,true,{catalogKey:catalogKey()});
+    else {const input=$(prefix+'-ticker'),typed=input.value.trim(),tickers=getCatalog()[catalogKey()]?.[$(prefix+'-exchange').value]||[];input.value=tickers.find(t=>t.toUpperCase()===typed.toUpperCase())||typed.toUpperCase();}
     onChanged();
     bounds({setRange:true});
   });
   $(prefix+'-latest').addEventListener('click',()=>{onChanged();bounds({setRange:true});});
-  function populate(){populateSource(prefix,getCatalog,{catalogKey});}
+  function populate(){populateSource(prefix,getCatalog,{catalogKey:catalogKey()});}
   populate();
   const defaults=getCatalog().defaults||{};
   if(defaults.start) $(prefix+'-start').value=local(stamp(defaults.start));
   if(defaults.end) $(prefix+'-end').value=local(stamp(defaults.end));
-  return {bounds,refresh(){const previous=JSON.stringify(source(prefix));populate();const changed=previous!==JSON.stringify(source(prefix));if(changed)onChanged();return bounds({setRange:changed});},ready:bounds({setRange:true})};
+  return {bounds,refresh({setRange=false}={}){const previous=JSON.stringify(source(prefix));populate();const changed=previous!==JSON.stringify(source(prefix));if(changed)onChanged();return bounds({setRange:setRange||changed});},ready:bounds({setRange:true})};
 }
 
 export function renderCatalogSummary(catalog) {

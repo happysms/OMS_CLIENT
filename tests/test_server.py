@@ -512,6 +512,45 @@ class ServerTests(unittest.TestCase):
         config["formula"] = "B"
         self.assertEqual(self.client.post("/api/live", json=config, headers=self.headers()).status_code, 202)
 
+    def test_candle_analysis_full_csv_presets_and_live_restriction(self):
+        self.login()
+        def candle_result(payload):
+            result = result_fixture(payload)
+            result['meta']['price_mode'] = payload['price_mode']
+            full = {**payload['legs'][0], 'values': [1343, 1344, 1346],
+                    'open': [1342, 1343, 1345], 'high': [1344, 1345, 1347],
+                    'low': [1341, 1342, 1344], 'close': [1343, 1344, 1346],
+                    'volume': [.125, 12.5, 0], 'trade_value': [167.875, 16800, 0],
+                    'candle_times': [0, 60_000, 180_000], 'available_times': [60_000, 120_000, 240_000],
+                    'quantity_unit': 'USDT', 'unit': 'KRW', 'source_kind': 'rest_1m'}
+            result['full']['legs'] = [full]
+            result['legs'] = [{key: [value[0], value[2]] if isinstance(value, list) else value for key, value in full.items()}]
+            return result
+        self.app.extensions['analysis_jobs'].analyzer = candle_result
+        config = {**self.query(), 'price_mode': 'mean', 'interval': '1min',
+                  'legs': [{'id': 'A', 'exchange': 'bithumb', 'ticker': 'USDT', 'data_type': 'candle'}]}
+        created = self.client.post('/api/analyses', json=config, headers=self.headers())
+        self.assertEqual(created.status_code, 202)
+        result = self.wait(created.json['id'])
+        self.assertEqual(result['status'], 'complete', result)
+        with self.client.get(f"/api/analyses/{created.json['id']}/csv") as response:
+            rows = list(csv.DictReader(io.StringIO(response.get_data().decode('utf-8-sig'))))
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(all(row['price_mode'] == 'mean' and row['A_source_kind'] == 'rest_1m' for row in rows))
+        self.assertEqual(rows[0]['A_last_candle_volume_usdt'], '0.125')
+        self.assertNotIn('A_bid', rows[0])
+        self.assertNotIn('A_ask', rows[0])
+        saved = self.client.post('/api/presets', json={'name': '분봉 조합', 'config': config}, headers=self.headers())
+        self.assertEqual(saved.status_code, 201)
+        self.assertEqual(self.client.get('/api/presets').json['items'][0]['config']['legs'], config['legs'])
+        blocked = self.client.post('/api/live', json=config, headers=self.headers())
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn('1분봉', blocked.json['error'])
+        self.assertEqual(self.live.items, {})
+        config['legs'].append({'id': 'B', 'exchange': 'bithumb', 'ticker': 'BTC'})
+        config['formula'] = 'B'
+        self.assertEqual(self.client.post('/api/live', json=config, headers=self.headers()).status_code, 202)
+
     def test_queue_is_bounded_and_web_remains_responsive(self):
         self.login()
         entered, release = threading.Event(), threading.Event()

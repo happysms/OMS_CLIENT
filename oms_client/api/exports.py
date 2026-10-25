@@ -57,6 +57,13 @@ def _write_csv(path: Path, result: dict, unit: str):
                 identifier = leg["id"]
                 if leg.get("data_type") == "funding":
                     header.extend([f"{identifier}_{leg['exchange']}_{leg['ticker']}_funding_rate_pct", f"{identifier}_funding_rate_ratio", f"{identifier}_source_time_kst", f"{identifier}_server_time_kst", f"{identifier}_next_funding_in_seconds"])
+                elif leg.get('data_type') == 'candle':
+                    header.extend([f"{identifier}_{leg['exchange']}_{leg['ticker']}_candle_value_krw",
+                                   f'{identifier}_last_candle_open', f'{identifier}_last_candle_high',
+                                   f'{identifier}_last_candle_low', f'{identifier}_last_candle_close',
+                                   f'{identifier}_last_candle_volume_usdt', f'{identifier}_last_candle_trade_value_krw',
+                                   f'{identifier}_candle_open_time_kst', f'{identifier}_available_time_kst',
+                                   f'{identifier}_source_kind'])
                 else:
                     header.extend([f"{identifier}_{leg['exchange']}_{leg['ticker']}_mid", f"{identifier}_bid", f"{identifier}_ask"])
                     if leg.get("quantity_unit") and "bid_size" in leg and "ask_size" in leg:
@@ -72,6 +79,9 @@ def _write_csv(path: Path, result: dict, unit: str):
                 for leg in complete["legs"]:
                     if leg.get("data_type") == "funding":
                         row.extend([leg["values"][index], leg["funding_rate"][index], _kst_csv_time(leg["source_times"][index]), _kst_csv_time(_optional_value(leg, "server_times", index)), _optional_value(leg, "next_funding_in_seconds", index)])
+                    elif leg.get('data_type') == 'candle':
+                        row.extend([leg['values'][index], *[leg[field][index] for field in ('open', 'high', 'low', 'close', 'volume', 'trade_value')],
+                                    _kst_csv_time(leg['candle_times'][index]), _kst_csv_time(leg['available_times'][index]), leg['source_kind']])
                     else:
                         row.extend([leg["mid"][index], leg["bid"][index], leg["ask"][index]])
                         if leg.get("quantity_unit") and "bid_size" in leg and "ask_size" in leg:

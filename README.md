@@ -21,6 +21,7 @@
 server.py                       서버 실행 진입점
 routing.py                      외부 HTTPS 연결 관리 진입점
 collect_usdt.py                 빗썸·업비트 KRW-USDT 1초 호가 수집·상태 조회
+backfill_usdt.py                공개 REST의 과거 USDT 완료 1분봉 보완
 oms_client/
   market_data/                  가격·펀딩 Parquet 조회, 압축 펀딩 이력, 공개 실시간 시세
   collectors/                   공개 호가의 1초 샘플링과 수집 상태 관리
@@ -140,6 +141,20 @@ journalctl --user -u oms-usdt-collector.service -n 50 --no-pager
 
 Parquet 반영 후 데이터·분석 탭에서 빗썸 또는 업비트의 **USDT**를 선택합니다. 데이터 화면은 실제 USDT 매수·매도 수량을 추가로 표시하고, 마지막 원본 방식은 가격·수량을 같은 행에서 가져옵니다. 평균 방식은 같은 유효 원본 행들의 가격·수량 평균이며 표시 시각은 구간 시작입니다. 같은 종목의 기존 호가 저장소가 있으면 이 전용 1초 저장소를 우선합니다.
 
+## 과거 USDT 1분봉 보완
+
+수집 시작 전 USDT 가격은 거래소 공개 REST의 완료된 1분봉으로 별도 보관합니다. 데이터 탭에서 **1분봉 종가(과거 보완)**를 선택하고 빗썸·업비트 USDT를 조회합니다. 분석 A~D에서도 **1분봉 종가**를 선택할 수 있으며 수식의 값은 KRW 종가입니다. 거래량은 분봉의 체결 USDT 수량이며 주문장의 매수·매도 잔량과 구분합니다.
+
+```bash
+/home/minsung1/dev/.venv/bin/python backfill_usdt.py --days 30 --exchange all
+```
+
+기본 저장 경로는 `data/market/{bithumb|upbit}/candles_1m/USDT/YYYY/MM/DD.parquet`이며 UTC 날짜로 나눕니다. `--data-root` 또는 `DASHBOARD_COLLECTOR_DATA_ROOT`로 바꿀 수 있습니다. UTC 기준으로 같은 분봉을 중복 저장하지 않고, 기존 완료 분봉을 보존하며 날짜별 파일을 원자적으로 반영합니다. 완료된 페이지는 중단 후에도 남으므로 명령을 다시 실행할 수 있습니다. 공개 API 요청은 전체 초당 최대 3회로 제한하고 일시적인 오류에는 제한된 횟수로 재시도합니다. 빗썸은 KST 조회 문자열, 업비트는 UTC 문자열로 요청합니다.
+
+`candleTime`은 분봉 시작, `availableTime`은 시작 1분 후의 완성 시각, `fetchedAt`은 실제 REST로 가져온 시각입니다. 역사 분석에서는 종가가 알려지는 이론적 시각인 **완성 시각**으로 조회 범위를 필터하고 집계 구간을 배정합니다. 결과 시각은 집계 구간 시작이며 5분·1시간 구간 전체값은 그 구간 종료 후 확정됩니다. 마지막 원본 완성시각도 따로 제공합니다. 진행 중인 분봉은 제외하고 체결이 없어 반환되지 않은 분은 빈 구간으로 유지합니다. 1분 이상 간격으로 조회할 수 있으며 1초 틱으로 늘려 채우지 않습니다.
+
+마지막 방식은 구간 마지막 완료 분봉의 종가를, 평균 방식은 구간 내 완료 분봉 종가의 평균을 사용합니다. 두 방식 모두 OHLCV·거래대금·원본 분봉 시각은 구간 마지막 원본 분봉의 메타데이터입니다. 화면과 조회 결과 CSV에 이를 표시합니다. 분봉 CSV에는 가격 방식과 출처, 종가 값, 마지막 원본 OHLCV·거래대금·시작/완성 시각을 포함합니다. 실제 1초 매수·매도 호가와 잔량은 전용 호가 수집이 시작된 시점부터 제공됩니다.
+
 ## 펀딩비율 조회와 조합
 
 **펀딩비 탭**에서 거래소·종목·기간·간격을 선택하고 마지막 스냅샷 또는 구간 평균을 조회합니다. 저장된 펀딩비율의 차트·표·최소/최대와 관측 시각, 관측 당시의 정산 잔여 초를 확인하고 전체 결과를 CSV로 다운로드할 수 있습니다.
@@ -203,6 +218,7 @@ Parquet 반영 후 데이터·분석 탭에서 빗썸 또는 업비트의 **USDT
 | 데이터·분석 | `GET /api/catalog`, `GET /api/bounds`, `POST /api/analyses`, 결과·CSV 조회 |
 | USDT 수집 상태 | `GET /api/collectors/usdt` |
 | 펀딩비율 | 카탈로그의 `funding_exchanges`, `GET /api/bounds?data_type=funding&exchange=okx&ticker=BTC`, 펀딩 소스를 지정한 분석 요청·CSV |
+| 1분봉 종가 | 카탈로그의 `candle_exchanges`, `GET /api/bounds?data_type=candle&exchange=bithumb&ticker=USDT`, `data_type: "candle"` 분석 요청·CSV |
 | 데이터 CSV 변환 | `POST /api/data/exports`, `GET /api/data/exports/{id}`, `GET /api/data/exports/{id}/csv` |
 | 백테스트 | `POST /api/backtests`, `GET /api/backtests/{id}`, `GET /api/backtests/{id}/csv` |
 | 모의투자 | `GET /api/paper`, `POST /api/paper/orders`, `POST /api/paper/reset` |
@@ -212,7 +228,7 @@ Parquet 반영 후 데이터·분석 탭에서 빗썸 또는 업비트의 **USDT
 
 USDT 전용 수집 소스의 price leg는 `bid_size`, `ask_size` 배열과 `quantity_unit: "USDT"`, `source_kind: "orderbook_1s"`, `sample_interval_ms: 1000`, `quote_time_basis: "sampled_at"`를 함께 반환합니다. 기존 호가 금액 컬럼을 실제 수량으로 해석하지 않습니다.
 
-각 leg의 `data_type`은 `price` 또는 `funding`이며 생략하면 기존 가격 소스입니다. 펀딩 leg는 `values`(%), `funding_rate`(비율 원단위), `source_times`, `server_times`, `next_funding_in_seconds`를 반환하며 가상의 bid/ask를 만들지 않습니다. 단독 조회도 `legs: [{id: "A", data_type: "funding", exchange: "okx", ticker: "BTC"}]`, `formula: "A"`, `unit: "%"`로 같은 분석 API를 사용합니다.
+각 leg의 `data_type`은 `price`, `funding`, `candle`이며 생략하면 기존 가격 소스입니다. 펀딩 leg는 `values`(%), `funding_rate`(비율 원단위), `source_times`, `server_times`, `next_funding_in_seconds`를 반환합니다. 분봉 leg는 `values`(KRW 종가 또는 종가 평균), 마지막 원본 `open/high/low/close/volume/trade_value`, `candle_times`, `available_times`를 반환합니다. 두 유형 모두 가상의 bid/ask를 만들지 않습니다. 단독 조회도 `legs: [{id: "A", data_type: "funding", exchange: "okx", ticker: "BTC"}]`, `formula: "A"`, `unit: "%"`처럼 같은 분석 API를 사용합니다.
 
 OMS 제어를 추가할 때는 계좌·실주문·전략 제어 어댑터를 `oms_client/oms/`에 두고 `api/routes/oms.py`와 `frontend/features/oms/`에 연결합니다. 모의 장부와 실계좌의 데이터·주문 경로를 구분하고, UI에 실제 연결 상태를 표시하는 구조를 유지합니다. 현재 백테스트 전략은 `backtesting/engine.py`가 담당하며 이후 공통 전략 실행기가 필요해지면 계산 부분을 추출해 공유할 수 있습니다.
 

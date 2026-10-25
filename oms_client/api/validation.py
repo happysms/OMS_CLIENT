@@ -17,8 +17,8 @@ def _query_config(payload):
         if not isinstance(leg, dict):
             raise data_service.DataError("각 데이터 소스는 JSON 객체로 보내 주세요.")
         data_type = leg.get("data_type", "price")
-        if not isinstance(data_type, str) or data_type not in {"price", "funding"}:
-            raise data_service.DataError("소스 유형은 가격 또는 펀딩비율로 선택해 주세요.")
+        if not isinstance(data_type, str) or data_type not in {"price", "funding", "candle"}:
+            raise data_service.DataError("소스 유형은 가격, 펀딩비율 또는 1분봉 종가로 선택해 주세요.")
     if not isinstance(payload.get("formula"), str) or not 1 <= len(payload["formula"]) <= 256:
         raise data_service.DataError("조합식을 256자 이내로 입력해 주세요.")
     # Copy and validate JSON numbers before handing work to a background thread.

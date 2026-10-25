@@ -61,9 +61,10 @@ class LiveServiceTests(unittest.TestCase):
 
     def test_funding_sources_are_never_silently_subscribed_as_prices(self):
         before = len(FakeFeed.instances)
-        config = {**self.config, "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": "funding"}], "formula": "A"}
-        with self.assertRaisesRegex(ds.DataError, "펀딩"):
-            self.manager.start(config)
+        for data_type in ('funding', 'candle'):
+            config = {**self.config, "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": data_type}], "formula": "A"}
+            with self.subTest(data_type=data_type), self.assertRaisesRegex(ds.DataError, "펀딩|1분봉"):
+                self.manager.start(config)
         self.assertEqual(len(FakeFeed.instances), before)
 
     def test_server_composes_once_all_sources_are_fresh_and_stops_on_stale(self):

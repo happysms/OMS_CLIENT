@@ -75,6 +75,8 @@ def register(app, jobs, store, live_manager):
         referenced = set(formula_ids(config["formula"]))
         if any(leg.get("data_type") == "funding" and leg.get("id") in referenced for leg in config["legs"]):
             raise DataError("펀딩비율은 저장된 데이터 조회와 과거 분석에서 사용할 수 있습니다. 과거 분석으로 전환해 주세요.")
+        if any(leg.get("data_type") == "candle" and leg.get("id") in referenced for leg in config["legs"]):
+            raise DataError('1분봉 종가는 저장된 과거 분석에서 사용할 수 있습니다. 과거 분석으로 전환해 주세요.')
         return jsonify(id=live_manager().start(config), status="running"), 202
 
     @app.get("/api/live/<live_id>")

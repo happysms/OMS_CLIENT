@@ -5,7 +5,7 @@ import ast
 
 import pandas as pd
 
-from ..market_data import funding, parquet
+from ..market_data import candles, funding, parquet
 from ..market_data.parquet import bounds
 from ..market_data.validation import (DataError, INTERVALS, KST, MAX_RANGE_DAYS,
                                       MAX_BUCKETS, array, integer, number, parse_date)
@@ -55,10 +55,13 @@ def catalog() -> dict:
     return {
         "exchanges": available,
         "funding_exchanges": funding.list_symbols(),
+        "candle_exchanges": candles.list_symbols(),
         "source_types": [
             {"id": "price", "label": "가격·호가", "formula_value": "mid"},
             {"id": "funding", "label": "펀딩비율", "formula_value": "values", "unit": "%",
              "raw_unit": "ratio", "kind": "observed_rate", "live_supported": False},
+            {"id": "candle", "label": "1분봉 종가", "formula_value": "values", "unit": "KRW",
+             "kind": "completed_candle", "live_supported": False},
         ],
         "defaults": {
             "legs": legs,
@@ -100,18 +103,22 @@ def analyze(payload: dict) -> dict:
     referenced = {node.id for node in ast.walk(tree)
                   if isinstance(node, ast.Name) and node.id in requested_by_id}
     available = parquet.list_symbols()
-    funding_available = None
+    funding_available = candle_available = None
     legs = []
     for identifier, leg in requested_by_id.items():
         if identifier not in referenced:
             continue
         data_type = leg.get("data_type", "price")
-        if not isinstance(data_type, str) or data_type not in {"price", "funding"}:
-            raise DataError("분석 데이터 종류는 가격·호가 또는 펀딩비율로 선택해 주세요.")
+        if not isinstance(data_type, str) or data_type not in {"price", "funding", "candle"}:
+            raise DataError("분석 데이터 종류는 가격·호가, 펀딩비율 또는 1분봉 종가로 선택해 주세요.")
         if data_type == "funding":
             if funding_available is None:
                 funding_available = funding.list_symbols()
             exchange, ticker = funding.validate_symbol(leg.get("exchange"), leg.get("ticker"), funding_available)
+        elif data_type == "candle":
+            if candle_available is None:
+                candle_available = candles.list_symbols()
+            exchange, ticker = candles.validate_symbol(leg.get("exchange"), leg.get("ticker"), candle_available)
         else:
             exchange, ticker = parquet.validate_symbol(leg.get("exchange"), leg.get("ticker"), available)
         legs.append({"id": leg["id"], "exchange": exchange, "ticker": ticker, "data_type": data_type})
@@ -127,6 +134,8 @@ def analyze(payload: dict) -> dict:
     if not isinstance(price_mode, str) or price_mode not in {"mean", "last"}:
         raise DataError("조회 방식은 마지막 관측값 또는 평균으로 선택해 주세요.")
     step = INTERVALS[interval]
+    if any(leg['data_type'] == 'candle' for leg in legs) and step < candles.MINUTE_MS:
+        raise DataError('1분봉 종가는 1분 이상 간격으로 조회해 주세요.')
     buckets = (int(end.value // 1_000_000) - 1) // step - int(start.value // 1_000_000) // step + 1
     if buckets > MAX_BUCKETS:
         raise DataError(f"예상 시간 구간이 {buckets:,}개입니다. 소스당 최대 {MAX_BUCKETS:,}개까지 조회할 수 있으니 기간을 줄이거나 조회 간격을 늘려 주세요.")
@@ -140,7 +149,8 @@ def analyze(payload: dict) -> dict:
     for leg in legs:
         key = (leg["data_type"], leg["exchange"], leg["ticker"])
         if key not in loaded:
-            reader = funding.read_buckets if leg["data_type"] == "funding" else parquet.read_buckets
+            reader = {'funding': funding.read_buckets, 'candle': candles.read_buckets,
+                      'price': parquet.read_buckets}[leg['data_type']]
             if price_mode == "last":
                 frame, count = reader(*key[1:], start, end, INTERVALS[interval], price_mode="last")
             else:
@@ -155,12 +165,16 @@ def analyze(payload: dict) -> dict:
         raise DataError("모든 분석 시리즈가 함께 존재하는 시간 구간이 없습니다. 기간·종목·조회 간격을 바꿔 주세요. 누락 시각을 이전 값으로 채우지 않습니다.")
 
     values = {leg["id"]: loaded[(leg["data_type"], leg["exchange"], leg["ticker"])].loc[
-        index, "value" if leg["data_type"] == "funding" else "mid"] for leg in legs}
+        index, "mid" if leg["data_type"] == "price" else "value"] for leg in legs}
     result = evaluate(tree, values, index)
     valid = result.dropna()
     smooth = result.ewm(span=span).mean()
     warnings = []
     has_funding = any(leg["data_type"] == "funding" for leg in legs)
+    if any(leg['data_type'] == 'candle' for leg in legs):
+        warnings.append('1분봉 소스는 REST로 받은 완료 분봉 종가입니다. 실제 틱·매수매도 1호가·호가 잔량을 복원한 값이 아닙니다. 완성시각으로 집계 구간을 배정하고 결과 시각은 구간 시작을 표시합니다. 5분·1시간 구간 전체값은 그 구간 종료 후 확정되며 마지막 원본 완성시각은 별도로 제공합니다. 체결 없는 분은 채우지 않습니다.')
+        if price_mode == 'mean':
+            warnings.append('1분봉 수식 값은 구간 내 종가 평균이며 OHLCV·거래대금·분봉 시각은 그 구간의 마지막 원본 1분봉입니다.')
     if any(frame.attrs.get("source_kind") == "orderbook_1s" for frame in loaded.values()):
         warnings.append("USDT 1초 호가는 수집 시점의 최신 매수·매도 1호가와 실제 USDT 수량입니다. 거래소 갱신 사이에는 같은 호가가 반복될 수 있으며, 원본 행의 시각은 실제 채택 시각입니다. 거래소·수신 시각은 원본 CSV에 보존합니다.")
         if price_mode == "mean":
@@ -188,6 +202,18 @@ def analyze(payload: dict) -> dict:
     full_legs, output_legs = [], []
     for leg in legs:
         frame = loaded[(leg["data_type"], leg["exchange"], leg["ticker"])].loc[index]
+        if leg['data_type'] == 'candle':
+            def candle_leg(source):
+                return {**leg, 'unit': 'KRW', 'currency': 'KRW', 'price_unit': 'KRW',
+                        'quantity_unit': 'USDT', 'source_kind': 'rest_1m', 'candle_interval_ms': candles.MINUTE_MS,
+                        'values': array(source['value']),
+                        **{field: array(source[field]) for field in candles.FIELDS},
+                        'candle_times': [int(value) for value in source['candle_time']],
+                        'available_times': [int(value) for value in source['available_time']]}
+            output_legs.append(candle_leg(frame.iloc[selection]))
+            if include_full:
+                full_legs.append(candle_leg(frame))
+            continue
         if leg["data_type"] == "funding":
             def funding_leg(source):
                 return {**leg, "unit": "%", "values": array(source["value"]),
@@ -236,6 +262,8 @@ def analyze(payload: dict) -> dict:
                  "aligned_points": len(index), "returned_points": len(selection), "warnings": warnings, "ewm_span": span,
                  "functions": functions_used, "window_basis": "aligned_samples", "undefined_points": missing},
     }
+    if any(leg['data_type'] == 'candle' for leg in legs):
+        output['meta'].update(candle_time_basis='completion', bucket_time_basis='start', bucket_interval_ms=step)
     if include_full:
         output["full"] = {"times": [int(value) for value in index], "legs": full_legs,
                           "result": array(result), "ewm": array(smooth)}

@@ -46,7 +46,7 @@ def register(app, csrf_token):
 
     @app.get("/api/session")
     def session_information():
-        return jsonify(authenticated=True, user="admin", csrf_token=csrf_token(), mode="server", capabilities={"server_analysis": True, "live": True, "saved_presets": True, "backtest": True, "paper": True, "funding": True, "funding_live": False, "live_orders": False})
+        return jsonify(authenticated=True, user="admin", csrf_token=csrf_token(), mode="server", capabilities={"server_analysis": True, "live": True, "saved_presets": True, "backtest": True, "paper": True, "funding": True, "funding_live": False, "candles": True, "candle_live": False, "live_orders": False})
 
     @app.get("/api/version")
     def version_information():
