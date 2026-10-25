@@ -4,7 +4,7 @@
 
 Parquet 가격은 거래소 원래 호가 단위를 유지합니다. 빗썸 BTC의 `b*_p`·`a*_p`는 KRW 가격이며, 빗썸 원본 수집기의 `b*_q`·`a*_q`는 수량×가격을 정수로 변환한 KRW 호가 금액입니다. 과거 조회는 완료 시간대의 저장 파일을 읽고, 공개 WebSocket은 실시간 시세를 받습니다.
 
-- `parquet.py`: `/data/{거래소}/ob/{종목}/...` 탐색, 저장 범위 확인, DuckDB 호가 집계와 단일 종목 내보내기. 파일은 읽기만 합니다.
+- `parquet.py`: `/data/{거래소}/ob/{종목}/...` 탐색, 저장 범위 확인, DuckDB 호가 조회와 단일 종목 내보내기. `read_buckets`의 `price_mode=mean`은 평균, `last`는 같은 원본 행의 마지막 매수·매도 호가와 `quote_time`을 선택합니다. 파일은 읽기만 합니다.
 - `quotes.py`: 빗썸·업비트·OKX 공개 WebSocket 연결, 재연결과 최우선 매수·매도 호가 정규화.
 - `validation.py`: 시세 식별자, 시간·정수 검증, 조회 한도와 공통 오류 타입.
 - `export.py`: 실제 저장 호가를 JSON 스냅샷으로 내보내는 CLI. `python -m oms_client.market_data.export --help`로 실행 방법을 확인합니다.

@@ -108,6 +108,9 @@ def analyze(payload: dict) -> dict:
     interval = payload.get("interval", "1min")
     if not isinstance(interval, str) or interval not in INTERVALS:
         raise DataError("조회 간격은 1s, 10s, 1min, 5min, 1h 중에서 선택해 주세요.")
+    price_mode = payload.get("price_mode", "mean")
+    if not isinstance(price_mode, str) or price_mode not in {"mean", "last"}:
+        raise DataError("가격 조회 방식은 마지막 호가 또는 평균으로 선택해 주세요.")
     step = INTERVALS[interval]
     buckets = (int(end.value // 1_000_000) - 1) // step - int(start.value // 1_000_000) // step + 1
     if buckets > MAX_BUCKETS:
@@ -122,7 +125,10 @@ def analyze(payload: dict) -> dict:
     for leg in legs:
         key = (leg["exchange"], leg["ticker"])
         if key not in loaded:
-            frame, count = parquet.read_buckets(*key, start, end, INTERVALS[interval])
+            if price_mode == "last":
+                frame, count = parquet.read_buckets(*key, start, end, INTERVALS[interval], price_mode="last")
+            else:
+                frame, count = parquet.read_buckets(*key, start, end, INTERVALS[interval])
             loaded[key] = frame
             rows_read += count
     index = None
@@ -157,9 +163,15 @@ def analyze(payload: dict) -> dict:
     for leg in legs:
         frame = loaded[(leg["exchange"], leg["ticker"])].loc[index]
         info = {**leg, "currency": "KRW" if leg["exchange"] in {"bithumb", "upbit", "ls"} else "USDT"}
-        output_legs.append({**info, **{column: array(frame.iloc[selection][column]) for column in ["mid", "bid", "ask"]}})
+        output_leg = {**info, **{column: array(frame.iloc[selection][column]) for column in ["mid", "bid", "ask"]}}
+        if price_mode == "last":
+            output_leg["quote_times"] = [int(value) for value in frame.iloc[selection]["quote_time"]]
+        output_legs.append(output_leg)
         if include_full:
-            full_legs.append({**info, **{column: array(frame[column]) for column in ["mid", "bid", "ask"]}})
+            full_leg = {**info, **{column: array(frame[column]) for column in ["mid", "bid", "ask"]}}
+            if price_mode == "last":
+                full_leg["quote_times"] = [int(value) for value in frame["quote_time"]]
+            full_legs.append(full_leg)
     correlations = pd.DataFrame(values, index=index).corr()
     output = {
         "times": [int(value) for value in index[selection]],
@@ -177,7 +189,7 @@ def analyze(payload: dict) -> dict:
         "correlations": {left: {right: number(correlations.loc[left, right]) for right in correlations.columns}
                          for left in correlations.index},
         "meta": {"start": start.tz_convert(KST).isoformat(), "end": end.tz_convert(KST).isoformat(),
-                 "interval": interval, "formula": formula, "source": "parquet", "rows_read": rows_read,
+                 "interval": interval, "price_mode": price_mode, "formula": formula, "source": "parquet", "rows_read": rows_read,
                  "aligned_points": len(index), "returned_points": len(selection), "warnings": warnings, "ewm_span": span,
                  "functions": functions_used, "window_basis": "aligned_samples", "undefined_points": missing},
     }

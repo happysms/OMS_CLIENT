@@ -7,18 +7,40 @@ export function initData({api,getCatalog}) {
   const state={versions:{data:0},data:null,dataJob:null,selection:null};
   const csv={version:0,busy:false,result:null,controller:null,selection:null,downloading:false};
   const intervalLabels={'1s':'1초','10s':'10초','1min':'1분','5min':'5분','1h':'1시간'};
+  const originalQuote=value=>Number.isFinite(value)?new Intl.NumberFormat('en-US',{maximumFractionDigits:20}).format(value):'—';
   const dataChart=new TimeChart($('data-chart'),{format:price,onHover:t=>dataChart.setCursor(t),onZoom:r=>dataChart.setZoom(r)});
   const job=createJobRunner({api,prefix:'data',getVersion:()=>state.versions.data});
+  function describePriceMode(){
+    const last=$('data-price-mode').value==='last';
+    $('data-mid-label').textContent=last?'마지막 구간 중간가':'마지막 구간 평균 중간가';
+    $('data-bidask-label').textContent=last?'구간 마지막 매수 / 매도 1호가':'구간 평균 매수 / 매도 호가';
+    $('data-spread-label').textContent=last?'구간 마지막 스프레드':'평균 스프레드';
+    $('data-spread-help').textContent=last?'같은 원본 시각의 매도 1호가 − 매수 1호가':'평균 매도 호가 − 평균 매수 호가';
+    $('data-price-help').textContent=last
+      ?'각 구간의 마지막 원본 행에서 매수·매도 1호가를 함께 가져옵니다. 중간가 = (매수 1호가 + 매도 1호가) ÷ 2이므로 소수점이 생길 수 있습니다.'
+      :'구간 내 여러 호가를 평균 내므로 매수·매도 가격에도 소수점이 생길 수 있습니다. 중간가 = (평균 매수 호가 + 평균 매도 호가) ÷ 2입니다.';
+    $('data-chart-title').textContent=last?'구간 마지막 중간가와 1호가':'구간 평균 중간가와 호가';
+    $('data-chart-series').textContent=last?'원본 중간가 · 매수 1호가 · 매도 1호가':'평균 중간가 · 평균 매수 호가 · 평균 매도 호가';
+    $('data-chart').setAttribute('aria-label',last?'저장된 구간 마지막 원본 중간가와 매수·매도 1호가 차트':'저장된 구간 평균 중간가와 매수·매도 호가 차트');
+    $('data-table-title').textContent=last?'구간 마지막 원본 호가':'구간 평균 호가';
+    $('data-table-help').textContent=last?'각 구간의 마지막 원본 호가 · 차트 표본 중 최근 100개 · 전체 결과는 조회 결과 CSV':'선택한 간격의 평균 · 차트 표본 중 최근 100개 · 전체 집계는 조회 결과 CSV';
+    $('data-table-time-label').textContent=last?'원본 시각 (KST)':'구간 시작 (KST)';
+    $('data-table-mid-label').textContent=last?'중간가':'평균 중간가';
+    $('data-table-bid-label').textContent=last?'매수 1호가':'평균 매수 호가';
+    $('data-table-ask-label').textContent=last?'매도 1호가':'평균 매도 호가';
+    $('data-table-spread-label').textContent=last?'스프레드':'평균 스프레드';
+  }
   function selectionKey(){
-    return JSON.stringify({...source('data'),start:$('data-start').value,end:$('data-end').value,interval:$('data-interval').value});
+    return JSON.stringify({...source('data'),start:$('data-start').value,end:$('data-end').value,interval:$('data-interval').value,price_mode:$('data-price-mode').value});
   }
   function clearData(message='종목과 기간을 선택한 뒤 데이터 조회를 누르세요.'){
     state.data=null;state.dataJob=null;
     for(const id of ['data-mid','data-spread','data-rows'])$(id).textContent='—';
     $('data-currency').textContent='조회 후 종목과 통화를 표시합니다.';
-    $('data-bidask').textContent='— / —';$('data-bucket').textContent='조회 후 마지막 집계 구간을 표시합니다.';
+    $('data-bidask').textContent='— / —';$('data-bucket').textContent='조회 후 호가 기준 시각과 조회 방식을 표시합니다.';
     $('data-points').textContent='선택한 구간을 조회하세요.';
-    $('data-chart-label').textContent='조회한 종목·기간·평균 간격을 표시합니다.';
+    $('data-chart-label').textContent='조회한 종목·기간·간격·조회 방식을 표시합니다.';
+    describePriceMode();
     dataChart.setData([],[]);dataChart.setZoom(null);dataChart.setCursor(null);
     $('data-placeholder').hidden=false;$('data-placeholder').querySelector('strong').textContent=message;
     tableRows('data-table',[],5,'조회 결과가 없습니다. 조건을 확인한 뒤 데이터 조회를 누르세요.');
@@ -31,7 +53,8 @@ export function initData({api,getCatalog}) {
     $('data-run').disabled=false;$('data-run').textContent='데이터 조회';
     $('data-message').textContent='설정이 바뀌었습니다. 데이터 조회를 누르면 새 조건으로 계산합니다.';
     clearError('data');clearData();
-    invalidateCsv();
+    let sameCsv=false;try{sameCsv=csv.selection===JSON.stringify(csvSelection());}catch{}
+    if(!sameCsv)invalidateCsv();
   }
   function currentQuery(version,selection){
     if(version!==state.versions.data)return false;
@@ -42,23 +65,30 @@ export function initData({api,getCatalog}) {
     event.preventDefault();const version=++state.versions.data,selected=selectionKey();state.selection=selected;
     clearError('data');clearData('서버에서 선택한 구간의 호가를 조회하고 있습니다.');$('data-run').disabled=true;$('data-run').textContent='조회 중…';
     try{
-      const selection=source('data'),config={...range('data'),legs:[{id:'A',...selection}],formula:'A',unit:currency(selection.exchange),ewm_span:1,max_points:6000};
+      const selection=source('data'),config={...range('data'),price_mode:$('data-price-mode').value,legs:[{id:'A',...selection}],formula:'A',unit:currency(selection.exchange),ewm_span:1,max_points:6000};
       const response=await job('/api/analyses',config,version);if(!response||!currentQuery(version,selected))return;
       const r=response.result,leg=r.legs?.[0];if(!leg)throw new Error('조회 결과에 호가 소스가 없습니다.');
       if(leg.exchange!==selection.exchange||String(leg.ticker).toUpperCase()!==selection.ticker.toUpperCase())throw new Error('요청한 종목과 조회 결과가 다릅니다. 다시 조회해주세요.');
+      if(r.meta?.price_mode!==config.price_mode)throw new Error('요청한 호가 조회 방식과 결과가 다릅니다. 다시 조회해주세요.');
       state.data=r;state.dataJob=response.id;const i=r.times.length-1;
-      const identity=`${exchanges[leg.exchange]||leg.exchange} · ${leg.ticker} · ${leg.currency||config.unit}`,average=intervalLabels[config.interval]||config.interval;
+      const last=config.price_mode==='last',hasQuoteTimes=last&&Array.isArray(leg.quote_times)&&leg.quote_times.length===r.times.length&&leg.quote_times.every(Number.isFinite);
+      const displayTimes=hasQuoteTimes?leg.quote_times:r.times;
+      const identity=`${exchanges[leg.exchange]||leg.exchange} · ${leg.ticker} · ${leg.currency||config.unit}`,interval=intervalLabels[config.interval]||config.interval;
+      const description=last?`${interval} 간격 · 마지막 원본 호가`:`${interval} 평균`;
+      const basis=hasQuoteTimes?`마지막 원본 시각 ${time(displayTimes[i])} KST`:`마지막 구간 시작 ${time(r.times[i])} KST`;
+      const quotePrice=last?originalQuote:price;
       $('data-mid').textContent=price(leg.mid[i]);$('data-currency').textContent=identity;
-      $('data-bidask').textContent=price(leg.bid[i])+' / '+price(leg.ask[i]);
-      $('data-bucket').textContent=`마지막 구간 시작 ${time(r.times[i])} KST · ${average} 평균`;
+      $('data-bidask').textContent=quotePrice(leg.bid[i])+' / '+quotePrice(leg.ask[i]);
+      $('data-bucket').textContent=`${basis} · ${description}`;
       $('data-spread').textContent=Number.isFinite(leg.ask[i])&&Number.isFinite(leg.bid[i])?price(leg.ask[i]-leg.bid[i]):'—';
       $('data-rows').textContent=number(r.meta.rows_read,0);$('data-points').textContent=`${number(r.meta.aligned_points,0)}개 집계 구간 · 표시 ${number(r.times.length,0)}개`;
-      $('data-chart-label').textContent=`${identity} · ${time(r.times[0])} ~ ${time(r.times.at(-1))} KST · ${average} 평균`;
-      dataChart.setZoom(null);dataChart.setData(r.times,[{label:'중간가',values:leg.mid,color:'#5bdfb7',width:1.8},{label:'매수 1호가',values:leg.bid,color:'#78b4e8'},{label:'매도 1호가',values:leg.ask,color:'#f1b66e'}],{gapMs:milliseconds[config.interval]*Math.max(1,Math.ceil((r.meta.aligned_points||r.times.length)/Math.max(1,r.times.length)))});
+      $('data-chart-label').textContent=`${identity} · ${time(displayTimes[0])} ~ ${time(displayTimes.at(-1))} KST · ${description}`;
+      dataChart.setZoom(null);dataChart.setData(displayTimes,[{label:last?'중간가':'평균 중간가',values:leg.mid,color:'#5bdfb7',width:1.8},{label:last?'매수 1호가':'평균 매수 호가',values:leg.bid,color:'#78b4e8'},{label:last?'매도 1호가':'평균 매도 호가',values:leg.ask,color:'#f1b66e'}],{gapMs:milliseconds[config.interval]*Math.max(1,Math.ceil((r.meta.aligned_points||r.times.length)/Math.max(1,r.times.length)))});
       $('data-placeholder').hidden=leg.mid.some(Number.isFinite);$('data-csv').disabled=!r.times.length;
-      const rows=[];for(let i=r.times.length-1;i>=Math.max(0,r.times.length-100);i--)rows.push([time(r.times[i]),price(leg.mid[i]),price(leg.bid[i]),price(leg.ask[i]),Number.isFinite(leg.ask[i])&&Number.isFinite(leg.bid[i])?price(leg.ask[i]-leg.bid[i]):'—']);
+      $('data-table-time-label').textContent=hasQuoteTimes?'원본 시각 (KST)':'구간 시작 (KST)';
+      const rows=[];for(let i=r.times.length-1;i>=Math.max(0,r.times.length-100);i--)rows.push([time(displayTimes[i]),price(leg.mid[i]),quotePrice(leg.bid[i]),quotePrice(leg.ask[i]),Number.isFinite(leg.ask[i])&&Number.isFinite(leg.bid[i])?price(leg.ask[i]-leg.bid[i]):'—']);
       tableRows('data-table',rows,5,'선택한 구간에 조회 가능한 호가가 없습니다.');
-      $('data-message').textContent=`${identity} · ${average} 평균 조회 완료 · 마지막 구간 시작 ${time(r.times[i])} KST`+((r.meta.warnings||[]).length?' · '+r.meta.warnings.join(' '):' · 저장된 과거 호가이며 실시간 현재가가 아닙니다.');
+      $('data-message').textContent=`${identity} · ${description} 조회 완료 · ${basis}`+((r.meta.warnings||[]).length?' · '+r.meta.warnings.join(' '):' · 완료된 시간별 파일의 과거 호가입니다.');
     }catch(error){if(currentQuery(version,selected)){clearData('조회하지 못했습니다. 조건을 확인한 뒤 다시 조회하세요.');errorAt('data',error);$('data-message').textContent='데이터를 조회하지 못했습니다.';}}
     finally{if(currentQuery(version,selected)){$('data-run').disabled=false;$('data-run').textContent='데이터 조회';}}
   }
@@ -162,5 +192,6 @@ export function initData({api,getCatalog}) {
   for(const input of $('data-form').querySelectorAll('input'))input.addEventListener('input',changed);
   const controls=createHistoryControls({prefix:'data',api,getCatalog,onChanged:changed});
   state.selection=selectionKey();
+  describePriceMode();
   return {ready:controls.ready,refresh:controls.refresh,onEnter(){dataChart.draw();}};
 }

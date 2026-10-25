@@ -29,6 +29,7 @@ def _write_trades_csv(path, result):
 
 def _write_csv(path: Path, result: dict, unit: str):
     complete = result.get("full") or result
+    last_quotes = result.get("meta", {}).get("price_mode") == "last"
     # Labels may be supplied through the API. Keep spreadsheet applications from
     # interpreting a display label as a formula; numeric result columns stay numeric.
     if unit.lstrip().startswith(("=", "+", "-", "@")):
@@ -38,10 +39,19 @@ def _write_csv(path: Path, result: dict, unit: str):
         with temporary.open("w", encoding="utf-8-sig", newline="") as stream:
             os.chmod(temporary, 0o600)
             writer = csv.writer(stream)
-            writer.writerow(["time_kst", "result", "ema", "unit", *[name for leg in complete["legs"] for name in (f"{leg['id']}_{leg['exchange']}_{leg['ticker']}_mid", f"{leg['id']}_bid", f"{leg['id']}_ask")]])
+            header = ["time_kst", "result", "ema", "unit", *[name for leg in complete["legs"] for name in (f"{leg['id']}_{leg['exchange']}_{leg['ticker']}_mid", f"{leg['id']}_bid", f"{leg['id']}_ask")]]
+            if last_quotes:
+                header.extend(["price_mode", *[f"{leg['id']}_quote_time_kst" for leg in complete["legs"]]])
+            writer.writerow(header)
             for index, timestamp in enumerate(complete["times"]):
                 label = datetime.fromtimestamp(timestamp / 1000, timezone(timedelta(hours=9))).isoformat()
-                writer.writerow([label, complete["result"][index], complete["ewm"][index], unit, *[value for leg in complete["legs"] for value in (leg["mid"][index], leg["bid"][index], leg["ask"][index])]])
+                row = [label, complete["result"][index], complete["ewm"][index], unit, *[value for leg in complete["legs"] for value in (leg["mid"][index], leg["bid"][index], leg["ask"][index])]]
+                if last_quotes:
+                    row.append("last")
+                    for leg in complete["legs"]:
+                        quote_time = leg["quote_times"][index]
+                        row.append(datetime.fromtimestamp(quote_time / 1000, timezone(timedelta(hours=9))).isoformat(timespec="milliseconds"))
+                writer.writerow(row)
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)

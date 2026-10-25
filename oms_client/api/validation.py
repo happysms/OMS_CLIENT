@@ -3,7 +3,7 @@ import json
 
 from ..analysis import history as data_service
 
-CONFIG_KEYS = {"legs", "formula", "start", "end", "interval", "ewm_span", "max_points", "unit"}
+CONFIG_KEYS = {"legs", "formula", "start", "end", "interval", "ewm_span", "max_points", "unit", "price_mode"}
 
 def _query_config(payload):
     if not isinstance(payload, dict):
@@ -22,6 +22,9 @@ def _query_config(payload):
         raise data_service.DataError("분석 조건에 유효하지 않은 값이 있습니다.") from exc
     if "unit" in copied and (not isinstance(copied["unit"], str) or len(copied["unit"]) > 20):
         raise data_service.DataError("표시 단위를 확인해 주세요.")
+    price_mode = copied.get("price_mode", "mean")
+    if not isinstance(price_mode, str) or price_mode not in {"mean", "last"}:
+        raise data_service.DataError("가격 방식은 구간 마지막 호가 또는 구간 평균으로 선택해 주세요.")
     return copied
 
 def _json_object(payload):

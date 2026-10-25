@@ -341,6 +341,44 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(result["error"], "테스트 기간에 호가가 없습니다.")
         self.assertFalse(result["result_available"])
 
+    def test_last_quote_mode_and_original_times_survive_full_csv_and_history(self):
+        self.login()
+        def last_quotes(payload):
+            self.assertEqual(payload["price_mode"], "last")
+            self.assertTrue(payload["include_full_data"])
+            result = result_fixture(payload)
+            result["meta"]["price_mode"] = "last"
+            for output in [result, result["full"]]:
+                for leg in output["legs"]:
+                    leg["quote_times"] = [timestamp + 499 for timestamp in output["times"]]
+            return result
+        self.app.extensions["analysis_jobs"].analyzer = last_quotes
+        config = {**self.query(), "price_mode": "last"}
+        response = self.client.post("/api/analyses", json=config, headers=self.headers())
+        self.assertEqual(response.status_code, 202, response.get_data(as_text=True))
+        identifier = response.json["id"]
+        result = self.wait(identifier)
+        self.assertEqual(result["status"], "complete", result)
+        self.assertEqual(result["config"]["price_mode"], "last")
+        self.assertEqual(result["result"]["legs"][0]["quote_times"], [1499, 3499])
+        self.assertNotIn("full", result["result"])
+        with self.client.get(f"/api/analyses/{identifier}/csv") as response:
+            self.assertEqual(response.status_code, 200)
+            rows = list(csv.DictReader(io.StringIO(response.get_data().decode("utf-8-sig"))))
+            self.assertEqual(len(rows), 3)
+            self.assertEqual([row["price_mode"] for row in rows], ["last"] * 3)
+            self.assertEqual([row["A_quote_time_kst"] for row in rows], [f"1970-01-01T09:00:0{i}.499+09:00" for i in [1, 2, 3]])
+        history = self.client.get("/api/history").json["items"]
+        self.assertEqual(history[0]["config"]["price_mode"], "last")
+
+    def test_invalid_price_mode_is_rejected_before_background_execution(self):
+        self.login()
+        for price_mode in [None, False, [], "rounded", 1]:
+            with self.subTest(price_mode=price_mode):
+                response = self.client.post("/api/analyses", json={**self.query(), "price_mode": price_mode}, headers=self.headers())
+                self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.calls, [])
+
     def test_queue_is_bounded_and_web_remains_responsive(self):
         self.login()
         entered, release = threading.Event(), threading.Event()

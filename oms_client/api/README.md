@@ -7,7 +7,7 @@
 | `app.py` | Flask 생성, 설정, 저장소·작업 큐·라우트 연결 |
 | `auth.py`, `templates/` | 로그인, 세션, CSRF, 출처 검사, 로그인 화면 |
 | `jobs.py` | 분석·백테스트 작업 실행, 실행 이력, 결과 보관 한도 |
-| `exports.py` | 전체 분석 결과·거래 내역 CSV 생성 |
+| `exports.py` | 전체 분석 결과·거래 내역 CSV 생성. 마지막 원본 호가 방식은 가격 방식과 소스별 원본 시각도 보존 |
 | `data_exports.py` | 원본·집계 CSV 비동기 변환, 전용 작업 한도·다운로드 파일 보관 |
 | `validation.py`, `errors.py` | HTTP 입력 검증과 오류 응답 |
 | `services.py` | 실시간 분석·모의 계좌의 지연 생성과 종료 |

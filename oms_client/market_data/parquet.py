@@ -157,15 +157,39 @@ def files_for_range(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Tim
 
 
 
-def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timestamp, step: int):
+def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timestamp, step: int, *, price_mode: str = "mean"):
+    """Read interval means or one complete final source quote per interval."""
+    if not isinstance(price_mode, str) or price_mode not in {"mean", "last"}:
+        raise DataError("가격 조회 방식은 마지막 호가 또는 평균으로 선택해 주세요.")
     paths = files_for_range(exchange, ticker, start, end)
     if not paths:
         raise DataError(f"선택한 기간에 {exchange} {ticker} 호가 파일이 없습니다.")
     con = connection()
     try:
         with query_deadline(con):
-            frame = con.execute(
+            if price_mode == "last":
+                query = """
+                WITH buckets AS (
+                    SELECT CAST(floor(desktopTime / $step) AS BIGINT) * $step AS time,
+                           arg_max(struct_pack(
+                               bid := CAST(b1_p AS DOUBLE),
+                               ask := CAST(a1_p AS DOUBLE),
+                               quote_time := CAST(desktopTime AS BIGINT)
+                           ), desktopTime) AS quote,
+                           count(*) AS source_rows
+                    FROM read_parquet($paths)
+                    WHERE desktopTime >= $start AND desktopTime < $end
+                      AND isfinite(CAST(b1_p AS DOUBLE)) AND isfinite(CAST(a1_p AS DOUBLE))
+                      AND b1_p > 0 AND a1_p >= b1_p
+                    GROUP BY time
+                )
+                SELECT time, quote.bid AS bid, quote.ask AS ask,
+                       quote.bid / 2.0 + quote.ask / 2.0 AS mid,
+                       source_rows, quote.quote_time AS quote_time
+                FROM buckets ORDER BY time
                 """
+            else:
+                query = """
                 SELECT CAST(floor(desktopTime / $step) AS BIGINT) * $step AS time,
                        avg(CAST(b1_p AS DOUBLE)) AS bid,
                        avg(CAST(a1_p AS DOUBLE)) AS ask,
@@ -176,7 +200,9 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
                   AND isfinite(CAST(b1_p AS DOUBLE)) AND isfinite(CAST(a1_p AS DOUBLE))
                   AND b1_p > 0 AND a1_p >= b1_p
                 GROUP BY time ORDER BY time
-                """,
+                """
+            frame = con.execute(
+                query,
                 {"paths": paths, "start": int(start.value // 1_000_000), "end": int(end.value // 1_000_000), "step": step},
             ).df()
     except duckdb.Error as exc:
