@@ -120,6 +120,10 @@ export function initFiles({api,onOpenQuery}={}){
     }
     const info=state.info;if(!info)return;
     const kind=kindLabels[info.data_kind]||'시장 데이터',identity=document.createElement('p');identity.className='files-info-identity';identity.textContent=[exchanges[info.exchange]||info.exchange,kind,info.ticker].filter(Boolean).join(' · ');target.append(identity);
+    const quoteUnit={bithumb:'KRW',upbit:'KRW',binance:'USDT',okx:'USDT'}[info.exchange];
+    const usdtSource=['bithumb','upbit'].includes(info.exchange)&&info.ticker==='USDT';
+    const units=info.data_kind==='funding'?'원본 비율 · 조회 화면은 %':info.data_kind==='ob_1s'&&usdtSource?'가격 KRW · 실제 수량 USDT':info.data_kind==='candles_1m'&&usdtSource?'가격 KRW · 거래량 USDT':info.data_kind==='ob'&&quoteUnit?`가격 ${quoteUnit}`+(info.columns?.some(column=>/_q$/.test(column.name))?` · 호가 금액 ${quoteUnit}`:''):null;
+    if(units){const description=document.createElement('p');description.className='files-info-message';description.textContent=units;target.append(description);}
     const path=document.createElement('p');path.className='files-info-path';path.textContent=info.relative_path||info.name||'';target.append(path);
     const details=document.createElement('dl');details.className='files-metadata';
     for(const [label,value] of [['형식',info.format||'—'],['크기',size(info.bytes)],['행 수',Number.isFinite(info.rows)?number(info.rows,0):'—'],['수정 시각',info.modified_at?time(info.modified_at)+' KST':'—']]){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;details.append(dt,dd);}target.append(details);
