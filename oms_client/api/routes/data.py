@@ -2,7 +2,8 @@
 from flask import jsonify, request, send_file
 
 from ...analysis import history
-from ...market_data import parquet
+from ...market_data import funding, parquet
+from ...market_data.validation import DataError
 
 
 def register(app, exports):
@@ -14,6 +15,11 @@ def register(app, exports):
 
     @app.get("/api/bounds")
     def bounds():
+        data_type = request.args.get("data_type", "price")
+        if data_type == "funding":
+            return jsonify(funding.bounds(request.args.get("exchange"), request.args.get("ticker")))
+        if data_type != "price":
+            raise DataError("소스 유형은 가격 또는 펀딩비율로 선택해 주세요.")
         return jsonify(parquet.bounds(request.args.get("exchange"), request.args.get("ticker")))
 
     @app.post("/api/data/exports")

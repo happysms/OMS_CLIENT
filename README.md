@@ -1,13 +1,14 @@
 # OMS Client
 
-데이터 확인, 분석, 백테스트, 모의투자를 한 곳에서 사용하는 웹 도구입니다. 서버가 로컬 Parquet를 DuckDB로 조회·계산하고 브라우저는 조건 입력과 결과 표시를 담당합니다. 앞으로 OMS의 계좌·주문·전략 제어를 같은 작업 공간에 연결할 수 있도록 기능 모듈과 탭을 나눴습니다.
+가격·펀딩비율 확인, 분석, 백테스트, 모의투자를 한 곳에서 사용하는 웹 도구입니다. 서버가 로컬 Parquet를 DuckDB로 조회·계산하고 브라우저는 조건 입력과 결과 표시를 담당합니다. 앞으로 OMS의 계좌·주문·전략 제어를 같은 작업 공간에 연결할 수 있도록 기능 모듈과 탭을 나눴습니다.
 
 ## 현재 기능
 
 | 탭 | 기능 |
 |---|---|
 | 데이터 | 저장된 호가 종목·기간 확인, 구간 마지막 원본 1호가·중간가 또는 구간 평균 조회, 원본·평균 집계 CSV 변환 |
-| 분석 | A~D 가격 조합, 과거/실시간 분석, 이동평균·수익률·Z-score, 조합 저장·분석 이력 |
+| 펀딩비 | OKX·Binance·Hyperliquid의 저장된 펀딩비율, 관측 시각·정산 잔여 초, 차트·표·전체 CSV |
+| 분석 | A~D 가격·펀딩비율 조합, 과거 분석·실시간 가격 분석, 이동평균·수익률·Z-score, 조합 저장·분석 이력 |
 | 백테스트 | 단일 종목 이동평균 전략, 다음 구간 체결, 수수료·슬리피지, 자산 곡선·지표·거래 내역 |
 | 모의투자 | 빗썸·업비트 KRW 현금 계좌, 서버 호가 기반 모의 주문, 잔고·포지션·체결 기록 |
 | OMS | 계좌·주문·전략 제어를 연결할 예정인 영역. 현재 상태 조회만 제공 |
@@ -20,7 +21,7 @@
 server.py                       서버 실행 진입점
 routing.py                      외부 HTTPS 연결 관리 진입점
 oms_client/
-  market_data/                  Parquet 조회, 종목·저장 범위, 공개 실시간 시세
+  market_data/                  가격·펀딩 Parquet 조회, 압축 펀딩 이력, 공개 실시간 시세
   analysis/                     수식 계산, 과거·실시간 분석, 차트 샘플링
   backtesting/                  전략·비용·체결 모형과 성과 계산
   paper_trading/                모의 주문·잔고·포지션·체결 장부
@@ -34,7 +35,7 @@ oms_client/
 frontend/
   app.js                        브라우저 진입점
   shell/                        시작 처리와 탭 전환
-  features/                     data·analysis·backtesting·paper_trading·oms 화면
+  features/                     data·funding·analysis·backtesting·paper_trading·oms 화면
   shared/                       공통 차트·API 통신·입력·표시 도구
   scripts/                      개발용 JavaScript 검사 도구
 tests/                          기능·인증·동시성·계산 검증
@@ -99,6 +100,22 @@ ZSCORE(A / B, 60)
 
 실시간 분석은 서버가 거래소 공개 WebSocket에 직접 연결합니다. 빗썸·업비트 KRW 호가와 OKX USDT 무기한 호가를 지원하며 소스/수신 시각이 10초 이상 오래된 호가는 계산에서 제외합니다. 기존 Redis·Parquet 수집기와 별도 경로이므로 실시간 차트가 움직인다는 사실만으로 아카이브 수집 상태를 판단할 수는 없습니다.
 
+## 펀딩비율 조회와 조합
+
+**펀딩비 탭**에서 거래소·종목·기간·간격을 선택하고 마지막 스냅샷 또는 구간 평균을 조회합니다. 저장된 펀딩비율의 차트·표·최소/최대와 관측 시각, 관측 당시의 정산 잔여 초를 확인하고 전체 결과를 CSV로 다운로드할 수 있습니다.
+
+원천 경로는 `/data/{exchange}/funding/{ticker}/{YYYY}/{MM}/{DD}/{HH}.parquet`입니다. OKX·Binance·Hyperliquid의 실제 저장 종목을 표시하며, 과거 `.parquet.gz` 파일도 임시 해제해서 읽습니다. 같은 시간의 일반·압축 파일이 함께 있으면 일반 파일을 한 번만 읽고 원본은 수정하지 않습니다. 조회 기간은 최대 31일이며 종목별 실제 저장 범위를 확인할 수 있습니다.
+
+`fundingRate`는 비율 원값이며, 화면과 분석 수식에는 **원값 × 100의 퍼센트 값**을 사용합니다. 예를 들어 `0.0001`은 `0.01%`, `-0.0001`은 `-0.01%`입니다. 음수와 0도 유효한 관측값입니다. 이 데이터는 거래소에서 수집한 펀딩비율 스냅샷이며 계좌의 실제 지급액·확정 정산 내역과 구분합니다.
+
+분석 A~D에서 각 소스를 **가격·중간가** 또는 **펀딩비율**로 선택할 수 있습니다. 예를 들어 A를 OKX BTC 펀딩비율, B를 Binance BTC 펀딩비율로 선택하고 `A - B`를 계산하면 퍼센트포인트 차이를 얻습니다. 결과 단위를 `%p`로 표시할 수 있습니다. 가격·펀딩비율의 혼합 수식도 지원하며 표시 단위 선택은 수치를 자동 환산하지 않습니다.
+
+거래소·종목의 정산 주기를 자동으로 동일하게 맞추거나 연율화하지 않습니다. `next_funding_in_seconds`는 **해당 원본이 관측됐을 때 남아 있던 초**이며 현재 시각에서 새로 계산한 카운트다운이 아닙니다. 평균 조회에서도 원본·서버 시각과 정산 잔여 초는 그 구간의 마지막 관측 메타데이터를 표시합니다.
+
+조합에는 공통 관측 구간만 사용하고, 없는 펀딩비율을 이전 값으로 채우지 않습니다. 현재 펀딩비율은 저장 데이터 조회와 과거 분석에서 지원하며, 참조한 펀딩 소스가 있는 수식의 실시간 가격 분석은 명확한 안내와 함께 제한합니다. 저장한 조합·분석 이력은 소스 유형과 가격 방식을 유지합니다.
+
+펀딩이 포함된 CSV는 `%` 값, 비율 원단위(`*_funding_rate_ratio`), 원본·서버 KST 시각, 정산 잔여 초와 `price_mode`를 보존합니다. 구간 평균 파일에도 방식을 기록하며, 가격 소스의 중간가·bid/ask와 펀딩 소스의 비율 컬럼을 구분합니다.
+
 ## CSV 데이터 내보내기
 
 데이터 탭에서 거래소·종목·시작·종료 시간을 선택하고 **데이터를 CSV로 내보내기 → 내보낼 데이터 선택 → CSV 생성 → 파일 다운로드** 순서로 사용합니다. 차트 조회를 먼저 실행하지 않아도 됩니다.
@@ -144,12 +161,15 @@ ZSCORE(A / B, 60)
 |---|---|
 | 메뉴·버전 | `GET /api/modules`, `GET /api/version` |
 | 데이터·분석 | `GET /api/catalog`, `GET /api/bounds`, `POST /api/analyses`, 결과·CSV 조회 |
+| 펀딩비율 | 카탈로그의 `funding_exchanges`, `GET /api/bounds?data_type=funding&exchange=okx&ticker=BTC`, 펀딩 소스를 지정한 분석 요청·CSV |
 | 데이터 CSV 변환 | `POST /api/data/exports`, `GET /api/data/exports/{id}`, `GET /api/data/exports/{id}/csv` |
 | 백테스트 | `POST /api/backtests`, `GET /api/backtests/{id}`, `GET /api/backtests/{id}/csv` |
 | 모의투자 | `GET /api/paper`, `POST /api/paper/orders`, `POST /api/paper/reset` |
 | OMS | `GET /api/oms/status` — 현재 연결 예정 상태 |
 
 `POST /api/analyses`는 `price_mode: "last" | "mean"`을 지원하며 생략하면 기존과 같이 `mean`입니다. 마지막 원본 방식의 각 `legs`에는 실제 원본 시각(epoch 밀리초)의 `quote_times` 배열이 포함됩니다. 데이터·분석 탭은 새 조회에서 `last`를 기본으로 요청하고 선택한 방식을 명시해서 전송합니다. 가격 방식은 분석 이력·저장한 조합·조회 결과 CSV에도 유지됩니다.
+
+각 leg의 `data_type`은 `price` 또는 `funding`이며 생략하면 기존 가격 소스입니다. 펀딩 leg는 `values`(%), `funding_rate`(비율 원단위), `source_times`, `server_times`, `next_funding_in_seconds`를 반환하며 가상의 bid/ask를 만들지 않습니다. 단독 조회도 `legs: [{id: "A", data_type: "funding", exchange: "okx", ticker: "BTC"}]`, `formula: "A"`, `unit: "%"`로 같은 분석 API를 사용합니다.
 
 OMS 제어를 추가할 때는 계좌·실주문·전략 제어 어댑터를 `oms_client/oms/`에 두고 `api/routes/oms.py`와 `frontend/features/oms/`에 연결합니다. 모의 장부와 실계좌의 데이터·주문 경로를 구분하고, UI에 실제 연결 상태를 표시하는 구조를 유지합니다. 현재 백테스트 전략은 `backtesting/engine.py`가 담당하며 이후 공통 전략 실행기가 필요해지면 계산 부분을 추출해 공유할 수 있습니다.
 

@@ -34,6 +34,8 @@ class _LiveSession:
         self.legs = []
         for identifier in ids:
             leg = by_id.get(identifier)
+            if leg and leg.get("data_type", "price") != "price":
+                raise DataError("펀딩비율 소스는 저장된 데이터 조회와 과거 분석에서 지원합니다.")
             if not leg or leg.get("exchange") not in ENDPOINTS:
                 raise DataError("실시간은 빗썸·업비트·OKX를 지원합니다. 소스의 거래소를 확인하세요.")
             ticker = leg.get("ticker")

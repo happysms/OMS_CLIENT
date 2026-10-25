@@ -3,6 +3,8 @@ import re
 
 from flask import jsonify, request, send_file
 
+from ...analysis.formulas import formula_ids
+from ...market_data.validation import DataError
 from ..validation import _query_config
 
 
@@ -70,6 +72,9 @@ def register(app, jobs, store, live_manager):
     @app.post("/api/live")
     def create_live():
         config = _query_config(request.get_json(silent=True))
+        referenced = set(formula_ids(config["formula"]))
+        if any(leg.get("data_type") == "funding" and leg.get("id") in referenced for leg in config["legs"]):
+            raise DataError("펀딩비율은 저장된 데이터 조회와 과거 분석에서 사용할 수 있습니다. 과거 분석으로 전환해 주세요.")
         return jsonify(id=live_manager().start(config), status="running"), 202
 
     @app.get("/api/live/<live_id>")

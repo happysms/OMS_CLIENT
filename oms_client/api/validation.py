@@ -12,7 +12,13 @@ def _query_config(payload):
     if unknown:
         raise data_service.DataError("지원하지 않는 분석 조건입니다. 화면의 조회 설정을 확인해 주세요.")
     if not isinstance(payload.get("legs"), list) or not 1 <= len(payload["legs"]) <= 4:
-        raise data_service.DataError("가격 소스를 1~4개 선택해 주세요.")
+        raise data_service.DataError("데이터 소스를 1~4개 선택해 주세요.")
+    for leg in payload["legs"]:
+        if not isinstance(leg, dict):
+            raise data_service.DataError("각 데이터 소스는 JSON 객체로 보내 주세요.")
+        data_type = leg.get("data_type", "price")
+        if not isinstance(data_type, str) or data_type not in {"price", "funding"}:
+            raise data_service.DataError("소스 유형은 가격 또는 펀딩비율로 선택해 주세요.")
     if not isinstance(payload.get("formula"), str) or not 1 <= len(payload["formula"]) <= 256:
         raise data_service.DataError("조합식을 256자 이내로 입력해 주세요.")
     # Copy and validate JSON numbers before handing work to a background thread.

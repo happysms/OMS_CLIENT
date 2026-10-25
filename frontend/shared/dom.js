@@ -17,7 +17,7 @@ export function tableRows(id, rows, columns, empty) {
   if(!rows.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=columns;cell.className='empty-cell';cell.textContent=empty;row.append(cell);body.append(row);return;}
   for(const values of rows){const row=document.createElement('tr');for(const value of values){const cell=document.createElement('td');cell.textContent=value??'—';row.append(cell);}body.append(row);}
 }
-export function source(prefix) { return {exchange:$(prefix+'-exchange').value,ticker:$(prefix+'-ticker').value.trim().toUpperCase()}; }
+export function source(prefix) { const input=$(prefix+'-ticker'),ticker=input.value.trim();return {exchange:$(prefix+'-exchange').value,ticker:input.dataset.preserveCase==='true'?ticker:ticker.toUpperCase()}; }
 export function range(prefix) {
   const start=$(prefix+'-start').value,end=$(prefix+'-end').value;
   if(!Number.isFinite(parseLocal(start))||!Number.isFinite(parseLocal(end))||parseLocal(start)>=parseLocal(end))throw new Error('시작보다 늦은 종료 시간을 입력해주세요. 시간은 KST 기준입니다.');

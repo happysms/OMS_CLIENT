@@ -12,10 +12,12 @@ STATIC_FILES = {
     "shared/api.js", "shared/charts.js", "shared/dom.js", "shared/jobs.js",
     "shared/source-controls.js",
     "features/analysis/controller.js", "features/data/controller.js",
+    "features/funding/controller.js",
     "features/backtesting/controller.js", "features/paper_trading/controller.js",
 }
 MODULES = [
     {"id": "data", "label": "데이터 확인", "status": "ready"},
+    {"id": "funding", "label": "펀딩비율", "status": "ready"},
     {"id": "analysis", "label": "분석", "status": "ready"},
     {"id": "backtest", "label": "백테스트", "status": "ready"},
     {"id": "paper", "label": "모의투자", "status": "ready"},
@@ -44,7 +46,7 @@ def register(app, csrf_token):
 
     @app.get("/api/session")
     def session_information():
-        return jsonify(authenticated=True, user="admin", csrf_token=csrf_token(), mode="server", capabilities={"server_analysis": True, "live": True, "saved_presets": True, "backtest": True, "paper": True, "live_orders": False})
+        return jsonify(authenticated=True, user="admin", csrf_token=csrf_token(), mode="server", capabilities={"server_analysis": True, "live": True, "saved_presets": True, "backtest": True, "paper": True, "funding": True, "funding_live": False, "live_orders": False})
 
     @app.get("/api/version")
     def version_information():

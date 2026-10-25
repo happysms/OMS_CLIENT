@@ -32,6 +32,20 @@ def result_fixture(payload):
     return result
 
 
+def funding_result_fixture(payload):
+    times = [1000, 2000, 3000]
+    full_legs = []
+    for leg in payload["legs"]:
+        if leg.get("data_type") == "funding":
+            full_legs.append({**leg, "unit": "%", "values": [0.0, -0.02, 0.01], "funding_rate": [0.0, -0.0002, 0.0001], "source_times": [1499, 2499, 3499], "server_times": [1489, None, 3489], "next_funding_in_seconds": [60, None, -1]})
+        else:
+            full_legs.append({**leg, "currency": "USDT", "mid": [100, 110, 120], "bid": [99, 109, 119], "ask": [101, 111, 121], "quote_times": [1499, 2499, 3499]})
+    values = full_legs[0]["values"] if len(full_legs) == 1 else [0.0, -0.022, 0.012]
+    selected = [0, 2]
+    legs = [{key: [value[index] for index in selected] if isinstance(value, list) else value for key, value in leg.items()} for leg in full_legs]
+    return {"times": [times[index] for index in selected], "legs": legs, "result": [values[index] for index in selected], "ewm": [values[index] for index in selected], "mean": sum(values) / 3, "stats": {"count": 3}, "meta": {"formula": payload["formula"], "price_mode": payload.get("price_mode", "mean"), "interval": payload.get("interval", "1s"), "aligned_points": 3, "rows_read": 3 * len(full_legs), "warnings": []}, "full": {"times": times, "legs": full_legs, "result": values, "ewm": values}}
+
+
 class FakeLive:
     def __init__(self):
         self.items = {}
@@ -379,6 +393,92 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
         self.assertEqual(self.calls, [])
 
+    def test_funding_analysis_exports_percent_raw_rate_times_without_fake_quotes(self):
+        self.login()
+        self.app.extensions["analysis_jobs"].analyzer = funding_result_fixture
+        config = {**self.query(), "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": "funding"}], "unit": "%", "price_mode": "last"}
+        response = self.client.post("/api/analyses", json=config, headers=self.headers())
+        self.assertEqual(response.status_code, 202, response.get_data(as_text=True))
+        result = self.wait(response.json["id"])
+        self.assertEqual(result["status"], "complete", result)
+        self.assertEqual(result["config"]["legs"][0]["data_type"], "funding")
+        leg = result["result"]["legs"][0]
+        self.assertEqual(leg["values"], [0.0, 0.01])
+        self.assertNotIn("bid", leg)
+        self.assertNotIn("mid", leg)
+        with self.client.get(f"/api/analyses/{result['id']}/csv") as response:
+            self.assertEqual(response.status_code, 200)
+            rows = list(csv.DictReader(io.StringIO(response.get_data().decode("utf-8-sig"))))
+            self.assertEqual(len(rows), 3)
+            self.assertEqual([float(row["A_okx_BTC_funding_rate_pct"]) for row in rows], [0, -0.02, 0.01])
+            self.assertEqual([float(row["A_funding_rate_ratio"]) for row in rows], [0, -0.0002, 0.0001])
+            self.assertTrue(all(row["A_source_time_kst"].endswith("+09:00") for row in rows))
+            self.assertEqual(rows[1]["A_server_time_kst"], "")
+            self.assertEqual(rows[1]["A_next_funding_in_seconds"], "")
+            self.assertEqual(rows[2]["A_next_funding_in_seconds"], "-1")
+            self.assertNotIn("A_bid", rows[0])
+            self.assertNotIn("A_quote_time_kst", rows[0])
+
+        config["price_mode"] = "mean"
+        created = self.client.post("/api/analyses", json=config, headers=self.headers())
+        averaged = self.wait(created.json["id"])
+        self.assertEqual(averaged["status"], "complete")
+        with self.client.get(f"/api/analyses/{averaged['id']}/csv") as response:
+            rows = list(csv.DictReader(io.StringIO(response.get_data().decode("utf-8-sig"))))
+            self.assertTrue(all(row["price_mode"] == "mean" for row in rows))
+            self.assertNotIn("A_quote_time_kst", rows[0])
+
+    def test_mixed_price_funding_analysis_and_presets_preserve_source_types(self):
+        self.login()
+        self.app.extensions["analysis_jobs"].analyzer = funding_result_fixture
+        config = {**self.query(), "formula": "A * (B / 100)", "unit": "USDT", "price_mode": "last", "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC"}, {"id": "B", "exchange": "okx", "ticker": "BTC", "data_type": "funding"}]}
+        created = self.client.post("/api/analyses", json=config, headers=self.headers())
+        self.assertEqual(created.status_code, 202, created.get_data(as_text=True))
+        result = self.wait(created.json["id"])
+        self.assertEqual(result["status"], "complete", result)
+        with self.client.get(f"/api/analyses/{result['id']}/csv") as response:
+            rows = list(csv.DictReader(io.StringIO(response.get_data().decode("utf-8-sig"))))
+            self.assertIn("A_okx_BTC_mid", rows[0])
+            self.assertIn("B_okx_BTC_funding_rate_pct", rows[0])
+            self.assertIn("A_quote_time_kst", rows[0])
+            self.assertNotIn("B_bid", rows[0])
+            self.assertEqual([float(row["result"]) for row in rows], [0, -0.022, 0.012])
+        saved = self.client.post("/api/presets", json={"name": "Price and funding sources", "config": config}, headers=self.headers())
+        self.assertEqual(saved.status_code, 201)
+        self.assertEqual(self.client.get("/api/presets").json["items"][0]["config"]["legs"], config["legs"])
+        self.assertEqual(self.client.get("/api/history").json["items"][0]["config"]["legs"], config["legs"])
+
+    def test_funding_catalog_bounds_are_typed_and_paths_are_restricted(self):
+        self.login()
+        import pandas as pd
+        directory = Path(self.temp.name) / "market/okx/funding/BTC/2026/10/25"
+        directory.mkdir(parents=True)
+        pd.DataFrame({"desktopTime": [1792886400000, 1792886460000], "serverTime": [1792886399990, 1792886459990], "fundingRate": [0, -0.0001], "nextFundingTime": [60, 0]}).to_parquet(directory / "00.parquet", index=False)
+        with patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": str(Path(self.temp.name) / "market")}):
+            catalog = self.client.get("/api/catalog")
+            self.assertEqual(catalog.status_code, 200)
+            self.assertEqual(catalog.json["funding_exchanges"], {"okx": ["BTC"]})
+            response = self.client.get("/api/bounds?data_type=funding&exchange=okx&ticker=btc")
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+            self.assertEqual(response.json["data_type"], "funding")
+            self.assertEqual(response.json["start"], "2026-10-25T09:00:00+09:00")
+            self.assertEqual(self.client.get("/api/bounds?data_type=other&exchange=okx&ticker=BTC").status_code, 400)
+            self.assertEqual(self.client.get("/api/bounds?data_type=funding&exchange=okx&ticker=../../private").status_code, 400)
+
+    def test_unsupported_source_types_and_live_funding_fail_before_subscription(self):
+        self.login()
+        for data_type in ["other", None, [], False]:
+            config = {**self.query(), "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": data_type}]}
+            self.assertEqual(self.client.post("/api/analyses", json=config, headers=self.headers()).status_code, 400)
+        config = {**self.query(), "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": "funding"}]}
+        response = self.client.post("/api/live", json=config, headers=self.headers())
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("과거", response.json["error"])
+        self.assertEqual(self.live.items, {})
+        config["legs"].insert(0, {"id": "B", "exchange": "bithumb", "ticker": "BTC"})
+        config["formula"] = "B"
+        self.assertEqual(self.client.post("/api/live", json=config, headers=self.headers()).status_code, 202)
+
     def test_queue_is_bounded_and_web_remains_responsive(self):
         self.login()
         entered, release = threading.Event(), threading.Event()
@@ -439,7 +539,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/modules").status_code, 401)
         self.login()
         modules = self.client.get("/api/modules").json["items"]
-        self.assertEqual([item["id"] for item in modules], ["data", "analysis", "backtest", "paper", "oms"])
+        self.assertEqual([item["id"] for item in modules], ["data", "funding", "analysis", "backtest", "paper", "oms"])
         self.assertEqual(modules[-1]["status"], "planned")
         self.assertFalse(self.client.get("/api/oms/status").json["live_orders"])
         self.assertEqual(self.client.post("/api/oms/orders", json={}, headers=self.headers()).status_code, 405)
@@ -453,7 +553,7 @@ class ServerTests(unittest.TestCase):
             version = self.client.get("/api/version").json
             self.assertEqual(version["application"], "OMS_CLIENT")
             self.assertEqual(version["revision"], "ab12cd3")
-            self.assertEqual([item["id"] for item in version["modules"]], ["data", "analysis", "backtest", "paper", "oms"])
+            self.assertEqual([item["id"] for item in version["modules"]], ["data", "funding", "analysis", "backtest", "paper", "oms"])
             self.assertEqual(self.app.test_client().get("/api/health").json,
                              {"ok": True, "service": "oms-client", "revision": "ab12cd3"})
 

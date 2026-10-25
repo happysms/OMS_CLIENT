@@ -12,7 +12,7 @@
 <body>
   <header class="topbar">
     <a class="brand" href="./" aria-label="OMS Client 홈"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 24V12l8 8L22 5l6 10"/></svg><span>OMS<span class="brand-light"> Client</span><small>RESEARCH &amp; TRADING WORKSPACE</small></span></a>
-    <nav class="module-nav" aria-label="워크스페이스" role="tablist"><button id="tab-data" type="button" data-module="data" role="tab" aria-controls="module-data" aria-selected="false" tabindex="-1">데이터</button><button id="tab-analysis" type="button" class="active" data-module="analysis" role="tab" aria-controls="module-analysis" aria-selected="true">분석</button><button id="tab-backtest" type="button" data-module="backtest" role="tab" aria-controls="module-backtest" aria-selected="false" tabindex="-1">백테스트</button><button id="tab-paper" type="button" data-module="paper" role="tab" aria-controls="module-paper" aria-selected="false" tabindex="-1">모의투자</button><button id="tab-oms" type="button" data-module="oms" role="tab" aria-controls="module-oms" aria-selected="false" tabindex="-1">OMS <small>예정</small></button></nav>
+    <nav class="module-nav" aria-label="워크스페이스" role="tablist"><button id="tab-data" type="button" data-module="data" role="tab" aria-controls="module-data" aria-selected="false" tabindex="-1">데이터</button><button id="tab-funding" type="button" data-module="funding" role="tab" aria-controls="module-funding" aria-selected="false" tabindex="-1">펀딩비</button><button id="tab-analysis" type="button" class="active" data-module="analysis" role="tab" aria-controls="module-analysis" aria-selected="true">분석</button><button id="tab-backtest" type="button" data-module="backtest" role="tab" aria-controls="module-backtest" aria-selected="false" tabindex="-1">백테스트</button><button id="tab-paper" type="button" data-module="paper" role="tab" aria-controls="module-paper" aria-selected="false" tabindex="-1">모의투자</button><button id="tab-oms" type="button" data-module="oms" role="tab" aria-controls="module-oms" aria-selected="false" tabindex="-1">OMS <small>예정</small></button></nav>
     <div class="top-actions"><span class="private-tag" id="account-label">개인 워크스페이스</span><button id="refresh-data" class="quiet-button" type="button">↻ 새 데이터 확인</button><button id="logout-button" class="small-button" type="button">로그아웃</button></div>
   </header>
   <div id="module-analysis" class="workspace" role="tabpanel" aria-labelledby="tab-analysis">
@@ -20,14 +20,16 @@
       <div class="sidebar-heading"><span class="eyebrow">COMPOSER</span><span class="subtle">01 — 설정</span></div>
       <form id="composer">
         <label for="preset">분석 프리셋</label>
-        <select id="preset"><option value="relative">알트 / BTC 상대 프리미엄</option><option value="ratio">거래소 간 환산 비율</option><option value="mid">단일 종목 중간가</option><option value="custom">직접 조합</option></select>
+        <select id="preset"><option value="relative">알트 / BTC 상대 프리미엄</option><option value="ratio">거래소 간 환산 비율</option><option value="mid">소스 A 단독</option><option value="custom">직접 조합</option></select>
         <button id="delete-preset" class="delete-preset" type="button" hidden>선택한 저장 조합 삭제</button>
-        <div class="section-label"><span>데이터 소스</span><span class="subtle">MID PRICE</span></div>
+        <div class="section-label"><span>데이터 소스</span><span class="subtle">PRICE / FUNDING</span></div>
         <div id="leg-controls"></div>
-        <p class="tiny-help">각 소스는 (매수 1호가 + 매도 1호가) / 2입니다. 수식에 사용한 소스만 조회합니다.</p>
+        <p class="tiny-help">가격은 (매수 1호가 + 매도 1호가) / 2, 펀딩은 원본 비율 × 100인 % 값입니다. 수식에 사용한 소스만 조회합니다.</p>
+        <p class="tiny-help">펀딩은 원천 펀딩주기 기준이며 거래소·종목별 주기가 다를 수 있습니다. A − B는 %p 차이이고, 주기가 다르면 같은 기간의 펀딩 차이를 뜻하지 않습니다.</p>
         <div class="section-label"><label for="formula">조합 수식</label><span class="subtle">A · B · C · D</span></div>
         <textarea id="formula" rows="3" spellcheck="false" aria-describedby="formula-help">((A / B) / (C / D) - 1) * 100</textarea>
-        <div class="formula-bottom"><span id="formula-help">사칙연산 · 괄호 · 시계열 함수</span><label class="inline-label" for="unit">단위 <select id="unit"><option value="%">%</option><option value="ratio">비율</option><option value="KRW">KRW</option><option value="USDT">USDT</option><option value="bp">bp</option><option value="">없음</option></select></label></div>
+        <div class="formula-bottom"><span id="formula-help">사칙연산 · 괄호 · 시계열 함수</span><label class="inline-label" for="unit">단위 <select id="unit"><option value="%">%</option><option value="ratio">비율</option><option value="KRW">KRW</option><option value="USDT">USDT</option><option value="bp">bp</option><option value="%p">%p</option><option value="">없음</option></select></label></div>
+        <p class="tiny-help">단위는 결과의 표시 이름입니다. 단위를 선택해도 수식 값이 자동 환산되지는 않습니다.</p>
         <details class="function-help"><summary>함수와 조합 예시 <span>＋</span></summary><div id="function-examples"><button type="button" data-formula="A - MA(A, 60)" data-unit="KRW">평균 대비 차이</button><button type="button" data-formula="RET(A, 1)" data-unit="%">구간 수익률</button><button type="button" data-formula="ZSCORE(A, 60)" data-unit="">Z-score</button></div><dl id="function-list"></dl><p>구간 수는 선택한 간격의 유효 관측 개수입니다. 예: 1분 간격의 MA(A, 60)는 최근 60개 관측의 평균입니다.</p></details>
         <section id="history-controls">
           <div class="section-label"><span>조회 기간</span><span class="subtle">KST · UTC+9</span></div>
@@ -35,15 +37,15 @@
           <label class="date-label" for="start">시작</label><input id="start" type="datetime-local" required>
           <label class="date-label" for="end">종료</label><input id="end" type="datetime-local" required>
           <p id="available-range" class="tiny-help">저장된 데이터 범위를 확인하고 있습니다.</p>
-          <label for="analysis-price-mode">호가 조회 방식</label><select id="analysis-price-mode" aria-describedby="analysis-price-help"><option value="last" selected>구간 마지막 원본 호가</option><option value="mean">구간 평균 호가</option></select>
+          <label for="analysis-price-mode">소스 조회 방식</label><select id="analysis-price-mode" aria-describedby="analysis-price-help"><option value="last" selected>구간 마지막 원본 값</option><option value="mean">구간 평균 값</option></select>
           <p id="analysis-price-help" class="tiny-help">각 구간의 같은 원본 행에서 마지막 매수·매도 1호가를 가져와 중간가와 조합을 계산합니다.</p>
           <div class="settings-row"><div><label for="interval">조회 간격</label><select id="interval"><option value="1s">1초</option><option value="10s">10초</option><option value="1min">1분</option><option value="5min" selected>5분</option><option value="1h">1시간</option></select></div><div><label for="ewm-span">EMA 구간 수</label><input id="ewm-span" type="number" min="1" max="1000000" value="60" required></div></div>
         </section>
-        <section id="live-controls" hidden><div class="live-note"><span class="dot"></span><strong>실시간 중간가</strong><p>빗썸·업비트·OKX의 호가를 1초마다 조합합니다. 서버에서 계산한 최근 흐름과 소스별 호가를 함께 확인하세요.</p><p>10초 이상 지난 호가는 계산에서 제외합니다.</p></div></section>
+        <section id="live-controls" hidden><div class="live-note"><span class="dot"></span><strong>실시간 중간가</strong><p>빗썸·업비트·OKX의 호가를 1초마다 조합합니다. 서버에서 계산한 최근 흐름과 소스별 호가를 함께 확인하세요.</p><p>10초 이상 지난 호가는 계산에서 제외합니다. 펀딩비율 소스는 과거 분석에서 사용할 수 있습니다.</p></div></section>
         <button id="run-button" class="primary-button" type="submit"><span>▶</span> 분석 실행</button>
         <button id="save-combo" type="button" class="save-button">＋ 이 조합 저장</button>
       </form>
-      <div class="sidebar-footer"><span class="file-icon">⌘</span><div>나만의 분석 워크스페이스<small>중간가 기준 · OKX USDT 무기한</small></div></div>
+      <div class="sidebar-footer"><span class="file-icon">⌘</span><div>나만의 분석 워크스페이스<small>중간가·펀딩비율 · 서버 분석</small></div></div>
     </aside>
     <main>
       <nav class="mode-nav research-mode-nav" aria-label="분석 모드"><button type="button" class="active" data-mode="history" aria-pressed="true"><span>◷</span> 과거 분석</button><button type="button" data-mode="live" aria-pressed="false"><span class="dot"></span> 실시간 모니터</button></nav>
@@ -60,7 +62,7 @@
         <div class="chart-wrap large"><canvas id="result-chart" aria-label="시간별 조합 결과. 아래 데이터 표에서도 확인할 수 있습니다." role="img"></canvas><div id="chart-placeholder" class="chart-placeholder"><span class="placeholder-icon">⌁</span><strong>분석 공간을 준비하고 있습니다</strong><p>데이터 소스를 조합하면 이곳에 흐름이 나타납니다.</p></div></div>
         <div class="chart-footer"><span id="cursor-info">차트 위에 마우스를 올려 값을 확인하세요.</span><span>드래그하여 구간 확대 · 모든 시간 KST</span></div>
       </section>
-      <div class="section-heading"><div><h2>소스별 중간가</h2><span>선택한 호가 조회 방식과 각 소스의 기준 시각을 확인하세요.</span></div><span class="subtle" id="source-count">— SOURCES</span></div>
+      <div class="section-heading"><div><h2>소스별 데이터</h2><span>중간가·펀딩비율과 각 소스의 기준 시각을 확인하세요.</span></div><span class="subtle" id="source-count">— SOURCES</span></div>
       <div id="source-charts" class="source-grid"></div>
       <section class="panel table-panel"><details id="table-details"><summary><span><strong>계산 데이터</strong><small>최근 100개 행 · 전체 데이터는 CSV로 내보내기</small></span><span class="subtle">펼치기 ＋</span></summary><div class="table-scroll"><table><thead id="table-head"></thead><tbody id="table-body"></tbody></table></div></details></section>
       <footer class="main-footer"><span>OMS CLIENT <b>/</b> 내 데이터로 만드는 리서치</span><span id="provenance">과거 호가 분석 · 실시간 조합 · 서버에 저장한 분석 조건</span></footer>
@@ -87,6 +89,19 @@
     <section class="panel"><div class="panel-heading"><div><h2 id="data-chart-title">구간 마지막 중간가와 1호가</h2><p id="data-chart-label" class="tiny-help">가격 단위와 조회 범위는 조회 후 표시됩니다.</p></div><button id="data-csv" type="button" class="quiet-button" disabled>↓ 조회 결과 CSV</button></div><div class="chart-wrap large"><canvas id="data-chart" role="img" aria-label="저장된 중간가, 매수 및 매도 1호가 차트"></canvas><div id="data-placeholder" class="chart-placeholder"><strong>조회할 종목과 기간을 선택하세요.</strong></div></div><div class="chart-footer"><span id="data-chart-series">원본 중간가 · 매수 1호가 · 매도 1호가</span><span>전체 구간 통계 · 차트 최대 6,000개 점</span></div></section>
     <section class="panel module-table"><div class="panel-heading"><div><h2 id="data-table-title">구간 마지막 원본 호가</h2><p id="data-table-help" class="tiny-help">각 구간의 마지막 원본 호가 · 차트 표본 중 최근 100개 · 전체 결과는 조회 결과 CSV</p></div></div><div class="table-scroll"><table><thead><tr><th id="data-table-time-label">원본 시각 (KST)</th><th id="data-table-mid-label">중간가</th><th id="data-table-bid-label">매수 1호가</th><th id="data-table-ask-label">매도 1호가</th><th id="data-table-spread-label">스프레드</th></tr></thead><tbody id="data-table"><tr><td colspan="5" class="empty-cell">아직 조회한 데이터가 없습니다.</td></tr></tbody></table></div></section>
   </main>
+  <main id="module-funding" class="module-page" role="tabpanel" aria-labelledby="tab-funding" hidden>
+    <div class="page-heading"><div><div class="eyebrow">DATA / FUNDING RATES</div><h1>펀딩비율의 흐름을 확인하세요.</h1><p>수집된 펀딩비율 스냅샷을 조회하고 CSV로 내보내세요. 분석 탭에서도 가격과 펀딩비율 소스를 함께 조합할 수 있습니다.</p></div><span class="module-badge">원천 주기 기준 %</span></div>
+    <div class="notice">펀딩비율은 원본 비율 × 100으로 표시합니다. 거래소·종목별 펀딩주기가 다를 수 있으며, 실제 계좌 정산금액이나 확정 정산률을 뜻하지 않습니다. 저장된 데이터의 과거 조회를 지원합니다.</div>
+    <form id="funding-form" class="panel module-form">
+      <div class="field"><label for="funding-exchange">거래소</label><select id="funding-exchange" required></select></div><div class="field"><label for="funding-ticker">종목</label><input id="funding-ticker" list="funding-tickers" maxlength="80" autocomplete="off" required><datalist id="funding-tickers"></datalist></div>
+      <div class="field"><label for="funding-start">시작 · KST</label><input id="funding-start" type="datetime-local" required></div><div class="field"><label for="funding-end">종료 · KST</label><input id="funding-end" type="datetime-local" required></div><div class="field"><label for="funding-interval">조회 간격</label><select id="funding-interval"><option value="1s">1초</option><option value="10s">10초</option><option value="1min" selected>1분</option><option value="5min">5분</option><option value="1h">1시간</option></select></div><div class="field"><label for="funding-price-mode">펀딩비율 조회 방식</label><select id="funding-price-mode" aria-describedby="funding-price-help"><option value="last" selected>구간 마지막 원본 비율</option><option value="mean">구간 평균 비율</option></select></div><button id="funding-run" type="submit" class="primary-button">펀딩비율 조회</button>
+      <div class="form-caption"><span id="funding-bounds" role="status">저장 범위를 확인하고 있습니다.</span><button id="funding-latest" type="button" class="small-button">최근 저장 24시간</button></div>
+    </form>
+    <p id="funding-price-help" class="tiny-help"></p><p id="funding-message" class="module-message" role="status">펀딩비율 조회를 누르면 서버가 선택 구간을 계산합니다.</p><div id="funding-error" class="error-box" role="alert" hidden></div>
+    <div class="stats-grid"><article><span id="funding-rate-label">마지막 원본 펀딩비율</span><strong id="funding-rate">—</strong><small id="funding-identity">조회 후 거래소와 종목을 표시합니다.</small></article><article><span>다음 정산까지 · 마지막 관측 기준</span><strong id="funding-next">—</strong><small id="funding-asof">마지막 관측 기준 잔여 시간입니다.</small></article><article><span>펀딩비율 최솟값 / 최댓값</span><strong id="funding-range" class="range-value">—</strong><small>전체 조회 구간의 % 값</small></article><article><span>조회한 스냅샷</span><strong id="funding-rows">—</strong><small id="funding-points">저장된 스냅샷 기준</small></article></div>
+    <section class="panel"><div class="panel-heading"><div><h2>펀딩비율 (%)</h2><p id="funding-chart-label" class="tiny-help">원천 펀딩주기 기준 %</p></div><button id="funding-csv" type="button" class="quiet-button" disabled>↓ 전체 조회 결과 CSV</button></div><div class="chart-wrap large"><canvas id="funding-chart" role="img" aria-label="저장된 펀딩비율 퍼센트 차트"></canvas><div id="funding-placeholder" class="chart-placeholder"><strong>조회할 종목과 기간을 선택하세요.</strong></div></div><div class="chart-footer"><span>음수·0도 유효한 펀딩비율입니다.</span><span>차트 최대 6,000개 점 · 모든 시간 KST</span></div></section>
+    <section class="panel module-table"><div class="panel-heading"><div><h2>펀딩비율 스냅샷</h2><p class="tiny-help">차트 표본 중 최근 100개 · 전체 조회 구간은 CSV로 내보내기. 평균 모드의 관측시각·잔여 시간은 구간 마지막 스냅샷 기준입니다.</p></div></div><div class="table-scroll"><table><thead><tr><th>구간 시작 (KST)</th><th>마지막 원본 관측 (KST)</th><th id="funding-table-rate-label">펀딩비율 (%)</th><th id="funding-table-raw-label">원본 비율</th><th>관측 기준 정산 잔여 시간</th><th>원본 서버시각 (KST)</th></tr></thead><tbody id="funding-table"><tr><td colspan="6" class="empty-cell">아직 조회한 펀딩비율이 없습니다.</td></tr></tbody></table></div></section>
+  </main>
   <main id="module-backtest" class="module-page" role="tabpanel" aria-labelledby="tab-backtest" hidden>
     <div class="page-heading"><div><div class="eyebrow">RESEARCH / BACKTEST</div><h1>전략을 과거 데이터로 검증하세요.</h1><p>단일 종목의 이동평균 교차 전략을 서버에서 계산합니다.</p></div><span class="module-badge">현물형 · 매수 / 현금</span></div>
     <form id="backtest-form" class="panel module-form">
@@ -110,7 +125,7 @@
     <section class="panel module-table"><div class="panel-heading"><h2>보유 포지션</h2><span id="paper-position-count" class="subtle">0 POSITIONS</span></div><div class="table-scroll"><table><thead><tr><th>거래소 / 종목</th><th>수량</th><th>평균 매수가</th><th>평가 시세</th><th>평가액</th><th>평가 손익</th><th>시세 기준</th></tr></thead><tbody id="paper-positions"><tr><td colspan="7" class="empty-cell">모의 계좌를 불러오면 표시됩니다.</td></tr></tbody></table></div></section>
     <section class="panel module-table"><div class="panel-heading"><h2>모의 주문 내역</h2><span id="paper-order-count" class="subtle">0 ORDERS</span></div><div class="table-scroll"><table><thead><tr><th>체결 시간 (KST)</th><th>거래소 / 종목</th><th>방향</th><th>수량</th><th>체결가</th><th>수수료</th><th>실현 손익</th><th>시세 출처 / 시각</th></tr></thead><tbody id="paper-orders"><tr><td colspan="8" class="empty-cell">아직 모의 주문이 없습니다.</td></tr></tbody></table></div></section>
   </main>
-  <main id="module-oms" class="module-page" role="tabpanel" aria-labelledby="tab-oms" hidden><div class="page-heading"><div><div class="eyebrow">OPERATIONS / OMS</div><h1>OMS를 연결할 공간입니다.</h1><p>매매 운영과 리서치를 하나의 워크스페이스에서 관리할 수 있도록 준비했습니다.</p></div><span class="module-badge planned">연결 예정</span></div><section class="panel oms-planned"><span class="planned-icon" aria-hidden="true">⌘</span><h2>OMS 운영 기능은 아직 연결되지 않았습니다.</h2><p>주문·체결 상태, 포지션과 리스크, 전략 실행 제어를 이 탭에 추가할 수 있습니다.</p><p>현재 사용할 수 있는 기능은 데이터 조회, 과거·실시간 분석, 백테스트와 모의투자입니다.</p><div class="planned-items"><span>주문·체결 모니터링</span><span>포지션·리스크</span><span>전략 운영</span></div></section></main>
+  <main id="module-oms" class="module-page" role="tabpanel" aria-labelledby="tab-oms" hidden><div class="page-heading"><div><div class="eyebrow">OPERATIONS / OMS</div><h1>OMS를 연결할 공간입니다.</h1><p>매매 운영과 리서치를 하나의 워크스페이스에서 관리할 수 있도록 준비했습니다.</p></div><span class="module-badge planned">연결 예정</span></div><section class="panel oms-planned"><span class="planned-icon" aria-hidden="true">⌘</span><h2>OMS 운영 기능은 아직 연결되지 않았습니다.</h2><p>주문·체결 상태, 포지션과 리스크, 전략 실행 제어를 이 탭에 추가할 수 있습니다.</p><p>현재 사용할 수 있는 기능은 가격·펀딩비율 조회, 과거·실시간 분석, 백테스트와 모의투자입니다.</p><div class="planned-items"><span>주문·체결 모니터링</span><span>포지션·리스크</span><span>전략 운영</span></div></section></main>
   <div id="toast" class="toast" role="status" hidden></div>
   <script type="module" src="app.js"></script>
 </body>

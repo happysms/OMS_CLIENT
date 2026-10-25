@@ -5,7 +5,7 @@ import ast
 
 import pandas as pd
 
-from ..market_data import parquet
+from ..market_data import funding, parquet
 from ..market_data.parquet import bounds
 from ..market_data.validation import (DataError, INTERVALS, KST, MAX_RANGE_DAYS,
                                       MAX_BUCKETS, array, integer, number, parse_date)
@@ -54,6 +54,12 @@ def catalog() -> dict:
         pass
     return {
         "exchanges": available,
+        "funding_exchanges": funding.list_symbols(),
+        "source_types": [
+            {"id": "price", "label": "가격·호가", "formula_value": "mid"},
+            {"id": "funding", "label": "펀딩비율", "formula_value": "values", "unit": "%",
+             "raw_unit": "ratio", "kind": "observed_rate", "live_supported": False},
+        ],
         "defaults": {
             "legs": legs,
             "start": start.isoformat(),
@@ -81,12 +87,12 @@ def analyze(payload: dict) -> dict:
         raise DataError("조회 조건을 JSON 객체로 보내 주세요.")
     requested = payload.get("legs")
     if not isinstance(requested, list) or not 1 <= len(requested) <= 4:
-        raise DataError("가격 시리즈를 1~4개 선택해 주세요.")
+        raise DataError("분석 시리즈를 1~4개 선택해 주세요.")
     requested_by_id = {}
     for leg in requested:
         if (not isinstance(leg, dict) or not isinstance(leg.get("id"), str)
                 or leg["id"] not in {"A", "B", "C", "D"} or leg["id"] in requested_by_id):
-            raise DataError("가격 시리즈 이름은 중복 없는 A~D로 지정해 주세요.")
+            raise DataError("분석 시리즈 이름은 중복 없는 A~D로 지정해 주세요.")
         requested_by_id[leg["id"]] = leg
     default_formula = "((A / B) / (C / D) - 1) * 100" if len(requested_by_id) == 4 else "A"
     formula = payload.get("formula", default_formula)
@@ -94,12 +100,21 @@ def analyze(payload: dict) -> dict:
     referenced = {node.id for node in ast.walk(tree)
                   if isinstance(node, ast.Name) and node.id in requested_by_id}
     available = parquet.list_symbols()
+    funding_available = None
     legs = []
     for identifier, leg in requested_by_id.items():
         if identifier not in referenced:
             continue
-        exchange, ticker = parquet.validate_symbol(leg.get("exchange"), leg.get("ticker"), available)
-        legs.append({"id": leg["id"], "exchange": exchange, "ticker": ticker})
+        data_type = leg.get("data_type", "price")
+        if not isinstance(data_type, str) or data_type not in {"price", "funding"}:
+            raise DataError("분석 데이터 종류는 가격·호가 또는 펀딩비율로 선택해 주세요.")
+        if data_type == "funding":
+            if funding_available is None:
+                funding_available = funding.list_symbols()
+            exchange, ticker = funding.validate_symbol(leg.get("exchange"), leg.get("ticker"), funding_available)
+        else:
+            exchange, ticker = parquet.validate_symbol(leg.get("exchange"), leg.get("ticker"), available)
+        legs.append({"id": leg["id"], "exchange": exchange, "ticker": ticker, "data_type": data_type})
     start, end = parse_date(payload.get("start"), "시작 시간"), parse_date(payload.get("end"), "종료 시간")
     if start >= end:
         raise DataError("종료 시간은 시작 시간보다 뒤여야 합니다.")
@@ -110,7 +125,7 @@ def analyze(payload: dict) -> dict:
         raise DataError("조회 간격은 1s, 10s, 1min, 5min, 1h 중에서 선택해 주세요.")
     price_mode = payload.get("price_mode", "mean")
     if not isinstance(price_mode, str) or price_mode not in {"mean", "last"}:
-        raise DataError("가격 조회 방식은 마지막 호가 또는 평균으로 선택해 주세요.")
+        raise DataError("조회 방식은 마지막 관측값 또는 평균으로 선택해 주세요.")
     step = INTERVALS[interval]
     buckets = (int(end.value // 1_000_000) - 1) // step - int(start.value // 1_000_000) // step + 1
     if buckets > MAX_BUCKETS:
@@ -123,12 +138,13 @@ def analyze(payload: dict) -> dict:
 
     loaded, rows_read = {}, 0
     for leg in legs:
-        key = (leg["exchange"], leg["ticker"])
+        key = (leg["data_type"], leg["exchange"], leg["ticker"])
         if key not in loaded:
+            reader = funding.read_buckets if leg["data_type"] == "funding" else parquet.read_buckets
             if price_mode == "last":
-                frame, count = parquet.read_buckets(*key, start, end, INTERVALS[interval], price_mode="last")
+                frame, count = reader(*key[1:], start, end, INTERVALS[interval], price_mode="last")
             else:
-                frame, count = parquet.read_buckets(*key, start, end, INTERVALS[interval])
+                frame, count = reader(*key[1:], start, end, INTERVALS[interval])
             loaded[key] = frame
             rows_read += count
     index = None
@@ -136,22 +152,28 @@ def analyze(payload: dict) -> dict:
         index = frame.index if index is None else index.intersection(frame.index)
     index = index.sort_values()
     if index.empty:
-        raise DataError("모든 가격 시리즈가 함께 존재하는 시간 구간이 없습니다. 기간·종목·조회 간격을 바꿔 주세요.")
+        raise DataError("모든 분석 시리즈가 함께 존재하는 시간 구간이 없습니다. 기간·종목·조회 간격을 바꿔 주세요. 누락 시각을 이전 값으로 채우지 않습니다.")
 
-    values = {leg["id"]: loaded[(leg["exchange"], leg["ticker"])].loc[index, "mid"] for leg in legs}
+    values = {leg["id"]: loaded[(leg["data_type"], leg["exchange"], leg["ticker"])].loc[
+        index, "value" if leg["data_type"] == "funding" else "mid"] for leg in legs}
     result = evaluate(tree, values, index)
     valid = result.dropna()
     smooth = result.ewm(span=span).mean()
     warnings = []
+    has_funding = any(leg["data_type"] == "funding" for leg in legs)
+    if has_funding:
+        warnings.append("펀딩 시리즈의 수식 값은 관측 펀딩비율(%)입니다. 계좌의 실제 지급·수취 금액이 아니며, 거래소·종목별 정산 주기를 환산하거나 합산하지 않습니다.")
+        if price_mode == "mean":
+            warnings.append("펀딩비율은 구간 평균이며 관측 시각·서버 시각·다음 정산 잔여 초는 해당 구간의 마지막 원본 관측값 기준입니다.")
     missing = int(result.isna().sum())
     if missing:
         warnings.append(f"함수의 초기 구간, 0으로 나누기 또는 유효하지 않은 계산 결과 {missing:,}개는 빈 값으로 표시합니다.")
     functions_used = sorted({node.func.id for node in ast.walk(tree) if isinstance(node, ast.Call)})
     if functions_used:
-        warnings.append("함수의 기간은 공통 호가가 존재하는 표본 개수입니다. 누락 시각을 채우지 않으며 실제 경과 시간과 다를 수 있습니다.")
+        warnings.append(f"함수의 기간은 공통 {'관측값' if has_funding else '호가'}가 존재하는 표본 개수입니다. 누락 시각을 채우지 않으며 실제 경과 시간과 다를 수 있습니다.")
     available_points = len(set().union(*(set(frame.index) for frame in loaded.values())))
     if available_points > len(index):
-        warnings.append(f"일부 가격이 없는 시간 구간 {available_points - len(index):,}개는 제외했습니다. 이전 가격으로 채우지 않습니다.")
+        warnings.append(f"일부 {'관측값' if has_funding else '가격'}이 없는 시간 구간 {available_points - len(index):,}개는 제외했습니다. 이전 값으로 채우지 않습니다.")
     selection = select_points(result, max_points)
     if len(index) > max_points:
         warnings.append(f"차트는 {len(index):,}개 중 {len(selection):,}개를 표시합니다. 통계와 EMA는 표시 전 전체 구간으로 계산했습니다.")
@@ -161,7 +183,18 @@ def analyze(payload: dict) -> dict:
     std = number(valid.std())
     full_legs, output_legs = [], []
     for leg in legs:
-        frame = loaded[(leg["exchange"], leg["ticker"])].loc[index]
+        frame = loaded[(leg["data_type"], leg["exchange"], leg["ticker"])].loc[index]
+        if leg["data_type"] == "funding":
+            def funding_leg(source):
+                return {**leg, "unit": "%", "values": array(source["value"]),
+                        "funding_rate": array(source["funding_rate"]),
+                        "source_times": [int(value) for value in source["source_time"]],
+                        "server_times": [int(value) if pd.notna(value) else None for value in source["server_time"]],
+                        "next_funding_in_seconds": array(source["next_funding_in_seconds"])}
+            output_legs.append(funding_leg(frame.iloc[selection]))
+            if include_full:
+                full_legs.append(funding_leg(frame))
+            continue
         info = {**leg, "currency": "KRW" if leg["exchange"] in {"bithumb", "upbit", "ls"} else "USDT"}
         output_leg = {**info, **{column: array(frame.iloc[selection][column]) for column in ["mid", "bid", "ask"]}}
         if price_mode == "last":
