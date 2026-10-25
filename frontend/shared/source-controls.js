@@ -23,16 +23,22 @@ export function createHistoryControls({prefix,api,getCatalog,onChanged}) {
   let boundsVersion=0;
   async function bounds({setRange=false}={}) {
     const version=++boundsVersion, selection=source(prefix);
+    const previousRange={start:$(prefix+'-start').value,end:$(prefix+'-end').value};
     $(prefix+'-bounds').textContent='선택한 종목의 저장 범위를 확인하고 있습니다.';
     try {
       const result=await api('/api/bounds?'+new URLSearchParams(selection));
-      if(version!==boundsVersion) return;
+      if(version!==boundsVersion||JSON.stringify(selection)!==JSON.stringify(source(prefix))) return;
       const start=stamp(result.start),last=stamp(result.end),end=Math.ceil((last+1)/60000)*60000;
       if(!Number.isFinite(start)||!Number.isFinite(last)) throw new Error('이 종목의 저장 범위가 없습니다.');
       $(prefix+'-bounds').textContent=`저장 범위 ${time(start)} ~ ${time(last)} KST`;
-      if(setRange){$(prefix+'-start').value=local(Math.max(start,end-86400000));$(prefix+'-end').value=local(end);}
+      if(setRange&&$(prefix+'-start').value===previousRange.start&&$(prefix+'-end').value===previousRange.end){
+        const nextStart=local(Math.max(start,end-86400000)),nextEnd=local(end);
+        if(nextStart!==previousRange.start||nextEnd!==previousRange.end){
+          $(prefix+'-start').value=nextStart;$(prefix+'-end').value=nextEnd;onChanged();
+        }
+      }
     } catch(error) {
-      if(version===boundsVersion) $(prefix+'-bounds').textContent=error.message;
+      if(version===boundsVersion&&JSON.stringify(selection)===JSON.stringify(source(prefix))) $(prefix+'-bounds').textContent=error.message;
     }
   }
   for(const input of $(prefix+'-form').querySelectorAll('input,select')) input.addEventListener('change',onChanged);
@@ -47,7 +53,7 @@ export function createHistoryControls({prefix,api,getCatalog,onChanged}) {
   const defaults=getCatalog().defaults||{};
   if(defaults.start) $(prefix+'-start').value=local(stamp(defaults.start));
   if(defaults.end) $(prefix+'-end').value=local(stamp(defaults.end));
-  return {bounds,refresh(){populate();return bounds();},ready:bounds({setRange:true})};
+  return {bounds,refresh(){const previous=JSON.stringify(source(prefix));populate();const changed=previous!==JSON.stringify(source(prefix));if(changed)onChanged();return bounds({setRange:changed});},ready:bounds({setRange:true})};
 }
 
 export function renderCatalogSummary(catalog) {

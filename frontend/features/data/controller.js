@@ -4,45 +4,74 @@ import {createHistoryControls} from '../../shared/source-controls.js';
 import {createJobRunner} from '../../shared/jobs.js';
 
 export function initData({api,getCatalog}) {
-  const state={versions:{data:0},data:null,dataJob:null};
+  const state={versions:{data:0},data:null,dataJob:null,selection:null};
   const csv={version:0,busy:false,result:null,controller:null,selection:null,downloading:false};
+  const intervalLabels={'1s':'1초','10s':'10초','1min':'1분','5min':'5분','1h':'1시간'};
   const dataChart=new TimeChart($('data-chart'),{format:price,onHover:t=>dataChart.setCursor(t),onZoom:r=>dataChart.setZoom(r)});
   const job=createJobRunner({api,prefix:'data',getVersion:()=>state.versions.data});
+  function selectionKey(){
+    return JSON.stringify({...source('data'),start:$('data-start').value,end:$('data-end').value,interval:$('data-interval').value});
+  }
+  function clearData(message='종목과 기간을 선택한 뒤 데이터 조회를 누르세요.'){
+    state.data=null;state.dataJob=null;
+    for(const id of ['data-mid','data-spread','data-rows'])$(id).textContent='—';
+    $('data-currency').textContent='조회 후 종목과 통화를 표시합니다.';
+    $('data-bidask').textContent='— / —';$('data-bucket').textContent='조회 후 마지막 집계 구간을 표시합니다.';
+    $('data-points').textContent='선택한 구간을 조회하세요.';
+    $('data-chart-label').textContent='조회한 종목·기간·평균 간격을 표시합니다.';
+    dataChart.setData([],[]);dataChart.setZoom(null);dataChart.setCursor(null);
+    $('data-placeholder').hidden=false;$('data-placeholder').querySelector('strong').textContent=message;
+    tableRows('data-table',[],5,'조회 결과가 없습니다. 조건을 확인한 뒤 데이터 조회를 누르세요.');
+    $('data-csv').disabled=true;
+  }
   function changed(){
+    const selection=selectionKey();if(selection===state.selection)return;
+    state.selection=selection;
     state.versions.data++;
     $('data-run').disabled=false;$('data-run').textContent='데이터 조회';
-    $('data-message').textContent='설정이 바뀌었습니다. 실행하면 새 조건을 적용합니다.';
-    $('data-csv').disabled=true;state.dataJob=null;
+    $('data-message').textContent='설정이 바뀌었습니다. 데이터 조회를 누르면 새 조건으로 계산합니다.';
+    clearError('data');clearData();
     invalidateCsv();
   }
+  function currentQuery(version,selection){
+    if(version!==state.versions.data)return false;
+    if(selection!==selectionKey()){changed();return false;}
+    return true;
+  }
   async function runData(event) {
-    event.preventDefault();const version=++state.versions.data;clearError('data');$('data-run').disabled=true;$('data-run').textContent='조회 중…';$('data-csv').disabled=true;
+    event.preventDefault();const version=++state.versions.data,selected=selectionKey();state.selection=selected;
+    clearError('data');clearData('서버에서 선택한 구간의 호가를 조회하고 있습니다.');$('data-run').disabled=true;$('data-run').textContent='조회 중…';
     try{
       const selection=source('data'),config={...range('data'),legs:[{id:'A',...selection}],formula:'A',unit:currency(selection.exchange),ewm_span:1,max_points:6000};
-      const response=await job('/api/analyses',config,version);if(!response)return;
+      const response=await job('/api/analyses',config,version);if(!response||!currentQuery(version,selected))return;
       const r=response.result,leg=r.legs?.[0];if(!leg)throw new Error('조회 결과에 호가 소스가 없습니다.');
+      if(leg.exchange!==selection.exchange||String(leg.ticker).toUpperCase()!==selection.ticker.toUpperCase())throw new Error('요청한 종목과 조회 결과가 다릅니다. 다시 조회해주세요.');
       state.data=r;state.dataJob=response.id;const i=r.times.length-1;
-      $('data-mid').textContent=price(leg.mid[i]);$('data-currency').textContent=leg.currency||config.unit;
+      const identity=`${exchanges[leg.exchange]||leg.exchange} · ${leg.ticker} · ${leg.currency||config.unit}`,average=intervalLabels[config.interval]||config.interval;
+      $('data-mid').textContent=price(leg.mid[i]);$('data-currency').textContent=identity;
       $('data-bidask').textContent=price(leg.bid[i])+' / '+price(leg.ask[i]);
+      $('data-bucket').textContent=`마지막 구간 시작 ${time(r.times[i])} KST · ${average} 평균`;
       $('data-spread').textContent=Number.isFinite(leg.ask[i])&&Number.isFinite(leg.bid[i])?price(leg.ask[i]-leg.bid[i]):'—';
       $('data-rows').textContent=number(r.meta.rows_read,0);$('data-points').textContent=`${number(r.meta.aligned_points,0)}개 집계 구간 · 표시 ${number(r.times.length,0)}개`;
-      $('data-chart-label').textContent=`${exchanges[selection.exchange]||selection.exchange} ${selection.ticker} · ${leg.currency||config.unit} · ${time(r.times[0])} ~ ${time(r.times.at(-1))} KST`;
+      $('data-chart-label').textContent=`${identity} · ${time(r.times[0])} ~ ${time(r.times.at(-1))} KST · ${average} 평균`;
       dataChart.setZoom(null);dataChart.setData(r.times,[{label:'중간가',values:leg.mid,color:'#5bdfb7',width:1.8},{label:'매수 1호가',values:leg.bid,color:'#78b4e8'},{label:'매도 1호가',values:leg.ask,color:'#f1b66e'}],{gapMs:milliseconds[config.interval]*Math.max(1,Math.ceil((r.meta.aligned_points||r.times.length)/Math.max(1,r.times.length)))});
       $('data-placeholder').hidden=leg.mid.some(Number.isFinite);$('data-csv').disabled=!r.times.length;
       const rows=[];for(let i=r.times.length-1;i>=Math.max(0,r.times.length-100);i--)rows.push([time(r.times[i]),price(leg.mid[i]),price(leg.bid[i]),price(leg.ask[i]),Number.isFinite(leg.ask[i])&&Number.isFinite(leg.bid[i])?price(leg.ask[i]-leg.bid[i]):'—']);
       tableRows('data-table',rows,5,'선택한 구간에 조회 가능한 호가가 없습니다.');
-      $('data-message').textContent='서버 조회 완료'+((r.meta.warnings||[]).length?' · '+r.meta.warnings.join(' '):' · 차트와 표는 평균 간격으로 집계한 표본입니다.');
-    }catch(error){if(version===state.versions.data){errorAt('data',error);$('data-message').textContent='데이터를 조회하지 못했습니다.';}}
-    finally{if(version===state.versions.data){$('data-run').disabled=false;$('data-run').textContent='데이터 조회';}}
+      $('data-message').textContent=`${identity} · ${average} 평균 조회 완료 · 마지막 구간 시작 ${time(r.times[i])} KST`+((r.meta.warnings||[]).length?' · '+r.meta.warnings.join(' '):' · 저장된 과거 호가이며 실시간 현재가가 아닙니다.');
+    }catch(error){if(currentQuery(version,selected)){clearData('조회하지 못했습니다. 조건을 확인한 뒤 다시 조회하세요.');errorAt('data',error);$('data-message').textContent='데이터를 조회하지 못했습니다.';}}
+    finally{if(currentQuery(version,selected)){$('data-run').disabled=false;$('data-run').textContent='데이터 조회';}}
   }
   async function exportData() {
-    if(!state.dataJob)return;const id=state.dataJob;clearError('data');$('data-csv').disabled=true;
+    if(!state.dataJob)return;const id=state.dataJob,version=state.versions.data,selection=state.selection;clearError('data');$('data-csv').disabled=true;
     try{
       const response=await fetch('/api/analyses/'+encodeURIComponent(id)+'/csv',{credentials:'same-origin',headers:{Accept:'text/csv'}});
+      if(!currentQuery(version,selection)||state.dataJob!==id)return;
       if(response.status===401){location.assign('/login?next=%2F');throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');}
       if(!response.ok){let details={};try{details=await response.json();}catch{}throw new Error(typeof details.error==='string'?details.error:'CSV를 내보내지 못했습니다. 다시 조회해주세요.');}
-      const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download='oms-data.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    }catch(error){errorAt('data',error);}finally{$('data-csv').disabled=!state.dataJob||!state.data?.times.length;}
+      const blob=await response.blob();if(!currentQuery(version,selection)||state.dataJob!==id)return;
+      const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='oms-data.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(error){if(currentQuery(version,selection)&&state.dataJob===id)errorAt('data',error);}finally{if(currentQuery(version,selection)&&state.dataJob===id)$('data-csv').disabled=!state.dataJob||!state.data?.times.length;}
   }
   function csvSelection() {
     return {...source('data'),...range('data'),mode:$('data-export-mode').value};
@@ -130,7 +159,8 @@ export function initData({api,getCatalog}) {
   $('data-export-create').addEventListener('click',createCsv);
   $('data-export-download').addEventListener('click',downloadCsv);
   $('data-export-mode').addEventListener('change',()=>{invalidateCsv();csvDescription();});
-  for(const input of $('data-form').querySelectorAll('input'))input.addEventListener('input',()=>invalidateCsv());
+  for(const input of $('data-form').querySelectorAll('input'))input.addEventListener('input',changed);
   const controls=createHistoryControls({prefix:'data',api,getCatalog,onChanged:changed});
+  state.selection=selectionKey();
   return {ready:controls.ready,refresh:controls.refresh,onEnter(){dataChart.draw();}};
 }

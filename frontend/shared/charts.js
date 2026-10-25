@@ -6,7 +6,7 @@ const numberLabel = value => Number.isFinite(value) ? new Intl.NumberFormat('en-
 export class TimeChart {
   constructor(canvas, {onHover=()=>{},onZoom=()=>{},format=numberLabel}={}) {
     this.canvas=canvas; this.ctx=canvas.getContext('2d'); this.onHover=onHover; this.onZoom=onZoom; this.format=format;
-    this.times=[];this.series=[];this.cursor=null;this.zoom=null;this.drag=null;this.gapMs=Infinity;
+    this.times=[];this.series=[];this.cursor=null;this.zoom=null;this.drag=null;this.gapMs=Infinity;this.axisLabelWidth=66;
     this.tooltip=document.createElement('div');this.tooltip.className='chart-tooltip';this.tooltip.hidden=true;canvas.parentElement.append(this.tooltip);
     this.observer=new ResizeObserver(()=>this.draw());this.observer.observe(canvas);
     canvas.addEventListener('pointerdown',e=>{if(e.button!==0||!this.times.length)return;this.drag=this.pointerTime(e);this.dragEnd=this.drag;canvas.setPointerCapture(e.pointerId);});
@@ -21,23 +21,27 @@ export class TimeChart {
   setCursor(time){this.cursor=time;this.draw();}
   setZoom(range){this.zoom=range;this.draw();}
   domain(){return this.zoom||[this.times[0]||0,this.times.at(-1)||1];}
-  pointerTime(e){const rect=this.canvas.getBoundingClientRect(),[a,b]=this.domain();return a+Math.max(0,Math.min(1,(e.clientX-rect.left-12)/(rect.width-94)))*(b-a);}
+  plotArea(width){const left=Math.min(12,Math.max(0,width-1)),margin=Math.min(Math.max(82,this.axisLabelWidth+16),Math.max(0,width-left-1));return{left,right:Math.max(left+1,width-margin)};}
+  pointerTime(e){const rect=this.canvas.getBoundingClientRect(),[a,b]=this.domain(),{left,right}=this.plotArea(rect.width);return a+Math.max(0,Math.min(1,(e.clientX-rect.left-left)/Math.max(1,right-left)))*(b-a);}
   draw(){
     const ctx=this.ctx;if(!ctx)return;
     const rect=this.canvas.getBoundingClientRect();const w=rect.width,h=rect.height;if(w<1||h<1)return;
     const dpr=Math.min(window.devicePixelRatio||1,2);
     if(this.canvas.width!==Math.round(w*dpr)||this.canvas.height!==Math.round(h*dpr)){this.canvas.width=Math.round(w*dpr);this.canvas.height=Math.round(h*dpr);}
     ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);ctx.font=mono;
-    const left=12,right=w-82,top=18,bottom=h-29;
-    const [t0,t1]=this.domain();const range=Math.max(1,t1-t0);const x=t=>left+(t-t0)/range*(right-left);
+    const top=18,bottom=h-29;
+    const [t0,t1]=this.domain();const range=Math.max(1,t1-t0);
     const indexes=[];for(let i=0;i<this.times.length;i++)if(this.times[i]>=t0&&this.times[i]<=t1)indexes.push(i);
     let low=Infinity,high=-Infinity;
     for(const s of this.series)for(const i of indexes){const v=s.values[i];if(Number.isFinite(v)){low=Math.min(low,v);high=Math.max(high,v);}}
     if(!Number.isFinite(low)){low=0;high=1;}
     let pad=(high-low)*.14;if(!pad)pad=Math.abs(high)*.0005||.01;low-=pad;high+=pad;
+    const axisLabels=Array.from({length:5},(_,i)=>String(this.format(high-(high-low)*i/4)));
+    this.axisLabelWidth=Math.ceil(Math.max(...axisLabels.map(label=>{const measured=ctx.measureText?.(label)?.width;return Number.isFinite(measured)?measured:label.length*6;})));
+    const {left,right}=this.plotArea(w),x=t=>left+(t-t0)/range*(right-left);
     const y=v=>bottom-(v-low)/(high-low)*(bottom-top);
     ctx.lineWidth=1;ctx.strokeStyle='#29363d';ctx.fillStyle='#718894';ctx.textAlign='left';
-    for(let i=0;i<5;i++){const yy=top+(bottom-top)*i/4;ctx.beginPath();ctx.moveTo(left,yy+.5);ctx.lineTo(right,yy+.5);ctx.stroke();ctx.fillText(this.format(high-(high-low)*i/4),right+10,yy+3);}
+    for(let i=0;i<5;i++){const yy=top+(bottom-top)*i/4;ctx.beginPath();ctx.moveTo(left,yy+.5);ctx.lineTo(right,yy+.5);ctx.stroke();ctx.fillText(axisLabels[i],right+10,yy+3);}
     ctx.fillStyle='#677f8c';
     for(let i=0;i<4;i++){const xx=left+(right-left)*i/3;const t=t0+range*i/3;ctx.textAlign=i===0?'left':i===3?'right':'center';ctx.fillText(timeLabel(t),xx,bottom+21);}
     ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
