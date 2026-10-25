@@ -13,6 +13,7 @@ STATIC_FILES = {
     "shared/source-controls.js",
     "features/analysis/controller.js", "features/data/controller.js",
     "features/funding/controller.js",
+    "features/files/controller.js",
     "features/backtesting/controller.js", "features/paper_trading/controller.js",
 }
 MODULES = [

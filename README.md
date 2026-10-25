@@ -81,6 +81,16 @@ python -m venv .venv
 
 인증 상태와 세션 키는 `.state/dashboard.sqlite3`에 보관하며 비밀번호는 해시로 저장합니다. 조합·이력·모의 계좌도 이 DB에 저장합니다. 원본 시장 데이터는 기본 `/data`에서 읽고 수정하지 않습니다.
 
+## 왼쪽 데이터 파일 탐색기
+
+왼쪽 **데이터 파일**에서 `거래소 → 데이터 종류 → 종목 → 날짜 → 파일` 순서로 저장 항목을 펼쳐 봅니다. 호가·1초 호가·체결 틱·펀딩비율·과거 1분봉·환율을 구분하며 `.parquet`와 `.parquet.gz`를 표시합니다. 날짜 폴더와 파일명은 저장소의 UTC 기준이고 상세 정보·조회 화면은 KST 시각을 함께 사용합니다.
+
+폴더를 펼칠 때 해당 목록만 읽고, 종목 검색·더 보기·새로고침을 지원합니다. 파일을 선택하면 용량·수정 시각·행 수·컬럼과 타입을 보여 줍니다. 원본을 읽거나 전체 폴더를 재귀적으로 스캔하는 대신 Parquet 메타데이터를 읽습니다. 압축 파일은 읽기 용량 제한을 적용하며, 메타데이터를 읽지 못하면 파일 크기와 수정 시각을 표시합니다.
+
+호가·펀딩·분봉의 **이 파일 구간 조회**는 해당 데이터 화면으로 이동하고 파일의 기간·종목을 적용해 조회합니다. 체결·환율이나 현재 조회가 지원되지 않는 파일은 상세 정보를 표시합니다. 과거 1분봉은 완성 시각 기준으로 구간을 적용하며, 같은 종목의 우선 소스에 가려지는 기존 파일은 다른 데이터를 대신 열지 않습니다. 현재 수집 중인 틱은 Redis에 있고 완료된 시간별 파일이 만들어진 뒤 탐색기에 나타납니다. USDT 1초 수집 파일은 약 5초마다 갱신됩니다.
+
+탐색기는 로그인이 필요하며 선언된 시장 데이터 경로만 읽습니다. API는 `GET /api/data/files`와 `GET /api/data/files/info`이고, 서버가 발급한 파일 식별자를 사용합니다.
+
 ## 데이터와 분석
 
 원본 경로는 `/data/{exchange}/ob/{ticker}/{YYYY}/{MM}/{DD}/{HH}.parquet`입니다. 거래소·종목·날짜별 필요한 파일을 선택하고 DuckDB에서 조회합니다. 중간가는 `(bid + ask) / 2`입니다. 데이터·분석 탭의 새 조회는 각 구간의 마지막 유효 호가를 기본으로 사용하며, **호가 조회 방식**에서 구간 평균도 선택할 수 있습니다. 백테스트와 평균 집계 CSV는 시간 간격별 유효 호가의 산술평균을 사용합니다. 누락 호가를 이전 가격으로 채우지 않습니다.
@@ -242,6 +252,7 @@ Parquet 반영 후 데이터·분석 탭에서 빗썸 또는 업비트의 **USDT
 |---|---|
 | 메뉴·버전 | `GET /api/modules`, `GET /api/version` |
 | 데이터·분석 | `GET /api/catalog`, `GET /api/bounds`, `POST /api/analyses`, 결과·CSV 조회 |
+| 데이터 파일 탐색 | `GET /api/data/files`, `GET /api/data/files/info` — 폴더 목록·파일 메타데이터 |
 | USDT 수집 상태 | `GET /api/collectors/usdt` |
 | 펀딩비율 | 카탈로그의 `funding_exchanges`, `GET /api/bounds?data_type=funding&exchange=okx&ticker=BTC`, 펀딩 소스를 지정한 분석 요청·CSV |
 | 1분봉 종가 | 카탈로그의 `candle_exchanges`, `GET /api/bounds?data_type=candle&exchange=bithumb&ticker=USDT`, `data_type: "candle"` 분석 요청·CSV |

@@ -60,7 +60,23 @@ export function createHistoryControls({prefix,api,getCatalog,onChanged,dataType=
   const defaults=getCatalog().defaults||{};
   if(defaults.start) $(prefix+'-start').value=local(stamp(defaults.start));
   if(defaults.end) $(prefix+'-end').value=local(stamp(defaults.end));
-  return {bounds,refresh({setRange=false}={}){const previous=JSON.stringify(source(prefix));populate();const changed=previous!==JSON.stringify(source(prefix));if(changed)onChanged();return bounds({setRange:setRange||changed});},ready:bounds({setRange:true})};
+  function applySelection(query){
+    const start=stamp(query.start),end=stamp(query.end);
+    if(!Number.isFinite(start)||!Number.isFinite(end)||start>=end)throw new Error('파일의 조회 기간을 확인할 수 없습니다.');
+    // Invalidate outstanding bounds requests before replacing the explicit
+    // file range. A late 24-hour response must never widen this selection.
+    boundsVersion++;
+    populate();
+    const exchange=$(prefix+'-exchange');
+    if(![...exchange.options].some(option=>option.value===query.exchange))exchange.add(new Option(exchanges[query.exchange]||query.exchange,query.exchange));
+    exchange.value=query.exchange;
+    populateTickers(prefix,getCatalog,false,{catalogKey:catalogKey()});
+    $(prefix+'-ticker').value=query.ticker;
+    $(prefix+'-start').value=local(start);$(prefix+'-end').value=local(end);
+    if(query.interval&&[...$(prefix+'-interval').options].some(option=>option.value===query.interval))$(prefix+'-interval').value=query.interval;
+    onChanged();
+  }
+  return {bounds,applySelection,refresh({setRange=false}={}){const previous=JSON.stringify(source(prefix));populate();const changed=previous!==JSON.stringify(source(prefix));if(changed)onChanged();return bounds({setRange:setRange||changed});},ready:bounds({setRange:true})};
 }
 
 export function renderCatalogSummary(catalog) {

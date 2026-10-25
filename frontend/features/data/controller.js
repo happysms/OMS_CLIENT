@@ -252,5 +252,13 @@ export function initData({api,getCatalog}) {
   $('data-type').addEventListener('change',()=>{describePriceMode();changed();controls.refresh({setRange:true});});
   state.selection=selectionKey();
   describePriceMode();
-  return {ready:controls.ready,refresh:controls.refresh,onEnter(){dataChart.draw();}};
+  return {ready:controls.ready,refresh:controls.refresh,onEnter(){dataChart.draw();},async openQuery(query){
+    if(!['price','candle'].includes(query.data_type))throw new Error('이 파일은 데이터 조회 화면에서 열 수 없습니다.');
+    $('data-type').value=query.data_type;
+    controls.applySelection(query);
+    const selected=selectionKey();
+    await controls.bounds({setRange:false});
+    if(selected!==selectionKey())return;
+    return runData({preventDefault(){}});
+  }};
 }

@@ -290,6 +290,43 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.json['pending_rows'], 2)
         self.assertEqual(self.calls, [])
 
+    def test_market_file_browser_auth_metadata_and_file_range_analysis(self):
+        self.assertEqual(self.client.get('/api/data/files').status_code, 401)
+        self.assertEqual(self.client.get('/api/data/files/info?node=invalid').status_code, 401)
+        self.login()
+        import pandas as pd
+        root = Path(self.temp.name) / 'market'
+        path = root / 'bithumb/ob/BTC/2026/10/25/00.parquet'
+        path.parent.mkdir(parents=True)
+        pd.DataFrame({'desktopTime': [1792886400000, 1792886460000],
+                      'b1_p': [100, 102], 'a1_p': [102, 104]}).to_parquet(path, index=False)
+        with patch.dict(os.environ, {'DASHBOARD_DATA_ROOT': str(root), 'DASHBOARD_COLLECTOR_DATA_ROOT': str(Path(self.temp.name) / 'collector')}):
+            node = None
+            for name in ['bithumb', 'ob', 'BTC', '2026', '10', '25', '00.parquet']:
+                response = self.client.get('/api/data/files', query_string={'node': node} if node else {})
+                self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+                node = next(item['id'] for item in response.json['items'] if item['name'] == name)
+            info = self.client.get('/api/data/files/info', query_string={'node': node})
+            self.assertEqual(info.status_code, 200, info.get_data(as_text=True))
+            self.assertEqual(info.json['rows'], 2)
+            self.assertEqual([column['name'] for column in info.json['columns']], ['desktopTime', 'b1_p', 'a1_p'])
+            query = info.json['query']
+            self.assertEqual(query['data_type'], 'price')
+            self.assertEqual(query['start'], '2026-10-25T00:00:00Z')
+            self.assertEqual(query['end'], '2026-10-25T01:00:00Z')
+            self.app.extensions['analysis_jobs'].analyzer = data_service.analyze
+            payload = {'legs': [{'id': 'A', 'exchange': query['exchange'], 'ticker': query['ticker'], 'data_type': query['data_type']}],
+                       'start': query['start'], 'end': query['end'], 'interval': query['interval'],
+                       'formula': 'A', 'unit': 'KRW', 'price_mode': 'last'}
+            created = self.client.post('/api/analyses', json=payload, headers=self.headers())
+            self.assertEqual(created.status_code, 202, created.get_data(as_text=True))
+            result = self.wait(created.json['id'])
+            self.assertEqual(result['status'], 'complete', result)
+            self.assertEqual(result['result']['legs'][0]['mid'], [101, 103])
+            self.assertEqual(self.client.get('/api/data/files/info?node=../../.state/dashboard.sqlite3').status_code, 400)
+            self.assertEqual(self.client.get('/api/data/files?limit=1000').status_code, 400)
+            self.assertEqual(self.client.get('/data/bithumb/ob/BTC/2026/10/25/00.parquet').status_code, 404)
+
     def test_full_usdt_query_csv_preserves_native_quantities_and_unit(self):
         self.login()
         def analyze(payload):

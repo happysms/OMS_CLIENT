@@ -89,5 +89,12 @@ export function initFunding({api,getCatalog}) {
   for(const input of $('funding-form').querySelectorAll('input'))input.addEventListener('input',changed);
   const controls=createHistoryControls({prefix:'funding',api,getCatalog,onChanged:changed,dataType:'funding'});
   state.selection=key();clear();
-  return {ready:controls.ready,refresh:controls.refresh,onEnter(){chart.draw();}};
+  return {ready:controls.ready,refresh:controls.refresh,onEnter(){chart.draw();},async openQuery(query){
+    if(query.data_type!=='funding')throw new Error('이 파일은 펀딩비율 화면에서 열 수 없습니다.');
+    controls.applySelection(query);
+    const selection=key();
+    await controls.bounds({setRange:false});
+    if(selection!==key())return;
+    return run({preventDefault(){}});
+  }};
 }

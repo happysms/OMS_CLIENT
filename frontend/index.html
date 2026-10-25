@@ -15,6 +15,17 @@
     <nav class="module-nav" aria-label="워크스페이스" role="tablist"><button id="tab-data" type="button" data-module="data" role="tab" aria-controls="module-data" aria-selected="false" tabindex="-1">데이터</button><button id="tab-funding" type="button" data-module="funding" role="tab" aria-controls="module-funding" aria-selected="false" tabindex="-1">펀딩비</button><button id="tab-analysis" type="button" class="active" data-module="analysis" role="tab" aria-controls="module-analysis" aria-selected="true">분석</button><button id="tab-backtest" type="button" data-module="backtest" role="tab" aria-controls="module-backtest" aria-selected="false" tabindex="-1">백테스트</button><button id="tab-paper" type="button" data-module="paper" role="tab" aria-controls="module-paper" aria-selected="false" tabindex="-1">모의투자</button><button id="tab-oms" type="button" data-module="oms" role="tab" aria-controls="module-oms" aria-selected="false" tabindex="-1">OMS <small>예정</small></button></nav>
     <div class="top-actions"><span class="private-tag" id="account-label">개인 워크스페이스</span><button id="refresh-data" class="quiet-button" type="button">↻ 새 데이터 확인</button><button id="logout-button" class="small-button" type="button">로그아웃</button></div>
   </header>
+  <div id="app-layout" class="app-layout">
+    <aside id="file-explorer" class="file-explorer" aria-label="데이터 파일 탐색기">
+      <div class="files-heading"><h2 id="files-title">데이터 파일</h2><button id="files-toggle" type="button" class="files-toggle" aria-controls="files-body" aria-expanded="true" aria-label="데이터 파일 접기" title="데이터 파일 접기"><span id="files-toggle-icon" aria-hidden="true">◂</span></button></div>
+      <div id="files-body" class="files-body">
+        <div class="files-tools"><label for="files-search">종목 검색</label><div class="files-search-row"><input id="files-search" type="search" maxlength="80" autocomplete="off" placeholder="BTC, USDT…" aria-describedby="files-status"><button id="files-refresh" type="button" class="files-refresh" aria-label="데이터 파일 목록 새로고침" title="데이터 파일 목록 새로고침">↻</button></div></div>
+        <p id="files-status" class="files-status" role="status">폴더를 펼치면 하위 목록을 불러옵니다.</p>
+        <div class="files-tree-wrap"><ul id="files-tree" class="files-tree" role="tree" aria-labelledby="files-title" aria-busy="false"></ul></div>
+        <section id="files-info" class="files-info" aria-label="선택한 파일 정보" aria-live="polite" hidden></section>
+      </div>
+    </aside>
+    <div id="app-content" class="app-content">
   <div id="module-analysis" class="workspace" role="tabpanel" aria-labelledby="tab-analysis">
     <aside class="sidebar" aria-label="분석 설정">
       <div class="sidebar-heading"><span class="eyebrow">COMPOSER</span><span class="subtle">01 — 설정</span></div>
@@ -128,6 +139,8 @@
     <section class="panel module-table"><div class="panel-heading"><h2>모의 주문 내역</h2><span id="paper-order-count" class="subtle">0 ORDERS</span></div><div class="table-scroll"><table><thead><tr><th>체결 시간 (KST)</th><th>거래소 / 종목</th><th>방향</th><th>수량</th><th>체결가</th><th>수수료</th><th>실현 손익</th><th>시세 출처 / 시각</th></tr></thead><tbody id="paper-orders"><tr><td colspan="8" class="empty-cell">아직 모의 주문이 없습니다.</td></tr></tbody></table></div></section>
   </main>
   <main id="module-oms" class="module-page" role="tabpanel" aria-labelledby="tab-oms" hidden><div class="page-heading"><div><div class="eyebrow">OPERATIONS / OMS</div><h1>OMS를 연결할 공간입니다.</h1><p>매매 운영과 리서치를 하나의 워크스페이스에서 관리할 수 있도록 준비했습니다.</p></div><span class="module-badge planned">연결 예정</span></div><section class="panel oms-planned"><span class="planned-icon" aria-hidden="true">⌘</span><h2>OMS 운영 기능은 아직 연결되지 않았습니다.</h2><p>주문·체결 상태, 포지션과 리스크, 전략 실행 제어를 이 탭에 추가할 수 있습니다.</p><p>현재 사용할 수 있는 기능은 가격·펀딩비율 조회, 과거·실시간 분석, 백테스트와 모의투자입니다.</p><div class="planned-items"><span>주문·체결 모니터링</span><span>포지션·리스크</span><span>전략 운영</span></div></section></main>
+    </div>
+  </div>
   <div id="toast" class="toast" role="status" hidden></div>
   <script type="module" src="app.js"></script>
 </body>

@@ -16,4 +16,5 @@ export function initTabs({modules,stopLive}) {
   });
   const initial=location.hash?.slice(1);
   if(tabs.some(tab=>tab.dataset.module===initial))selectModule(initial);
+  return {selectModule};
 }
