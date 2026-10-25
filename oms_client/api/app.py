@@ -9,6 +9,7 @@ from ..paths import ROOT
 from ..storage.state import StateStore
 from . import errors
 from .auth import TransportAwareSessionInterface, configure_auth
+from .data_exports import DataExportJobs
 from .jobs import AnalysisJobs
 from .routes import analysis, backtesting, data, oms, paper_trading, workspace
 from .services import configure_services
@@ -30,6 +31,8 @@ def create_app(config=None):
         PERMANENT_SESSION_LIFETIME=timedelta(hours=12), MAX_CONTENT_LENGTH=64 * 1024,
         JOB_WORKERS=1, JOB_MAX_PENDING=8, JOB_MAX_CACHED=16, JOB_TTL=3600,
         JOB_MAX_CSV_BYTES=256 * 1024 * 1024,
+        DATA_EXPORT_MAX_PENDING=4, DATA_EXPORT_MAX_CACHED=8, DATA_EXPORT_TTL=3600,
+        DATA_EXPORT_MAX_CSV_BYTES=256 * 1024 * 1024, DATA_EXPORT_MAX_ROWS=1_000_000,
     )
     if config:
         app.config.update(config)
@@ -43,11 +46,17 @@ def create_app(config=None):
         max_pending=app.config["JOB_MAX_PENDING"], max_cached=app.config["JOB_MAX_CACHED"],
         ttl=app.config["JOB_TTL"], max_csv_bytes=app.config["JOB_MAX_CSV_BYTES"],
     )
-    app.extensions.update(state_store=store, analysis_jobs=jobs)
+    data_exports = DataExportJobs(
+        store.directory, exporter=app.config.get("DATA_EXPORTER"),
+        max_pending=app.config["DATA_EXPORT_MAX_PENDING"], max_cached=app.config["DATA_EXPORT_MAX_CACHED"],
+        ttl=app.config["DATA_EXPORT_TTL"], max_bytes=app.config["DATA_EXPORT_MAX_CSV_BYTES"],
+        max_rows=app.config["DATA_EXPORT_MAX_ROWS"],
+    )
+    app.extensions.update(state_store=store, analysis_jobs=jobs, data_export_jobs=data_exports)
     live_manager, paper_service = configure_services(app, store, jobs)
     errors.register(app)
     workspace.register(app, csrf_token)
-    data.register(app)
+    data.register(app, data_exports)
     analysis.register(app, jobs, store, live_manager)
     backtesting.register(app, jobs)
     paper_trading.register(app, paper_service)

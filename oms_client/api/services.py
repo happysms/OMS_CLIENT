@@ -36,6 +36,7 @@ def configure_services(app, store, jobs):
         paper = app.extensions.get("paper_service")
         if paper and hasattr(paper, "close"):
             paper.close()
+        app.extensions["data_export_jobs"].close()
         jobs.close()
 
     app.extensions["close_services"] = close_services

@@ -78,12 +78,27 @@ class ServerTests(unittest.TestCase):
         self.live = FakeLive()
         self.paper = FakePaper()
         self.calls = []
+        self.export_calls = []
 
         def analyze(payload):
             self.calls.append(payload)
             return result_fixture(payload)
 
-        self.config = {"TESTING": True, "STATE_DIR": self.temp.name, "PASSWORD": "valid-password", "ANALYZER": analyze, "LIVE_MANAGER": self.live, "PAPER_SERVICE": self.paper}
+        def export_data(payload, path):
+            self.export_calls.append(payload)
+            columns = ["desktopTime", "serverTime", "b1_p", "a1_p", "b5_q"]
+            values = [[1792886400000 + i * 1000, 1792886399999 + i * 1000, 100 + i, 102 + i, 5] for i in range(3)]
+            if payload["mode"] == "aggregated":
+                columns = ["time_kst", "exchange", "ticker", "currency", "mid", "bid", "ask", "spread", "source_rows"]
+                values = [[f"2026-10-25T09:00:{i * 10:02d}+09:00", payload["exchange"], payload["ticker"], "KRW", 101 + i, 100 + i, 102 + i, 2, 4] for i in range(3)]
+            with path.open("w", encoding="utf-8-sig", newline="") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(columns)
+                writer.writerows(values)
+            path.chmod(0o600)
+            return {"rows": len(values), "columns": columns, "source_rows": 12 if payload["mode"] == "aggregated" else 3}
+
+        self.config = {"TESTING": True, "STATE_DIR": self.temp.name, "PASSWORD": "valid-password", "ANALYZER": analyze, "LIVE_MANAGER": self.live, "PAPER_SERVICE": self.paper, "DATA_EXPORTER": export_data}
         self.app = create_app(self.config)
         self.addCleanup(lambda: self.app.extensions["close_services"]())
         self.client = self.app.test_client()
@@ -116,6 +131,122 @@ class ServerTests(unittest.TestCase):
                 return response.json
             time.sleep(0.01)
         self.fail("worker did not finish")
+
+    def export_query(self, **overrides):
+        return {"exchange": "bithumb", "ticker": "BTC", "start": "2026-10-25T09:00", "end": "2026-10-25T10:00", "mode": "raw", **overrides}
+
+    def submit_export(self, **overrides):
+        response = self.client.post("/api/data/exports", json=self.export_query(**overrides), headers=self.headers())
+        self.assertEqual(response.status_code, 202, response.get_data(as_text=True))
+        return response.json["id"]
+
+    def wait_export(self, export_id):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            response = self.client.get(f"/api/data/exports/{export_id}")
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+            if response.json["status"] in {"complete", "failed"}:
+                return response.json
+            time.sleep(0.01)
+        self.fail("CSV export worker did not finish")
+
+    def test_data_exports_require_authentication_and_csrf(self):
+        self.assertEqual(self.client.post("/api/data/exports", json=self.export_query()).status_code, 401)
+        self.assertEqual(self.client.get("/api/data/exports/unknown").status_code, 401)
+        self.assertEqual(self.client.get("/api/data/exports/unknown/csv").status_code, 401)
+        self.login()
+        self.assertEqual(self.client.post("/api/data/exports", json=self.export_query()).status_code, 403)
+        headers = {**self.headers(), "Origin": "https://untrusted.example"}
+        self.assertEqual(self.client.post("/api/data/exports", json=self.export_query(), headers=headers).status_code, 403)
+        self.assertEqual(self.client.get("/api/data/exports/unknown").status_code, 404)
+        self.assertEqual(self.export_calls, [])
+
+    def test_original_data_csv_is_downloadable_without_chart_query(self):
+        self.login()
+        export_id = self.submit_export()
+        result = self.wait_export(export_id)
+        self.assertEqual(result["status"], "complete", result)
+        self.assertEqual(result["rows"], 3)
+        self.assertEqual(result["source_rows"], 3)
+        self.assertTrue(result["download_available"])
+        self.assertIn("raw", result["filename"])
+        self.assertIn("BTC", result["filename"])
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.client.get("/api/history").json["items"], [])
+        with self.client.get(f"/api/data/exports/{export_id}/csv") as response:
+            self.assertEqual(response.status_code, 200)
+            data = response.get_data()
+            self.assertTrue(data.startswith(b"\xef\xbb\xbf"))
+            self.assertEqual(result["bytes"], len(data))
+            rows = list(csv.DictReader(io.StringIO(data.decode("utf-8-sig"))))
+            self.assertEqual(len(rows), 3)
+            self.assertEqual(list(rows[0]), result["columns"])
+            self.assertEqual(rows[0]["b5_q"], "5")
+            self.assertIn(result["filename"], response.headers["Content-Disposition"])
+            self.assertIn("no-store", response.headers["Cache-Control"])
+        with self.app.test_client().get(f"/api/data/exports/{export_id}/csv") as response:
+            self.assertEqual(response.status_code, 401)
+        for path in [f"/data_exports/{export_id}.csv", f"/.state/data_exports/{export_id}.csv"]:
+            self.assertEqual(self.client.get(path).status_code, 404)
+
+    def test_aggregate_data_csv_preserves_interval_and_clear_columns(self):
+        self.login()
+        result = self.wait_export(self.submit_export(mode="aggregated", interval="10s"))
+        self.assertEqual(result["status"], "complete", result)
+        self.assertEqual(result["config"]["interval"], "10s")
+        self.assertEqual(result["rows"], 3)
+        self.assertEqual(result["source_rows"], 12)
+        with self.client.get(f"/api/data/exports/{result['id']}/csv") as response:
+            self.assertEqual(response.status_code, 200)
+            rows = list(csv.DictReader(io.StringIO(response.get_data().decode("utf-8-sig"))))
+            self.assertTrue(all(row["time_kst"].endswith("+09:00") for row in rows))
+            self.assertTrue(all(row["exchange"] == "bithumb" and row["ticker"] == "BTC" for row in rows))
+            self.assertEqual([float(row["spread"]) for row in rows], [2, 2, 2])
+
+    def test_data_export_rejects_unsafe_paths_unknown_options_and_invalid_range(self):
+        self.login()
+        invalid = [[], self.export_query(exchange="../private"), self.export_query(ticker="../../secret"),
+                   self.export_query(mode="unknown"), self.export_query(path="/etc/passwd"),
+                   self.export_query(end="2026-10-25T08:00"), self.export_query(end="2026-11-26T10:00"),
+                   self.export_query(mode="aggregated", interval="invalid")]
+        for payload in invalid:
+            with self.subTest(payload=payload):
+                response = self.client.post("/api/data/exports", json=payload, headers=self.headers())
+                self.assertEqual(response.status_code, 400, response.get_data(as_text=True))
+        self.assertEqual(self.export_calls, [])
+
+    def test_data_export_failure_reports_reason_without_download(self):
+        self.login()
+        def fail(payload, path):
+            raise data_service.DataError("선택한 기간에 호가 파일이 없습니다.")
+        self.app.extensions["data_export_jobs"].exporter = fail
+        result = self.wait_export(self.submit_export())
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"], "선택한 기간에 호가 파일이 없습니다.")
+        self.assertFalse(result["download_available"])
+        with self.client.get(f"/api/data/exports/{result['id']}/csv") as response:
+            self.assertNotEqual(response.status_code, 200)
+            self.assertIsNotNone(response.json.get("error"))
+
+    def test_data_export_queue_is_bounded_while_session_remains_responsive(self):
+        self.login()
+        entered, release = threading.Event(), threading.Event()
+        original = self.app.extensions["data_export_jobs"].exporter
+        def blocking(payload, path):
+            entered.set()
+            release.wait(5)
+            return original(payload, path)
+        jobs = self.app.extensions["data_export_jobs"]
+        jobs.exporter = blocking
+        jobs.slots = threading.BoundedSemaphore(1)
+        self.addCleanup(release.set)
+        export_id = self.submit_export()
+        self.assertTrue(entered.wait(2))
+        self.assertEqual(self.client.get("/api/session").status_code, 200)
+        response = self.client.post("/api/data/exports", json=self.export_query(), headers=self.headers())
+        self.assertEqual(response.status_code, 429)
+        release.set()
+        self.assertEqual(self.wait_export(export_id)["status"], "complete")
 
     def test_authentication_protects_page_api_and_static_data(self):
         self.assertEqual(self.client.get("/").status_code, 302)
