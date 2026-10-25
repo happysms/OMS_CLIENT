@@ -23,6 +23,8 @@ UTC 시간별 파일 경로는 `{data_root}/{bithumb|upbit}/ob_1s/USDT/YYYY/MM/D
 | `quote_age_ms` | `sampledAt - serverTime` |
 | `price_unit`, `quantity_unit` | `KRW`, `USDT` |
 | `sample_interval_ms`, `market` | `1000`, `KRW-USDT` |
+| `b2_p..b5_p`, `a2_p..a5_p` | 같은 메시지의 2~5호가 가격. 미수집·누락 단계는 NULL |
+| `bid_size_2..bid_size_5`, `ask_size_2..ask_size_5` | 같은 단계의 실제 USDT 잔량. 기존 1호가 전용 기록은 NULL 유지 |
 
 원본 이벤트와 로컬 수신 시각 중 하나라도 10초보다 오래됐으면 저장하지 않습니다. 거래소 시계는 현재보다 최대 5초 앞서는 오차를 허용하지만, 로컬 수신 시각이 실제 채택 시각보다 미래인 호가는 저장하지 않습니다. 연결이 끊기면 캐시를 비우며 재연결 후 새 호가를 기다립니다. 가격이 양수가 아니거나 역전됐거나 잔량이 없거나 유한하지 않으면 해당 거래소의 그 초를 건너뜁니다. 정상 잔량 0은 보존합니다. 지연·절전으로 놓친 초를 과거 데이터로 채우지 않습니다. `sampleTime`으로 관측 시각을 앞당겨 해석하지 말고 실제 관측 시각인 `desktopTime`을 사용해야 합니다.
 

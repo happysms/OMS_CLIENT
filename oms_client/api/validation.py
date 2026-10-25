@@ -2,6 +2,8 @@
 import json
 
 from ..analysis import history as data_service
+from ..analysis.formulas import formula_ids
+from ..market_data.pricing import normalize_price_options
 
 CONFIG_KEYS = {"legs", "formula", "start", "end", "interval", "ewm_span", "max_points", "unit", "price_mode"}
 
@@ -21,6 +23,15 @@ def _query_config(payload):
             raise data_service.DataError("소스 유형은 가격, 펀딩비율 또는 1분봉 종가로 선택해 주세요.")
     if not isinstance(payload.get("formula"), str) or not 1 <= len(payload["formula"]) <= 256:
         raise data_service.DataError("조합식을 256자 이내로 입력해 주세요.")
+    referenced = set(formula_ids(payload['formula']))
+    for leg in payload['legs']:
+        identifier = leg.get('id')
+        if not isinstance(identifier, str) or identifier not in referenced:
+            continue
+        if leg.get('data_type', 'price') == 'price':
+            normalize_price_options(leg)
+        elif {'price_basis', 'book_level', 'liquidity_amount', 'liquidity_currency'} & set(leg):
+            raise data_service.DataError('호가 가격 기준과 금액은 실제 호가 소스에서 설정해 주세요.')
     # Copy and validate JSON numbers before handing work to a background thread.
     try:
         copied = json.loads(json.dumps(payload, allow_nan=False))

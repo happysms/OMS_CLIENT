@@ -10,6 +10,7 @@ import uuid
 import pandas as pd
 
 from ..market_data.quotes import ENDPOINTS, PublicQuoteFeed
+from ..market_data.pricing import normalize_price_options, select_quote_price
 from ..market_data.validation import (DataError, IDENTIFIER, array, integer,
                                       iso_timestamp, number)
 from .formulas import evaluate, formula_ids, parse_formula
@@ -43,7 +44,9 @@ class _LiveSession:
                 raise DataError("실시간 종목 코드를 확인하세요.")
             exchange = leg["exchange"]
             self.legs.append({"id": identifier, "exchange": exchange, "ticker": ticker.strip().upper(),
-                              "currency": "KRW" if exchange in {"bithumb", "upbit"} else "USDT"})
+                              "currency": "KRW" if exchange in {"bithumb", "upbit"} else "USDT",
+                              **normalize_price_options(leg)})
+        self.legs_by_id = {leg['id']: leg for leg in self.legs}
         self.span = integer(payload.get("ewm_span", 60), "EMA 구간 수", 1, 1_000_000)
         self.tree = parse_formula(self.formula, set(ids))
         for node in ast.walk(self.tree):
@@ -70,10 +73,17 @@ class _LiveSession:
         with self.lock:
             if self.status != "running":
                 return
+            leg = self.legs_by_id.get(quote.get('id'))
+            if leg is None:
+                return
             previous = self.quotes.get(quote["id"])
             if previous and quote["ts"] < previous["ts"]:
                 return
-            self.quotes[quote["id"]] = quote
+            selected = select_quote_price(quote, leg)
+            if leg['price_basis'] in {'buy_vwap', 'sell_vwap'} and quote.get('quantity_basis') == 'contracts':
+                selected = {**selected, 'value': None, 'reason': 'unverified_contract_quantity'}
+            self.quotes[quote['id']] = {**quote, **leg, **{key: value for key, value in selected.items() if key != 'reason'},
+                                        'pricing_reason': selected['reason'], 'liquidity_currency': leg['currency']}
 
     def _connection_status(self, status):
         with self.lock:
@@ -89,8 +99,10 @@ class _LiveSession:
         for leg in self.legs:
             quote = self.quotes.get(leg["id"])
             if (not quote or now - quote["ts"] > QUOTE_TTL_MS or now - quote["receivedAt"] > QUOTE_TTL_MS
-                    or quote["ts"] > now + 5000 or self.connections[leg["exchange"]]["state"] != "connected"):
-                missing.append({key: leg[key] for key in ("id", "exchange", "ticker")})
+                    or quote["ts"] > now + 5000 or quote['receivedAt'] > now + 5000
+                    or quote.get('value') is None or self.connections[leg["exchange"]]["state"] != "connected"):
+                missing.append({**{key: leg[key] for key in ("id", "exchange", "ticker")},
+                                'reason': quote.get('pricing_reason') if quote else 'missing_quote'})
         return missing
 
     def _tick(self):
@@ -109,7 +121,7 @@ class _LiveSession:
                 return
             samples = list(self.samples)
         index = pd.Index([sample["time"] for sample in samples])
-        values = {leg["id"]: pd.Series([sample["quotes"][leg["id"]]["mid"] for sample in samples], index=index) for leg in self.legs}
+        values = {leg["id"]: pd.Series([sample["quotes"][leg["id"]]["value"] for sample in samples], index=index) for leg in self.legs}
         result = evaluate(self.tree, values, index)
         smooth = result.ewm(span=self.span).mean()
         valid = result.dropna()
@@ -118,14 +130,21 @@ class _LiveSession:
         first = number(valid.iloc[0]) if len(valid) else None
         legs = []
         for leg in self.legs:
-            legs.append({**leg, **{column: [sample["quotes"][leg["id"]][column] for sample in samples] for column in ("mid", "bid", "ask")}})
+            legs.append({**leg, **{column: [sample["quotes"][leg["id"]][column] for sample in samples] for column in ("mid", "bid", "ask")},
+                         'values': [sample['quotes'][leg['id']]['value'] for sample in samples],
+                         'quote_times': [sample['quotes'][leg['id']]['ts'] for sample in samples],
+                         'liquidity_currency': leg['currency'], 'depth_limit': 5,
+                         'quantity_basis': samples[-1]['quotes'][leg['id']].get('quantity_basis', 'native_base_quantity'),
+                         **{column: [sample['quotes'][leg['id']].get(column) for sample in samples]
+                            for column in ('liquidity_available_notional', 'liquidity_filled_quantity', 'liquidity_levels_used')}})
         output = {"times": list(index), "result": array(result), "ewm": array(smooth), "legs": legs, "mean": mean,
                   "stats": {"count": len(valid), "latest": latest, "mean": mean, "std": std, "first": first,
+                            'latest_time': int(valid.index[-1]) if len(valid) else None,
                             "min": number(valid.min()), "max": number(valid.max()),
                             "median": number(valid.median()),
                             "latest_minus_mean": number(latest - mean) if latest is not None and mean is not None else None,
                             "latest_zscore": number((latest - mean) / std) if std not in (None, 0) and latest is not None else None},
-                  "meta": {"source": "live", "interval": "live", "formula": self.formula, "ewm_span": self.span,
+                  "meta": {"source": "live", "interval": "live", "formula": self.formula, "ewm_span": self.span, 'price_mode': 'last',
                            "aligned_points": len(index), "returned_points": len(index),
                            "warnings": (["함수 계산에 필요한 표본이 아직 충분하지 않거나 계산 결과가 정의되지 않은 구간은 빈 값입니다."] if len(valid) < len(index) else []),
                            "window_basis": "aligned_samples", "undefined_points": len(index) - len(valid),

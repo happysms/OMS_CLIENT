@@ -309,6 +309,48 @@ class ServerTests(unittest.TestCase):
         self.assertEqual([row['A_quantity_unit'] for row in rows], ['USDT'] * 3)
         self.assertEqual([row['price_mode'] for row in rows], ['mean'] * 3)
 
+    def test_price_selection_config_survives_jobs_full_csv_and_saved_presets(self):
+        self.login()
+        def analyze(payload):
+            result = result_fixture(payload)
+            result['meta']['price_mode'] = payload['price_mode']
+            result['legs'][0].update(**payload['legs'][0], values=[10, 30])
+            result['full']['legs'][0].update(**payload['legs'][0], values=[10, 20, 30])
+            return result
+        self.app.extensions['analysis_jobs'].analyzer = analyze
+        config = {**self.query(), 'price_mode': 'mean'}
+        config['legs'][0].update(price_basis='ask', book_level=2)
+        created = self.client.post('/api/analyses', json=config, headers=self.headers())
+        self.assertEqual(created.status_code, 202, created.get_data(as_text=True))
+        result = self.wait(created.json['id'])
+        self.assertEqual(result['status'], 'complete', result)
+        self.assertEqual(result['config']['legs'], config['legs'])
+        with self.client.get(f"/api/analyses/{created.json['id']}/csv") as response:
+            rows = list(csv.DictReader(io.StringIO(response.get_data().decode('utf-8-sig'))))
+        self.assertEqual([float(row['A_selected_price']) for row in rows], [10, 20, 30])
+        self.assertTrue(all(row['A_price_basis'] == 'ask' and row['A_book_level'] == '2' for row in rows))
+        self.assertTrue(all(row['price_mode'] == 'mean' for row in rows))
+        saved = self.client.post('/api/presets', json={'name': 'N호가 조합', 'config': config}, headers=self.headers())
+        self.assertEqual(saved.status_code, 201)
+        self.assertEqual(self.client.get('/api/presets').json['items'][0]['config']['legs'], config['legs'])
+
+    def test_price_option_validation_applies_to_referenced_sources(self):
+        self.login()
+        for options in ({'price_basis': 'other'}, {'price_basis': 'bid', 'book_level': 0},
+                        {'price_basis': 'ask', 'book_level': 6}, {'price_basis': 'buy_vwap', 'liquidity_amount': 0},
+                        {'price_basis': 'sell_vwap', 'liquidity_amount': None}):
+            with self.subTest(options=options):
+                config = self.query()
+                config['legs'][0].update(options)
+                self.assertEqual(self.client.post('/api/analyses', json=config, headers=self.headers()).status_code, 400)
+        config = self.query()
+        config['legs'].append({'id': 'B', 'exchange': 'bithumb', 'ticker': 'BTC', 'price_basis': 'buy_vwap', 'liquidity_amount': None})
+        created = self.client.post('/api/analyses', json=config, headers=self.headers())
+        self.assertEqual(created.status_code, 202, created.get_data(as_text=True))
+        self.assertEqual(self.wait(created.json['id'])['status'], 'complete')
+        config['formula'] = 'A + B'
+        self.assertEqual(self.client.post('/api/analyses', json=config, headers=self.headers()).status_code, 400)
+
     def test_login_csrf_logout_and_cookie_boundary(self):
         self.assertEqual(self.client.post("/login", data={"password": "valid-password"}).status_code, 403)
         self.assertEqual(self.login("wrong-password").status_code, 401)

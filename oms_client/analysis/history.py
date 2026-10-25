@@ -7,6 +7,7 @@ import pandas as pd
 
 from ..market_data import candles, funding, parquet
 from ..market_data.parquet import bounds
+from ..market_data.pricing import normalize_price_options
 from ..market_data.validation import (DataError, INTERVALS, KST, MAX_RANGE_DAYS,
                                       MAX_BUCKETS, array, integer, number, parse_date)
 from .formulas import FUNCTIONS, FUNCTION_NAMES, evaluate, formula_ids, parse_formula
@@ -57,7 +58,7 @@ def catalog() -> dict:
         "funding_exchanges": funding.list_symbols(),
         "candle_exchanges": candles.list_symbols(),
         "source_types": [
-            {"id": "price", "label": "가격·호가", "formula_value": "mid"},
+            {"id": "price", "label": "가격·호가", "formula_value": "values", "default_price_basis": "mid"},
             {"id": "funding", "label": "펀딩비율", "formula_value": "values", "unit": "%",
              "raw_unit": "ratio", "kind": "observed_rate", "live_supported": False},
             {"id": "candle", "label": "1분봉 종가", "formula_value": "values", "unit": "KRW",
@@ -73,6 +74,8 @@ def catalog() -> dict:
         },
         "data_root": str(parquet.data_root()),
         "intervals": INTERVALS.copy(),
+        "price_bases": ['mid', 'bid', 'ask', 'buy_vwap', 'sell_vwap'],
+        "max_book_level": 5,
         "functions": [dict(item) for item in FUNCTIONS],
         "limits": {"max_range_days": MAX_RANGE_DAYS, "max_buckets": MAX_BUCKETS, "max_chart_points": 6000},
     }
@@ -111,6 +114,8 @@ def analyze(payload: dict) -> dict:
         data_type = leg.get("data_type", "price")
         if not isinstance(data_type, str) or data_type not in {"price", "funding", "candle"}:
             raise DataError("분석 데이터 종류는 가격·호가, 펀딩비율 또는 1분봉 종가로 선택해 주세요.")
+        if data_type != 'price' and {'price_basis', 'book_level', 'liquidity_amount', 'liquidity_currency'} & set(leg):
+            raise DataError('호가 가격 기준과 금액은 실제 호가 소스에서 설정해 주세요.')
         if data_type == "funding":
             if funding_available is None:
                 funding_available = funding.list_symbols()
@@ -121,7 +126,8 @@ def analyze(payload: dict) -> dict:
             exchange, ticker = candles.validate_symbol(leg.get("exchange"), leg.get("ticker"), candle_available)
         else:
             exchange, ticker = parquet.validate_symbol(leg.get("exchange"), leg.get("ticker"), available)
-        legs.append({"id": leg["id"], "exchange": exchange, "ticker": ticker, "data_type": data_type})
+        options = normalize_price_options(leg) if data_type == 'price' else {}
+        legs.append({"id": leg["id"], "exchange": exchange, "ticker": ticker, "data_type": data_type, **options})
     start, end = parse_date(payload.get("start"), "시작 시간"), parse_date(payload.get("end"), "종료 시간")
     if start >= end:
         raise DataError("종료 시간은 시작 시간보다 뒤여야 합니다.")
@@ -145,16 +151,23 @@ def analyze(payload: dict) -> dict:
     if type(include_full) is not bool:
         raise DataError("include_full_data는 true 또는 false로 지정해 주세요.")
 
-    loaded, rows_read = {}, 0
+    loaded, rows_read, source_keys = {}, 0, {}
     for leg in legs:
         key = (leg["data_type"], leg["exchange"], leg["ticker"])
+        if leg['data_type'] == 'price':
+            key += (leg['price_basis'], leg['book_level'], leg['liquidity_amount'])
+        source_keys[leg['id']] = key
         if key not in loaded:
             reader = {'funding': funding.read_buckets, 'candle': candles.read_buckets,
                       'price': parquet.read_buckets}[leg['data_type']]
-            if price_mode == "last":
-                frame, count = reader(*key[1:], start, end, INTERVALS[interval], price_mode="last")
+            if leg['data_type'] == 'price' and leg['price_basis'] != 'mid':
+                frame, count = reader(leg['exchange'], leg['ticker'], start, end, INTERVALS[interval],
+                                      price_mode=price_mode, price_basis=leg['price_basis'],
+                                      book_level=leg['book_level'], liquidity_amount=leg['liquidity_amount'])
+            elif price_mode == "last":
+                frame, count = reader(leg['exchange'], leg['ticker'], start, end, INTERVALS[interval], price_mode="last")
             else:
-                frame, count = reader(*key[1:], start, end, INTERVALS[interval])
+                frame, count = reader(leg['exchange'], leg['ticker'], start, end, INTERVALS[interval])
             loaded[key] = frame
             rows_read += count
     index = None
@@ -164,12 +177,38 @@ def analyze(payload: dict) -> dict:
     if index.empty:
         raise DataError("모든 분석 시리즈가 함께 존재하는 시간 구간이 없습니다. 기간·종목·조회 간격을 바꿔 주세요. 누락 시각을 이전 값으로 채우지 않습니다.")
 
-    values = {leg["id"]: loaded[(leg["data_type"], leg["exchange"], leg["ticker"])].loc[
-        index, "mid" if leg["data_type"] == "price" else "value"] for leg in legs}
+    values = {}
+    for leg in legs:
+        frame = loaded[source_keys[leg['id']]]
+        column = 'value' if 'value' in frame.columns else 'mid'
+        values[leg['id']] = frame.loc[index, column]
     result = evaluate(tree, values, index)
     valid = result.dropna()
     smooth = result.ewm(span=span).mean()
     warnings = []
+    for leg in legs:
+        if leg['data_type'] != 'price' or leg['price_basis'] == 'mid':
+            continue
+        frame = loaded[source_keys[leg['id']]]
+        missing_prices = int(frame.loc[index, 'value'].isna().sum())
+        if leg['price_basis'] in {'buy_vwap', 'sell_vwap'}:
+            side = '매도 호가를 소진하는 매수' if leg['price_basis'] == 'buy_vwap' else '매수 호가를 소진하는 매도'
+            quote_currency = 'KRW' if leg['exchange'] in {'bithumb', 'upbit', 'ls'} else 'USDT'
+            warnings.append(f"{leg['id']}: {side} 유동성호가, 목표 {leg['liquidity_amount']:g} {quote_currency}. 저장된 최대 5호가 안에서 전액 체결되는 경우의 평균 가격이며 수수료·추가 시장 충격은 포함하지 않습니다.")
+            if frame.attrs.get('quantity_basis') == 'base_reconstructed_from_quote_notional':
+                warnings.append(f"{leg['id']}: 기존 수집기의 정수 절삭 호가 금액에서 수량을 환산한 근사값입니다.")
+        else:
+            side = '매수' if leg['price_basis'] == 'bid' else '매도'
+            warnings.append(f"{leg['id']}: {side} {leg['book_level']}호가를 분석 값으로 사용합니다. 별도 bid/ask/mid 컬럼은 최우선 1호가 원본입니다.")
+        if missing_prices:
+            warnings.append(f"{leg['id']}: 호가 단계 또는 유동성이 부족한 {missing_prices:,}개 구간의 선택 가격은 빈 값입니다.")
+        excluded_snapshots = frame.attrs.get('pricing_missing_rows', 0)
+        if excluded_snapshots:
+            warnings.append(f"{leg['id']}: 원본 스냅샷 {excluded_snapshots:,}개에서 선택 가격을 계산하지 못했습니다. CSV의 유효·누락 스냅샷 수를 확인하세요.")
+        if price_mode == 'mean':
+            warnings.append(f"{leg['id']}: 스냅샷마다 선택 가격을 먼저 계산한 뒤 유효 가격을 구간 평균합니다. 계산되지 않는 스냅샷은 평균에서 제외합니다.")
+            if leg['price_basis'] in {'buy_vwap', 'sell_vwap'}:
+                warnings.append(f"{leg['id']}: CSV의 유동성·체결 수량·사용 단계 진단값은 미충족 행의 부분 체결도 포함한 원본 진단값 평균입니다. 선택 가격 평균의 전액 체결 수량을 뜻하지 않습니다.")
     has_funding = any(leg["data_type"] == "funding" for leg in legs)
     if any(leg['data_type'] == 'candle' for leg in legs):
         warnings.append('1분봉 소스는 REST로 받은 완료 분봉 종가입니다. 실제 틱·매수매도 1호가·호가 잔량을 복원한 값이 아닙니다. 완성시각으로 집계 구간을 배정하고 결과 시각은 구간 시작을 표시합니다. 5분·1시간 구간 전체값은 그 구간 종료 후 확정되며 마지막 원본 완성시각은 별도로 제공합니다. 체결 없는 분은 채우지 않습니다.')
@@ -201,7 +240,7 @@ def analyze(payload: dict) -> dict:
     std = number(valid.std())
     full_legs, output_legs = [], []
     for leg in legs:
-        frame = loaded[(leg["data_type"], leg["exchange"], leg["ticker"])].loc[index]
+        frame = loaded[source_keys[leg['id']]].loc[index]
         if leg['data_type'] == 'candle':
             def candle_leg(source):
                 return {**leg, 'unit': 'KRW', 'currency': 'KRW', 'price_unit': 'KRW',
@@ -227,17 +266,35 @@ def analyze(payload: dict) -> dict:
             continue
         info = {**leg, "currency": "KRW" if leg["exchange"] in {"bithumb", "upbit", "ls"} else "USDT"}
         columns = ["mid", "bid", "ask"]
+        if 'value' in frame.columns:
+            columns.append('value')
+        for name in ('liquidity_available_notional', 'liquidity_filled_quantity', 'liquidity_levels_used', 'value_rows', 'missing_value_rows'):
+            if name in frame.columns:
+                columns.append(name)
+        for name in ('liquidity_currency', 'quantity_basis', 'depth_limit'):
+            if name in frame.attrs:
+                info[name] = frame.attrs[name]
         if (frame.attrs.get("source_kind") == "orderbook_1s"
                 and frame.attrs.get("quantity_unit") == "USDT"
                 and {"bid_size", "ask_size"}.issubset(frame.columns)):
             info.update({name: frame.attrs[name] for name in ["source_kind", "sample_interval_ms", "quantity_unit", "price_unit", "quote_time_basis"]})
             columns.extend(["bid_size", "ask_size"])
         output_leg = {**info, **{column: array(frame.iloc[selection][column]) for column in columns}}
+        if 'value' in output_leg:
+            output_leg['values'] = output_leg.pop('value')
+        for old, new in (('value_rows', 'pricing_valid_rows'), ('missing_value_rows', 'pricing_missing_rows')):
+            if old in output_leg:
+                output_leg[new] = output_leg.pop(old)
         if price_mode == "last":
             output_leg["quote_times"] = [int(value) for value in frame.iloc[selection]["quote_time"]]
         output_legs.append(output_leg)
         if include_full:
             full_leg = {**info, **{column: array(frame[column]) for column in columns}}
+            if 'value' in full_leg:
+                full_leg['values'] = full_leg.pop('value')
+            for old, new in (('value_rows', 'pricing_valid_rows'), ('missing_value_rows', 'pricing_missing_rows')):
+                if old in full_leg:
+                    full_leg[new] = full_leg.pop(old)
             if price_mode == "last":
                 full_leg["quote_times"] = [int(value) for value in frame["quote_time"]]
             full_legs.append(full_leg)

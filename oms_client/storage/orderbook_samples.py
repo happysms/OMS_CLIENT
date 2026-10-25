@@ -15,6 +15,8 @@ import pyarrow.parquet as pq
 from oms_client.paths import ROOT
 
 EXCHANGES = ("bithumb", "upbit")
+DEPTH_COLUMNS = [name for level in range(2, 6)
+                 for name in (f'b{level}_p', f'a{level}_p', f'bid_size_{level}', f'ask_size_{level}')]
 SAMPLE_SCHEMA = pa.schema([
     ("sampleTime", pa.int64()), ("desktopTime", pa.int64()),
     ("serverTime", pa.int64()), ("receivedTime", pa.int64()), ("sampledAt", pa.int64()),
@@ -22,6 +24,7 @@ SAMPLE_SCHEMA = pa.schema([
     ("bid_size", pa.float64()), ("ask_size", pa.float64()), ("quote_age_ms", pa.int64()),
     ("price_unit", pa.string()), ("quantity_unit", pa.string()),
     ("sample_interval_ms", pa.int64()), ("market", pa.string()),
+    *[(name, pa.float64()) for name in DEPTH_COLUMNS],
 ])
 COLUMNS = SAMPLE_SCHEMA.names
 
@@ -107,9 +110,14 @@ class OrderbookSampleStore:
             definitions = []
             for field in SAMPLE_SCHEMA:
                 sql_type = "TEXT" if pa.types.is_string(field.type) else "REAL" if pa.types.is_floating(field.type) else "INTEGER"
-                definitions.append(f'"{field.name}" {sql_type} NOT NULL')
+                nullable = '' if field.name in DEPTH_COLUMNS else ' NOT NULL'
+                definitions.append(f'"{field.name}" {sql_type}{nullable}')
             self.connection.execute("CREATE TABLE IF NOT EXISTS samples (exchange TEXT NOT NULL, " +
                                     ", ".join(definitions) + ", PRIMARY KEY(exchange, sampleTime))")
+            existing_columns = {row[1] for row in self.connection.execute('PRAGMA table_info(samples)')}
+            for name in DEPTH_COLUMNS:
+                if name not in existing_columns:
+                    self.connection.execute(f'ALTER TABLE samples ADD COLUMN "{name}" REAL')
             self.connection.execute("CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL)")
             self.connection.execute("CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
             binding = self.connection.execute("SELECT value FROM settings WHERE name='data_root'").fetchone()
@@ -141,7 +149,7 @@ class OrderbookSampleStore:
                 raise ValueError("Unsupported exchange")
         columns = ["exchange", *COLUMNS]
         names = ",".join(f'"{name}"' for name in columns)
-        values = [tuple(sample[name] for name in columns) for sample in samples]
+        values = [tuple(sample.get(name) if name in DEPTH_COLUMNS else sample[name] for name in columns) for sample in samples]
         before = self.connection.total_changes
         try:
             self.connection.executemany(f"INSERT OR IGNORE INTO samples ({names}) VALUES ({','.join('?' for _ in columns)})", values)

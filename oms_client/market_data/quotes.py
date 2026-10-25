@@ -16,6 +16,29 @@ ENDPOINTS = {
 }
 
 
+def _book_levels(rows):
+    """Retain at most five ordered source positions, including absent sizes."""
+    output = []
+    if not isinstance(rows, (list, tuple)):
+        return output
+    for row in rows[:5]:
+        if not isinstance(row, (list, tuple)):
+            break
+        try:
+            price = float(row[0])
+            if not math.isfinite(price) or price <= 0:
+                break
+            try:
+                size = float(row[1])
+                size = size if math.isfinite(size) and size >= 0 else None
+            except (ValueError, TypeError, IndexError, OverflowError):
+                size = None
+            output.append([price, size])
+        except (ValueError, TypeError, IndexError, OverflowError):
+            break
+    return output
+
+
 def parse_quotes(exchange: str, message) -> list[dict]:
     """Normalize complete best-bid/ask snapshots, including Bithumb microseconds."""
     messages = message if isinstance(message, list) else [message]
@@ -33,7 +56,8 @@ def parse_quotes(exchange: str, message) -> list[dict]:
                 try:
                     bid, ask = book["bids"][0], book["asks"][0]
                     books.append((instrument[:-10], bid[0], ask[0], book["ts"],
-                                  bid[1] if len(bid) > 1 else None, ask[1] if len(ask) > 1 else None))
+                                  bid[1] if len(bid) > 1 else None, ask[1] if len(ask) > 1 else None,
+                                  _book_levels(book['bids']), _book_levels(book['asks'])))
                 except (KeyError, IndexError, TypeError):
                     continue
         elif exchange in {"bithumb", "upbit"}:
@@ -46,10 +70,12 @@ def parse_quotes(exchange: str, message) -> list[dict]:
                 if exchange == "bithumb" and stamp > 1e14:
                     stamp /= 1000
                 books.append((code[4:], book["bid_price"], book["ask_price"], stamp,
-                              book.get("bid_size"), book.get("ask_size")))
+                              book.get("bid_size"), book.get("ask_size"),
+                              _book_levels([[row.get('bid_price'), row.get('bid_size')] if isinstance(row, dict) else [None, None] for row in item['orderbook_units']]),
+                              _book_levels([[row.get('ask_price'), row.get('ask_size')] if isinstance(row, dict) else [None, None] for row in item['orderbook_units']])))
             except (KeyError, IndexError, TypeError, ValueError, OverflowError):
                 continue
-        for ticker, raw_bid, raw_ask, raw_stamp, raw_bid_size, raw_ask_size in books:
+        for ticker, raw_bid, raw_ask, raw_stamp, raw_bid_size, raw_ask_size, bids, asks in books:
             try:
                 bid, ask, stamp = float(raw_bid), float(raw_ask), float(raw_stamp)
                 if not all(math.isfinite(v) for v in (bid, ask, stamp)) or bid <= 0 or ask < bid or stamp <= 0:
@@ -57,7 +83,9 @@ def parse_quotes(exchange: str, message) -> list[dict]:
                 mid = bid / 2 + ask / 2
                 if not math.isfinite(mid):
                     continue
-                quote = {"exchange": exchange, "ticker": ticker, "bid": bid, "ask": ask, "mid": mid, "ts": int(stamp)}
+                quote = {"exchange": exchange, "ticker": ticker, "bid": bid, "ask": ask, "mid": mid, "ts": int(stamp),
+                         'bids': bids, 'asks': asks,
+                         'quantity_basis': 'contracts' if exchange == 'okx' else 'native_base_quantity'}
                 # Size is optional for existing price consumers. Invalid or absent
                 # quantities must never discard an otherwise valid price snapshot.
                 for name, raw_size in (("bid_size", raw_bid_size), ("ask_size", raw_ask_size)):
@@ -108,6 +136,12 @@ class PublicQuoteFeed:
         while not self._stop.is_set():
             self._status(exchange, "connecting" if delay == 1 else "reconnecting")
             try:
+                contract_values = {}
+                if exchange == 'okx':
+                    from .instruments import okx_contract_value
+                    for leg in legs:
+                        if leg.get('price_basis') in {'buy_vwap', 'sell_vwap'} and leg['ticker'] not in contract_values:
+                            contract_values[leg['ticker']] = okx_contract_value(leg['ticker'])
                 with self.connector(ENDPOINTS[exchange], open_timeout=8, close_timeout=1,
                                     ping_interval=20, ping_timeout=20, max_size=2**20, max_queue=16) as socket:
                     if self._stop.is_set():
@@ -149,6 +183,20 @@ class PublicQuoteFeed:
                             if ticker not in expected or quote["ts"] < previous.get(ticker, 0):
                                 continue
                             previous[ticker] = quote["ts"]
+                            if ticker in contract_values:
+                                multiplier = contract_values[ticker]
+                                for side in ('bids', 'asks'):
+                                    quote[side] = [[price, size * multiplier if size is not None and math.isfinite(size * multiplier) else None]
+                                                   for price, size in quote[side]]
+                                for key in ('bid_size', 'ask_size'):
+                                    if key in quote:
+                                        converted = quote[key] * multiplier
+                                        if math.isfinite(converted):
+                                            quote[key] = converted
+                                        else:
+                                            quote.pop(key)
+                                quote['quantity_basis'] = 'native_base_quantity'
+                                quote['contract_value'] = multiplier
                             seen.add(ticker)
                             received = int(time.time() * 1000)
                             for leg in legs:

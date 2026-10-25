@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import json
 import os
+import sqlite3
 from pathlib import Path
 import sys
 import tempfile
@@ -99,6 +100,61 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(rows[0]["quantity_unit"], "USDT")
         self.assertNotIn("b1_q", rows[0])
         self.assertEqual(rows[0]["quote_age_ms"], 1)
+
+    def test_five_levels_keep_native_quantities_in_the_same_one_second_snapshot(self):
+        units = [{'bid_price': 1342 - level, 'ask_price': 1343 + level,
+                  'bid_size': .125 + level, 'ask_size': .25 + level} for level in range(5)]
+        parsed = parse_quotes('bithumb', {'type': 'orderbook', 'code': 'KRW-USDT', 'timestamp': NOW * 1000,
+                                           'orderbook_units': units})[0]
+        self.quote(**{key: value for key, value in parsed.items() if key not in {'exchange', 'ticker', 'ts'}}, stamp=NOW)
+        row = self.collector.sample_once(NOW)[0]
+        self.assertEqual((row['b5_p'], row['a5_p'], row['bid_size_5'], row['ask_size_5']), (1338, 1347, 4.125, 4.25))
+        self.store.flush()
+        stored = pq.read_table(parquet_path(self.store.data_root, 'bithumb', NOW)).to_pylist()[0]
+        self.assertEqual(stored['bid_size_2'], 1.125)
+        self.assertNotIn('b2_q', stored)
+
+    def test_invalid_intermediate_level_does_not_shift_deeper_levels_forward(self):
+        quote = parse_quotes('upbit', {'type': 'orderbook', 'code': 'KRW-USDT', 'timestamp': NOW,
+                                      'orderbook_units': [{'bid_price': 1342, 'ask_price': 1343, 'bid_size': 1, 'ask_size': 2},
+                                                          None,
+                                                          {'bid_price': 1340, 'ask_price': 1345, 'bid_size': 3, 'ask_size': 4}]})[0]
+        self.assertEqual(len(quote['bids']), 1)
+        self.quote(bids=quote['bids'], asks=quote['asks'])
+        row = self.collector.sample_once(NOW)[0]
+        self.assertIsNone(row['b2_p'])
+        self.assertIsNone(row['bid_size_2'])
+
+    def test_depth_upgrade_preserves_old_spool_and_old_hour_rows(self):
+        from oms_client.storage.orderbook_samples import DEPTH_COLUMNS
+        self.quote()
+        row = self.collector.sample_once(NOW)[0]
+        self.store.flush()
+        path = parquet_path(self.store.data_root, 'bithumb', NOW)
+        table = pq.read_table(path)
+        old_columns = [name for name in table.column_names if name not in DEPTH_COLUMNS]
+        pq.write_table(table.select(old_columns), path)
+        self.store.close()
+        connection = sqlite3.connect(self.root / 'state/samples.sqlite3')
+        connection.execute('DROP TABLE samples')
+        fields = ['exchange', *old_columns]
+        definitions = ', '.join(f'"{name}" {"TEXT" if isinstance(row[name], str) else "INTEGER" if isinstance(row[name], int) else "REAL"} NOT NULL' for name in fields)
+        connection.execute('CREATE TABLE samples (' + definitions + ', PRIMARY KEY(exchange,sampleTime))')
+        connection.execute('INSERT INTO samples VALUES (' + ','.join('?' for _ in fields) + ')', [row[name] for name in fields])
+        connection.commit()
+        connection.close()
+        self.store = OrderbookSampleStore(self.root / 'market', self.root / 'state')
+        self.assertEqual(self.store.pending_rows, 1)
+        self.assertIsNone(self.store.pending()[0]['b2_p'])
+        self.store.flush()
+        new_row = {**row, 'sampleTime': row['sampleTime'] + 1000, 'desktopTime': NOW + 1000,
+                   'b2_p': 1341, 'a2_p': 1344, 'bid_size_2': .125, 'ask_size_2': .25}
+        self.store.append([new_row])
+        self.store.flush()
+        rows = pq.read_table(path).to_pylist()
+        self.assertEqual(len(rows), 2)
+        self.assertIsNone(rows[0]['bid_size_2'])
+        self.assertEqual(rows[1]['bid_size_2'], .125)
 
     def test_source_and_receive_freshness_are_both_required(self):
         cases = [({"stamp": NOW - 10_001, "received": NOW}, "stale_quote"),

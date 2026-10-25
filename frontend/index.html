@@ -22,9 +22,9 @@
         <label for="preset">분석 프리셋</label>
         <select id="preset"><option value="relative">알트 / BTC 상대 프리미엄</option><option value="ratio">거래소 간 환산 비율</option><option value="mid">소스 A 단독</option><option value="custom">직접 조합</option></select>
         <button id="delete-preset" class="delete-preset" type="button" hidden>선택한 저장 조합 삭제</button>
-        <div class="section-label"><span>데이터 소스</span><span class="subtle">PRICE / FUNDING</span></div>
+        <div class="section-label"><span>데이터 소스</span><span class="subtle">PRICE / CANDLE / FUNDING</span></div>
         <div id="leg-controls"></div>
-        <p class="tiny-help">가격은 (매수 1호가 + 매도 1호가) / 2, 펀딩은 원본 비율 × 100인 % 값입니다. 수식에 사용한 소스만 조회합니다.</p>
+        <p class="tiny-help">가격 소스마다 중간가·N호가·금액 기준 유동성호가를 선택합니다. 기본 중간가는 (매수 1호가 + 매도 1호가) / 2이고 펀딩은 원본 비율 × 100인 % 값입니다. 수식에 사용한 소스만 조회합니다.</p>
         <p class="tiny-help">펀딩은 원천 펀딩주기 기준이며 거래소·종목별 주기가 다를 수 있습니다. A − B는 %p 차이이고, 주기가 다르면 같은 기간의 펀딩 차이를 뜻하지 않습니다.</p>
         <div class="section-label"><label for="formula">조합 수식</label><span class="subtle">A · B · C · D</span></div>
         <textarea id="formula" rows="3" spellcheck="false" aria-describedby="formula-help">((A / B) / (C / D) - 1) * 100</textarea>
@@ -41,7 +41,7 @@
           <p id="analysis-price-help" class="tiny-help">각 구간의 같은 원본 행에서 마지막 매수·매도 1호가를 가져와 중간가와 조합을 계산합니다.</p>
           <div class="settings-row"><div><label for="interval">조회 간격</label><select id="interval"><option value="1s">1초</option><option value="10s">10초</option><option value="1min">1분</option><option value="5min" selected>5분</option><option value="1h">1시간</option></select></div><div><label for="ewm-span">EMA 구간 수</label><input id="ewm-span" type="number" min="1" max="1000000" value="60" required></div></div>
         </section>
-        <section id="live-controls" hidden><div class="live-note"><span class="dot"></span><strong>실시간 중간가</strong><p>빗썸·업비트·OKX의 호가를 1초마다 조합합니다. 서버에서 계산한 최근 흐름과 소스별 호가를 함께 확인하세요.</p><p>10초 이상 지난 호가는 계산에서 제외합니다. 펀딩비율 소스는 과거 분석에서 사용할 수 있습니다.</p></div></section>
+        <section id="live-controls" hidden><div class="live-note"><span class="dot"></span><strong>실시간 선택 가격</strong><p>빗썸·업비트·OKX의 호가를 1초마다 조합합니다. 소스마다 선택한 중간가·N호가·유동성호가와 원본 최우선 호가를 함께 확인하세요.</p><p>10초 이상 지난 호가는 계산에서 제외합니다. 펀딩비율·1분봉 소스는 과거 분석에서 사용할 수 있습니다. 저장·수신 깊이 내 유동성이 부족하면 값을 추정하지 않습니다.</p></div></section>
         <button id="run-button" class="primary-button" type="submit"><span>▶</span> 분석 실행</button>
         <button id="save-combo" type="button" class="save-button">＋ 이 조합 저장</button>
       </form>
@@ -56,13 +56,13 @@
       <div id="job-progress" class="job-progress" role="status" hidden><span class="loading-ring" aria-hidden="true"></span><div><strong id="job-label">분석 준비 중</strong><span id="job-detail">조회 조건을 서버에 전달하고 있습니다.</span></div><span id="job-elapsed">0초</span></div>
       <div id="connections" class="connections" hidden></div>
       <div class="data-strip"><span id="data-status"><span class="dot muted"></span> 데이터 준비 중</span><span id="data-period">—</span><span id="updated-at">—</span></div>
-      <div class="stats-grid" id="stats"><article><span>마지막 조합 값</span><strong id="stat-latest">—</strong><small id="stat-formula">선택한 수식의 결과</small></article><article><span>구간 평균</span><strong id="stat-mean">—</strong><small id="stat-std">표준편차 —</small></article><article><span>최솟값 / 최댓값</span><strong class="range-value" id="stat-range">— / —</strong><small>전체 조회 구간 기준</small></article><article><span>유효 데이터</span><strong id="stat-count">—</strong><small id="stat-interval">동일 시간의 소스만 조합</small></article></div>
+      <div class="stats-grid" id="stats"><article><span>최근 유효 조합 값</span><strong id="stat-latest">—</strong><small id="stat-latest-time">—</small><small id="stat-formula">선택한 수식의 결과</small></article><article><span>구간 평균</span><strong id="stat-mean">—</strong><small id="stat-std">표준편차 —</small></article><article><span>최솟값 / 최댓값</span><strong class="range-value" id="stat-range">— / —</strong><small>전체 조회 구간 기준</small></article><article><span>유효 데이터</span><strong id="stat-count">—</strong><small id="stat-interval">동일 시간의 소스만 조합</small></article></div>
       <section class="panel result-panel" aria-label="조합 결과 차트">
         <div class="panel-heading"><div><div class="title-with-dot"><span class="line-dot"></span><h2>조합 결과</h2><span id="result-unit" class="unit-badge">%</span></div><code id="result-formula">((A / B) / (C / D) - 1) * 100</code></div><div class="chart-toggles"><label><input id="show-mean" type="checkbox" checked><span class="legend-line mean-line"></span>평균</label><label><input id="show-ema" type="checkbox" checked><span class="legend-line ema-line"></span>EMA</label><button id="reset-zoom" class="small-button" type="button" hidden>확대 해제</button></div></div>
         <div class="chart-wrap large"><canvas id="result-chart" aria-label="시간별 조합 결과. 아래 데이터 표에서도 확인할 수 있습니다." role="img"></canvas><div id="chart-placeholder" class="chart-placeholder"><span class="placeholder-icon">⌁</span><strong>분석 공간을 준비하고 있습니다</strong><p>데이터 소스를 조합하면 이곳에 흐름이 나타납니다.</p></div></div>
         <div class="chart-footer"><span id="cursor-info">차트 위에 마우스를 올려 값을 확인하세요.</span><span>드래그하여 구간 확대 · 모든 시간 KST</span></div>
       </section>
-      <div class="section-heading"><div><h2>소스별 데이터</h2><span>중간가·펀딩비율과 각 소스의 기준 시각을 확인하세요.</span></div><span class="subtle" id="source-count">— SOURCES</span></div>
+      <div class="section-heading"><div><h2>소스별 데이터</h2><span>선택 가격·분봉 종가·펀딩비율과 각 소스의 기준 시각을 확인하세요.</span></div><span class="subtle" id="source-count">— SOURCES</span></div>
       <div id="source-charts" class="source-grid"></div>
       <section class="panel table-panel"><details id="table-details"><summary><span><strong>계산 데이터</strong><small>최근 100개 행 · 전체 데이터는 CSV로 내보내기</small></span><span class="subtle">펼치기 ＋</span></summary><div class="table-scroll"><table><thead id="table-head"></thead><tbody id="table-body"></tbody></table></div></details></section>
       <footer class="main-footer"><span>OMS CLIENT <b>/</b> 내 데이터로 만드는 리서치</span><span id="provenance">과거 호가 분석 · 실시간 조합 · 서버에 저장한 분석 조건</span></footer>

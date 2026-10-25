@@ -12,6 +12,7 @@ import duckdb
 import pandas as pd
 
 from ..paths import ROOT
+from .pricing import normalize_price_options
 from .validation import (DataError, QueryTimeout, IDENTIFIER, INTERVALS, KST,
                          array, integer, iso_timestamp, parse_date)
 
@@ -188,19 +189,85 @@ def files_for_range(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Tim
 
 
 
-def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timestamp, step: int, *, price_mode: str = "mean"):
-    """Read interval means or one complete final source quote per interval."""
+def _selected_price_sql(columns, options, native_sizes):
+    """Build only fixed-schema SQL fragments; prices are selected before buckets."""
+    basis, level = options["price_basis"], options["book_level"]
+    if basis == "mid":
+        return [], "selected AS (SELECT *, bid / 2.0 + ask / 2.0 AS value FROM raw)"
+    side = "a" if basis in {"ask", "buy_vwap"} else "b"
+    vwap = basis in {"buy_vwap", "sell_vwap"}
+    depth = 5 if vwap else level
+
+    def physical(name):
+        return f'TRY_CAST("{name}" AS DOUBLE)' if name in columns else "NULL::DOUBLE"
+
+    raw = [f'{physical(f"{side}{index}_p")} AS p{index}' for index in range(1, depth + 1)]
+    if not vwap:
+        conditions = [f"isfinite(p{index}) AND p{index} > 0" for index in range(1, depth + 1)]
+        conditions += [f"p{index} {'>' if side == 'a' else '<'} p{index - 1}" for index in range(2, depth + 1)]
+        return raw, f"selected AS (SELECT *, CASE WHEN {' AND '.join(conditions)} THEN p{level} END AS value FROM raw)"
+    for index in range(1, depth + 1):
+        quantity = (f"{'ask' if side == 'a' else 'bid'}_size" + (f"_{index}" if index > 1 else "")) if native_sizes else f"{side}{index}_q"
+        raw.append(f"{physical(quantity)} AS q{index}")
+    notionals = [f"{'p' + str(index) + ' * ' if native_sizes else ''}q{index} AS n{index}" for index in range(1, depth + 1)]
+    validity = []
+    for index in range(1, depth + 1):
+        conditions = [f"isfinite(p{j}) AND p{j} > 0 AND isfinite(q{j}) AND q{j} >= 0 AND isfinite(n{j}) AND n{j} >= 0"
+                      for j in range(1, index + 1)]
+        conditions += [f"p{j} {'>' if side == 'a' else '<'} p{j-1}" for j in range(2, index + 1)]
+        validity.append(f"coalesce(({' AND '.join(conditions)}), false) AS v{index}")
+    # v_i requires the complete valid prefix 1..i. A gap or malformed level
+    # stops deeper fills, while a target already filled before it stays valid.
+    book_valid = "v1"
+    available = " + ".join(f"CASE WHEN v{i} THEN n{i} ELSE 0.0 END" for i in range(1, depth + 1))
+    fills = []
+    for index in range(1, depth + 1):
+        prior = " + ".join(f"CASE WHEN v{j} THEN n{j} ELSE 0.0 END" for j in range(1, index)) or "0.0"
+        fills.append(f"CASE WHEN v{index} THEN least(greatest($amount - ({prior}), 0.0), n{index}) ELSE 0.0 END AS f{index}")
+    quantity = " + ".join(f"CASE WHEN v{i} AND f{i} > 0 THEN f{i} / p{i} ELSE 0.0 END" for i in range(1, depth + 1))
+    filled = " + ".join(f"f{i}" for i in range(1, depth + 1))
+    used = " + ".join(f"CASE WHEN f{i} > 0 THEN 1 ELSE 0 END" for i in range(1, depth + 1))
+    ctes = f"""
+        notionals AS (SELECT *, {', '.join(notionals)} FROM raw),
+        validity AS (SELECT *, {', '.join(validity)} FROM notionals),
+        available AS (SELECT *, coalesce(({book_valid}), false) AS book_valid,
+                     {available} AS available_notional FROM validity),
+        fills AS (SELECT *, {', '.join(fills)} FROM available),
+        depth_stats AS (SELECT *, {quantity} AS filled_quantity,
+                       {filled} AS filled_notional, {used} AS levels_used FROM fills),
+        selected AS (
+            SELECT *,
+                CASE WHEN book_valid AND isfinite(available_notional) AND available_notional >= $amount
+                          AND filled_quantity > 0 AND isfinite(filled_quantity)
+                          AND isfinite(filled_notional / filled_quantity)
+                     THEN filled_notional / filled_quantity END AS value,
+                CASE WHEN book_valid AND isfinite(available_notional) THEN available_notional END AS liquidity_available_notional,
+                CASE WHEN book_valid AND isfinite(available_notional) AND isfinite(filled_quantity) THEN filled_quantity END AS liquidity_filled_quantity,
+                CASE WHEN book_valid AND isfinite(available_notional) THEN levels_used END AS liquidity_levels_used
+            FROM depth_stats
+        )
+    """
+    return raw, ctes
+
+
+def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timestamp, step: int, *,
+                 price_mode: str = "mean", price_basis: str = "mid", book_level=1, liquidity_amount=None):
+    """Select each snapshot's price, then average or keep its final source row."""
     if not isinstance(price_mode, str) or price_mode not in {"mean", "last"}:
         raise DataError("가격 조회 방식은 마지막 호가 또는 평균으로 선택해 주세요.")
+    options = normalize_price_options({"price_basis": price_basis, "book_level": book_level, "liquidity_amount": liquidity_amount})
+    vwap = options["price_basis"] in {"buy_vwap", "sell_vwap"}
     paths = files_for_range(exchange, ticker, start, end)
     if not paths:
         raise DataError(f"선택한 기간에 {exchange} {ticker} 호가 파일이 없습니다.")
     source = _resolve_source(exchange, ticker)
     has_sizes = source["source_kind"] == "orderbook_1s"
-    # Fixed SQL fragments depend only on our declared source schema, never input.
-    size_struct = ", bid_size := CAST(bid_size AS DOUBLE), ask_size := CAST(ask_size AS DOUBLE)" if has_sizes else ""
-    size_last = ", quote.bid_size AS bid_size, quote.ask_size AS ask_size" if has_sizes else ""
-    size_mean = ", avg(CAST(bid_size AS DOUBLE)) AS bid_size, avg(CAST(ask_size AS DOUBLE)) AS ask_size" if has_sizes else ""
+    known_notional = exchange in {"bithumb", "upbit", "binance", "okx"}
+    if vwap and not (has_sizes or known_notional):
+        raise DataError(f"{exchange}의 저장 잔량 단위를 확인할 수 없어 VWAP을 계산할 수 없습니다.")
+    extra_outputs = ["bid_size", "ask_size"] if has_sizes else []
+    if vwap:
+        extra_outputs += ["liquidity_available_notional", "liquidity_filled_quantity", "liquidity_levels_used"]
     size_filter = """
         AND isfinite(CAST(bid_size AS DOUBLE)) AND isfinite(CAST(ask_size AS DOUBLE))
         AND bid_size >= 0 AND ask_size >= 0
@@ -208,47 +275,71 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
         AND sample_interval_ms = 1000 AND market = 'KRW-USDT'
     """ if has_sizes else ""
     con = connection()
+    depth_limit = 1
     try:
         with query_deadline(con):
-            if price_mode == "last":
-                query = f"""
-                WITH buckets AS (
-                    SELECT CAST(floor(desktopTime / $step) AS BIGINT) * $step AS time,
-                           arg_max(struct_pack(
-                               bid := CAST(b1_p AS DOUBLE),
-                               ask := CAST(a1_p AS DOUBLE),
-                               quote_time := CAST(desktopTime AS BIGINT){size_struct}
-                           ), desktopTime) AS quote,
-                           count(*) AS source_rows
-                    FROM read_parquet($paths)
+            columns = {row[0] for row in con.execute("DESCRIBE SELECT * FROM read_parquet(?, union_by_name=true)", [paths]).fetchall()}
+            side = "a" if options["price_basis"] in {"ask", "buy_vwap"} else "b"
+            if options["price_basis"] in {"bid", "ask"} and f"{side}{options['book_level']}_p" not in columns:
+                raise DataError(f"{exchange} {ticker}에는 선택한 {options['book_level']}호가 깊이가 저장되어 있지 않습니다.")
+            quantity_column = ("ask_size" if side == "a" else "bid_size") if has_sizes else f"{side}1_q"
+            if vwap and quantity_column not in columns:
+                raise DataError(f"{exchange} {ticker}에는 VWAP 계산에 필요한 호가 잔량이 없습니다.")
+            for index in range(1, 6):
+                prices = [f"{side}{index}_p"] if options["price_basis"] != "mid" else [f"b{index}_p", f"a{index}_p"]
+                if not all(name in columns for name in prices):
+                    break
+                if vwap:
+                    size = (f"{'ask' if side == 'a' else 'bid'}_size" + (f"_{index}" if index > 1 else "")) if has_sizes else f"{side}{index}_q"
+                    if size not in columns:
+                        break
+                depth_limit = index
+            extra_raw, selection = _selected_price_sql(columns, options, has_sizes)
+            raw_columns = ["CAST(desktopTime AS BIGINT) AS quote_time", "CAST(b1_p AS DOUBLE) AS bid", "CAST(a1_p AS DOUBLE) AS ask", *extra_raw]
+            if has_sizes:
+                raw_columns += ["CAST(bid_size AS DOUBLE) AS bid_size", "CAST(ask_size AS DOUBLE) AS ask_size"]
+            ctes = f"""
+                raw AS (
+                    SELECT {', '.join(raw_columns)} FROM read_parquet($paths, union_by_name=true)
                     WHERE desktopTime >= $start AND desktopTime < $end
                       AND isfinite(CAST(b1_p AS DOUBLE)) AND isfinite(CAST(a1_p AS DOUBLE))
-                      AND b1_p > 0 AND a1_p >= b1_p
-                      {size_filter}
+                      AND b1_p > 0 AND a1_p >= b1_p {size_filter}
+                ), {selection}
+            """
+            if price_mode == "last":
+                packed = ["bid := bid", "ask := ask", "value := value", "quote_time := quote_time"] + [f"{name} := {name}" for name in extra_outputs]
+                extra_select = "".join(f", quote.{name} AS {name}" for name in extra_outputs)
+                query = f"""
+                WITH {ctes}, buckets AS (
+                    SELECT CAST(floor(quote_time / $step) AS BIGINT) * $step AS time,
+                           arg_max(struct_pack({', '.join(packed)}), quote_time) AS quote,
+                           count(*) AS source_rows, count(value) AS value_rows,
+                           count(*) - count(value) AS missing_value_rows
+                    FROM selected
                     GROUP BY time
                 )
                 SELECT time, quote.bid AS bid, quote.ask AS ask,
-                       quote.bid / 2.0 + quote.ask / 2.0 AS mid,
-                       source_rows, quote.quote_time AS quote_time{size_last}
+                       quote.bid / 2.0 + quote.ask / 2.0 AS mid, quote.value AS value,
+                       source_rows, value_rows, missing_value_rows,
+                       quote.quote_time AS quote_time{extra_select}
                 FROM buckets ORDER BY time
                 """
             else:
+                extra_select = "".join(f", avg({name}) AS {name}" for name in extra_outputs)
                 query = f"""
-                SELECT CAST(floor(desktopTime / $step) AS BIGINT) * $step AS time,
-                       avg(CAST(b1_p AS DOUBLE)) AS bid,
-                       avg(CAST(a1_p AS DOUBLE)) AS ask,
-                       avg(CAST(b1_p AS DOUBLE) / 2.0 + CAST(a1_p AS DOUBLE) / 2.0) AS mid,
-                       count(*) AS source_rows{size_mean}
-                FROM read_parquet($paths)
-                WHERE desktopTime >= $start AND desktopTime < $end
-                  AND isfinite(CAST(b1_p AS DOUBLE)) AND isfinite(CAST(a1_p AS DOUBLE))
-                  AND b1_p > 0 AND a1_p >= b1_p
-                  {size_filter}
+                WITH {ctes}
+                SELECT CAST(floor(quote_time / $step) AS BIGINT) * $step AS time,
+                       avg(bid) AS bid, avg(ask) AS ask, avg(bid / 2.0 + ask / 2.0) AS mid,
+                       avg(value) AS value, count(*) AS source_rows,
+                       count(value) AS value_rows, count(*) - count(value) AS missing_value_rows{extra_select}
+                FROM selected
                 GROUP BY time ORDER BY time
                 """
+            parameters = {"paths": paths, "start": int(start.value // 1_000_000), "end": int(end.value // 1_000_000), "step": step}
+            if vwap:
+                parameters["amount"] = options["liquidity_amount"]
             frame = con.execute(
-                query,
-                {"paths": paths, "start": int(start.value // 1_000_000), "end": int(end.value // 1_000_000), "step": step},
+                query, parameters,
             ).df()
     except duckdb.Error as exc:
         raise DataError(f"{exchange} {ticker} 호가 파일을 읽지 못했습니다. parquet 스키마를 확인해 주세요.") from exc
@@ -259,6 +350,11 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
     if has_sizes:
         frame.attrs.update(source_kind="orderbook_1s", sample_interval_ms=1000,
                            quantity_unit="USDT", price_unit="KRW", quote_time_basis="sampled_at")
+    frame.attrs.update(**options,
+                       liquidity_currency="KRW" if exchange in {"bithumb", "upbit", "ls"} else "USDT" if known_notional else None,
+                       quantity_basis="native_base_quantity" if has_sizes else "base_reconstructed_from_quote_notional" if known_notional else "unknown",
+                       depth_limit=depth_limit, pricing_valid_rows=int(frame["value_rows"].sum()),
+                       pricing_missing_rows=int(frame["missing_value_rows"].sum()))
     return frame.set_index("time"), int(frame["source_rows"].sum())
 
 

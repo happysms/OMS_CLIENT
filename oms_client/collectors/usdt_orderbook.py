@@ -15,7 +15,7 @@ import time
 
 from oms_client.market_data.quotes import PublicQuoteFeed
 from oms_client.storage.orderbook_samples import (
-    CollectorAlreadyRunning, EXCHANGES, OrderbookSampleStore, SpoolFull,
+    CollectorAlreadyRunning, DEPTH_COLUMNS, EXCHANGES, OrderbookSampleStore, SpoolFull,
     default_data_root, default_state_dir, fsync_directory,
 )
 
@@ -82,6 +82,26 @@ class UsdtOrderbookCollector:
         normalized = {name: _finite(quote.get(source)) for name, source in
                       (("bid", "bid"), ("ask", "ask"), ("bid_size", "bid_size"), ("ask_size", "ask_size"),
                        ("serverTime", "ts"), ("receivedTime", "receivedAt"))}
+        for side, price_key, size_key in (('bids', 'bid', 'bid_size'), ('asks', 'ask', 'ask_size')):
+            normalized[side] = [[normalized[price_key], normalized[size_key]]]
+            source_book = quote.get(side)
+            if not isinstance(source_book, list) or not source_book:
+                continue
+            try:
+                if _finite(source_book[0][0]) != normalized[price_key]:
+                    continue
+            except (TypeError, IndexError):
+                continue
+            for item in source_book[1:5]:
+                try:
+                    price, size = _finite(item[0]), _finite(item[1])
+                    previous = normalized[side][-1][0]
+                    if (price is None or size is None or price <= 0 or size < 0 or previous is None
+                            or (side == 'bids' and price > previous) or (side == 'asks' and price < previous)):
+                        break
+                    normalized[side].append([price, size])
+                except (TypeError, IndexError):
+                    break
         with self.lock:
             previous = self.latest.get(exchange)
             if previous and normalized["serverTime"] is not None and previous["serverTime"] is not None:
@@ -129,7 +149,12 @@ class UsdtOrderbookCollector:
             return None, "future_quote"
         if age > self.max_quote_age_ms or receive_age > self.max_quote_age_ms:
             return None, "stale_quote"
-        return {"exchange": exchange, "sampleTime": slot,
+        depth = dict.fromkeys(DEPTH_COLUMNS)
+        for side, prefix, size_key in (('bids', 'b', 'bid_size'), ('asks', 'a', 'ask_size')):
+            for level, (price, size) in enumerate(quote[side][1:5], start=2):
+                depth[f'{prefix}{level}_p'] = price
+                depth[f'{size_key}_{level}'] = size
+        return {"exchange": exchange, "sampleTime": slot, **depth,
                 # desktopTime is the actual observation time. The separate grid
                 # key must not make a late snapshot appear earlier in backtests.
                 "desktopTime": now_ms, "sampledAt": now_ms, "serverTime": int(source), "receivedTime": int(received),

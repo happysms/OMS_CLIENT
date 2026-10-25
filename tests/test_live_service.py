@@ -82,6 +82,45 @@ class LiveServiceTests(unittest.TestCase):
         self.assertEqual(len(snapshot["missing"]), 2)
         self.assertEqual(snapshot["result"]["stats"]["count"], 1)
 
+    def test_live_formulas_use_nth_and_vwap_prices_and_skip_incomplete_fill(self):
+        config = {**self.config, 'formula': 'A - B', 'legs': [
+            {'id': 'A', 'exchange': 'bithumb', 'ticker': 'BTC', 'price_basis': 'buy_vwap', 'liquidity_amount': 303},
+            {'id': 'B', 'exchange': 'bithumb', 'ticker': 'BTC', 'price_basis': 'ask', 'book_level': 2}]}
+        identifier, session, feed = self.session(config)
+        now = time.time()
+        session.clock = lambda: now
+        for leg in session.legs:
+            feed.on_quote({**leg, 'bid': 100, 'ask': 101, 'mid': 100.5,
+                           'bids': [[100, 2], [99, 2]], 'asks': [[101, 2], [102, 2]],
+                           'quantity_basis': 'native_base_quantity', 'ts': int(now * 1000), 'receivedAt': int(now * 1000)})
+        feed.on_status({'exchange': 'bithumb', 'state': 'connected', 'message': ''})
+        session._tick()
+        snapshot = self.manager.get(identifier)
+        self.assertAlmostEqual(snapshot['result']['result'][0], 303 / (2 + 101 / 102) - 102)
+        self.assertEqual(snapshot['result']['legs'][1]['values'], [102])
+        self.assertEqual(snapshot['result']['legs'][1]['mid'], [100.5])
+        now += 1
+        feed.on_quote({**session.quotes['A'], 'asks': [[101, 1], [102, 0]], 'ts': int(now * 1000), 'receivedAt': int(now * 1000)})
+        session._tick()
+        snapshot = self.manager.get(identifier)
+        self.assertEqual(len(snapshot['result']['times']), 1)
+        quote = next(quote for quote in snapshot['quotes'] if quote['id'] == 'A')
+        self.assertIsNone(quote['value'])
+        self.assertEqual(snapshot['missing'][0]['reason'], 'insufficient_liquidity')
+
+    def test_contract_counts_are_not_accepted_as_live_base_quantities(self):
+        config = {**self.config, 'formula': 'A', 'legs': [{'id': 'A', 'exchange': 'okx', 'ticker': 'BTC',
+                                                       'price_basis': 'buy_vwap', 'liquidity_amount': 100}]}
+        _, session, feed = self.session(config)
+        now = time.time()
+        session.clock = lambda: now
+        feed.on_quote({**session.legs[0], 'bid': 100, 'ask': 101, 'mid': 100.5, 'bids': [[100, 2]], 'asks': [[101, 2]],
+                       'quantity_basis': 'contracts', 'ts': int(now * 1000), 'receivedAt': int(now * 1000)})
+        feed.on_status({'exchange': 'okx', 'state': 'connected', 'message': ''})
+        session._tick()
+        self.assertIsNone(session.result)
+        self.assertEqual(session._missing(int(now * 1000))[0]['reason'], 'unverified_contract_quantity')
+
     def test_partial_subscription_does_not_discard_previous_quote(self):
         _, session, feed = self.session()
         now = time.time()
