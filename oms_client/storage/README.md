@@ -3,3 +3,5 @@
 `state.py`의 `StateStore`가 로그인 설정·세션 키·저장한 조합·실행 이력을 SQLite에 저장합니다. 기본 DB는 저장소의 `.state/dashboard.sqlite3`이며 `DASHBOARD_STATE_DIR`로 위치를 지정합니다.
 
 모의 계좌의 테이블과 거래 트랜잭션은 `paper_trading/service.py`가 같은 DB에서 관리합니다. 원본 시장 데이터는 `market_data/`가 `/data`에서 읽습니다. DB와 내보낸 결과는 Git에 포함하지 않습니다.
+
+`orderbook_samples.py`는 독립 USDT 수집기의 SQLite WAL spool과 UTC 시간별 Parquet 저장을 담당합니다. 먼저 커밋한 행을 임시 Parquet·fsync·원자적 교체로 반영하고 성공한 행만 spool에서 삭제합니다. 데이터 루트와 상태 디렉터리를 각각 잠그며, 재시작 후 `(exchange, sampleTime)`으로 병합합니다. 스키마·단위·실행 방법은 `../collectors/README.md`에 있습니다.

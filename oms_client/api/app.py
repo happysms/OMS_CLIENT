@@ -11,7 +11,7 @@ from . import errors
 from .auth import TransportAwareSessionInterface, configure_auth
 from .data_exports import DataExportJobs
 from .jobs import AnalysisJobs
-from .routes import analysis, backtesting, data, oms, paper_trading, workspace
+from .routes import analysis, backtesting, collectors, data, oms, paper_trading, workspace
 from .services import configure_services
 
 
@@ -61,4 +61,5 @@ def create_app(config=None):
     backtesting.register(app, jobs)
     paper_trading.register(app, paper_service)
     oms.register(app)
+    collectors.register(app)
     return app

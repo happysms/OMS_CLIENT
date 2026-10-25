@@ -19,7 +19,7 @@ class LastQuoteTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        environment = patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": self.temporary.name})
+        environment = patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": self.temporary.name, "DASHBOARD_COLLECTOR_DATA_ROOT": str(Path(self.temporary.name) / "collector")})
         environment.start()
         self.addCleanup(environment.stop)
         self.origin = int(pd.Timestamp("2026-10-25T00:00:00Z").timestamp() * 1000)

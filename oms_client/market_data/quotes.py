@@ -31,7 +31,9 @@ def parse_quotes(exchange: str, message) -> list[dict]:
                 continue
             for book in item.get("data") or []:
                 try:
-                    books.append((instrument[:-10], book["bids"][0][0], book["asks"][0][0], book["ts"]))
+                    bid, ask = book["bids"][0], book["asks"][0]
+                    books.append((instrument[:-10], bid[0], ask[0], book["ts"],
+                                  bid[1] if len(bid) > 1 else None, ask[1] if len(ask) > 1 else None))
                 except (KeyError, IndexError, TypeError):
                     continue
         elif exchange in {"bithumb", "upbit"}:
@@ -43,10 +45,11 @@ def parse_quotes(exchange: str, message) -> list[dict]:
                 stamp = float(item["timestamp"])
                 if exchange == "bithumb" and stamp > 1e14:
                     stamp /= 1000
-                books.append((code[4:], book["bid_price"], book["ask_price"], stamp))
+                books.append((code[4:], book["bid_price"], book["ask_price"], stamp,
+                              book.get("bid_size"), book.get("ask_size")))
             except (KeyError, IndexError, TypeError, ValueError, OverflowError):
                 continue
-        for ticker, raw_bid, raw_ask, raw_stamp in books:
+        for ticker, raw_bid, raw_ask, raw_stamp, raw_bid_size, raw_ask_size in books:
             try:
                 bid, ask, stamp = float(raw_bid), float(raw_ask), float(raw_stamp)
                 if not all(math.isfinite(v) for v in (bid, ask, stamp)) or bid <= 0 or ask < bid or stamp <= 0:
@@ -54,7 +57,17 @@ def parse_quotes(exchange: str, message) -> list[dict]:
                 mid = bid / 2 + ask / 2
                 if not math.isfinite(mid):
                     continue
-                quotes.append({"exchange": exchange, "ticker": ticker, "bid": bid, "ask": ask, "mid": mid, "ts": int(stamp)})
+                quote = {"exchange": exchange, "ticker": ticker, "bid": bid, "ask": ask, "mid": mid, "ts": int(stamp)}
+                # Size is optional for existing price consumers. Invalid or absent
+                # quantities must never discard an otherwise valid price snapshot.
+                for name, raw_size in (("bid_size", raw_bid_size), ("ask_size", raw_ask_size)):
+                    try:
+                        size = float(raw_size)
+                        if math.isfinite(size) and size >= 0:
+                            quote[name] = size
+                    except (ValueError, TypeError, OverflowError):
+                        pass
+                quotes.append(quote)
             except (ValueError, TypeError, OverflowError):
                 continue
     return quotes

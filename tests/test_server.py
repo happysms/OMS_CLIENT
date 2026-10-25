@@ -276,6 +276,38 @@ class ServerTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, 404)
 
+    def test_collector_status_is_authenticated_and_independent_of_analysis(self):
+        self.assertEqual(self.client.get('/api/collectors/usdt').status_code, 401)
+        self.login()
+        self.assertEqual(self.client.get('/api/collectors/usdt').json['state'], 'not_started')
+        directory = Path(self.temp.name) / 'collectors' / 'usdt'
+        directory.mkdir(parents=True)
+        (directory / 'status.json').write_text(json.dumps({'heartbeat_ms': int(time.time() * 1000),
+                                                        'state': 'running', 'pending_rows': 2}))
+        response = self.client.get('/api/collectors/usdt')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['active'])
+        self.assertEqual(response.json['pending_rows'], 2)
+        self.assertEqual(self.calls, [])
+
+    def test_full_usdt_query_csv_preserves_native_quantities_and_unit(self):
+        self.login()
+        def analyze(payload):
+            result = result_fixture(payload)
+            result['legs'][0].update(bid_size=[.125, 23.456789], ask_size=[40.25, 0], quantity_unit='USDT')
+            result['full']['legs'][0].update(bid_size=[.125, 1.5, 23.456789], ask_size=[40.25, 2.5, 0], quantity_unit='USDT')
+            return result
+        self.app.extensions['analysis_jobs'].analyzer = analyze
+        identifier = self.submit()
+        self.assertEqual(self.wait(identifier)['status'], 'complete')
+        with self.client.get(f'/api/analyses/{identifier}/csv') as response:
+            self.assertEqual(response.status_code, 200)
+            rows = list(csv.DictReader(io.StringIO(response.get_data().decode('utf-8-sig'))))
+        self.assertEqual(len(rows), 3)
+        self.assertEqual([float(row['A_bid_size']) for row in rows], [.125, 1.5, 23.456789])
+        self.assertEqual([float(row['A_ask_size']) for row in rows], [40.25, 2.5, 0])
+        self.assertEqual([row['A_quantity_unit'] for row in rows], ['USDT'] * 3)
+
     def test_login_csrf_logout_and_cookie_boundary(self):
         self.assertEqual(self.client.post("/login", data={"password": "valid-password"}).status_code, 403)
         self.assertEqual(self.login("wrong-password").status_code, 401)
@@ -454,7 +486,7 @@ class ServerTests(unittest.TestCase):
         directory = Path(self.temp.name) / "market/okx/funding/BTC/2026/10/25"
         directory.mkdir(parents=True)
         pd.DataFrame({"desktopTime": [1792886400000, 1792886460000], "serverTime": [1792886399990, 1792886459990], "fundingRate": [0, -0.0001], "nextFundingTime": [60, 0]}).to_parquet(directory / "00.parquet", index=False)
-        with patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": str(Path(self.temp.name) / "market")}):
+        with patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": str(Path(self.temp.name) / "market"), "DASHBOARD_COLLECTOR_DATA_ROOT": str(Path(self.temp.name) / "collector")}):
             catalog = self.client.get("/api/catalog")
             self.assertEqual(catalog.status_code, 200)
             self.assertEqual(catalog.json["funding_exchanges"], {"okx": ["BTC"]})

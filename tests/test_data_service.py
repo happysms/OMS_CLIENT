@@ -21,7 +21,7 @@ class DataServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        env = patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": self.temp.name})
+        env = patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": self.temp.name, "DASHBOARD_COLLECTOR_DATA_ROOT": str(Path(self.temp.name) / "collector")})
         env.start()
         self.addCleanup(env.stop)
         self.origin = int(pd.Timestamp("2026-10-25T00:00:00Z").timestamp() * 1000)

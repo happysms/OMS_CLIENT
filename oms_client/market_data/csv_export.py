@@ -140,8 +140,15 @@ def _write_aggregated(writer, exchange, ticker, start, end, interval, max_rows):
     if len(frame) > min(MAX_BUCKETS, max_rows):
         raise DataError("CSV 집계 행 한도를 초과했습니다. 기간을 줄이거나 간격을 늘려 주세요.")
     currency = "KRW" if exchange in {"bithumb", "upbit", "ls"} else "USDT"
-    writer.writerow(AGGREGATED_COLUMNS)
+    has_sizes = frame.attrs.get("quantity_unit") == "USDT" and {"bid_size", "ask_size"}.issubset(frame.columns)
+    columns = AGGREGATED_COLUMNS.copy()
+    if has_sizes:
+        columns.extend(["bid_size", "ask_size", "quantity_unit", "source_kind", "sample_interval_ms"])
+    writer.writerow(columns)
     for row in frame.itertuples():
         timestamp = pd.Timestamp(row.Index, unit="ms", tz="UTC").tz_convert(KST).isoformat()
-        writer.writerow([timestamp, exchange, ticker, currency, row.mid, row.bid, row.ask, row.ask - row.bid, row.source_rows])
-    return {"rows": len(frame), "columns": AGGREGATED_COLUMNS.copy(), "source_rows": source_rows}
+        values = [timestamp, exchange, ticker, currency, row.mid, row.bid, row.ask, row.ask - row.bid, row.source_rows]
+        if has_sizes:
+            values.extend([row.bid_size, row.ask_size, frame.attrs["quantity_unit"], frame.attrs["source_kind"], frame.attrs["sample_interval_ms"]])
+        writer.writerow(values)
+    return {"rows": len(frame), "columns": columns, "source_rows": source_rows}

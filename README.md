@@ -6,7 +6,7 @@
 
 | 탭 | 기능 |
 |---|---|
-| 데이터 | 저장된 호가 종목·기간 확인, 구간 마지막 원본 1호가·중간가 또는 구간 평균 조회, 원본·평균 집계 CSV 변환 |
+| 데이터 | 저장된 호가 종목·기간 확인, 구간 마지막 원본 1호가·중간가 또는 구간 평균 조회, 빗썸·업비트 USDT 실제 수량, 원본·평균 집계 CSV 변환 |
 | 펀딩비 | OKX·Binance·Hyperliquid의 저장된 펀딩비율, 관측 시각·정산 잔여 초, 차트·표·전체 CSV |
 | 분석 | A~D 가격·펀딩비율 조합, 과거 분석·실시간 가격 분석, 이동평균·수익률·Z-score, 조합 저장·분석 이력 |
 | 백테스트 | 단일 종목 이동평균 전략, 다음 구간 체결, 수수료·슬리피지, 자산 곡선·지표·거래 내역 |
@@ -20,15 +20,17 @@
 ```text
 server.py                       서버 실행 진입점
 routing.py                      외부 HTTPS 연결 관리 진입점
+collect_usdt.py                 빗썸·업비트 KRW-USDT 1초 호가 수집·상태 조회
 oms_client/
   market_data/                  가격·펀딩 Parquet 조회, 압축 펀딩 이력, 공개 실시간 시세
+  collectors/                   공개 호가의 1초 샘플링과 수집 상태 관리
   analysis/                     수식 계산, 과거·실시간 분석, 차트 샘플링
   backtesting/                  전략·비용·체결 모형과 성과 계산
   paper_trading/                모의 주문·잔고·포지션·체결 장부
   oms/                          OMS 연결 상태와 향후 운영 연동
   api/                          로그인, HTTP 요청, 작업 큐, 결과 CSV
     routes/                     데이터·분석·백테스트·모의투자·OMS별 API
-  storage/                      로그인·조합·조회 이력의 SQLite 저장
+  storage/                      로그인·조합·조회 이력, 수집용 SQLite 임시 저장과 Parquet 기록
   infrastructure/               외부 HTTPS 터널과 프로세스 관리
   cli.py                        서버 실행·비밀번호 설정 명령
   paths.py                      저장소 기준 경로
@@ -40,6 +42,8 @@ frontend/
   scripts/                      개발용 JavaScript 검사 도구
 tests/                          기능·인증·동시성·계산 검증
 deploy/                         사용자 서비스 설치와 설정 원본
+data/market/                    USDT 수집 Parquet; Git 제외
+.state/collectors/usdt/          수집 상태·복구용 SQLite; Git 제외
 ```
 
 각 기능 폴더의 `README.md`에 담당 로직과 수정 위치를 적었습니다. 계산 규칙은 `oms_client/`의 해당 기능에, 요청·응답은 `api/routes/`에, 화면은 `frontend/features/`의 같은 기능에 추가합니다.
@@ -49,6 +53,7 @@ deploy/                         사용자 서비스 설치와 설정 원본
 | 변경할 내용 | 수정 위치 |
 |---|---|
 | 새로운 데이터 저장 형식·거래소 시세 | `oms_client/market_data/` |
+| 수집 주기·신선도·보관 파일 기록 | `oms_client/collectors/`, `oms_client/storage/orderbook_samples.py` |
 | 새 분석 함수·통계 | `oms_client/analysis/` |
 | 전략·체결 가정·백테스트 지표 | `oms_client/backtesting/` |
 | 모의 계좌·가상 주문 규칙 | `oms_client/paper_trading/` |
@@ -57,7 +62,7 @@ deploy/                         사용자 서비스 설치와 설정 원본
 | 각 탭 화면 | `frontend/features/` |
 | 서비스 설치·외부 접속 | `deploy/`, `oms_client/infrastructure/` |
 
-원본 데이터, 인증 정보, 계좌 장부, 결과 CSV, 터널 토큰과 실행 파일은 저장소에서 제외합니다. `.state/`, `.tools/`, `.env`는 Git에 포함하지 않습니다. 프런트엔드는 외부 CDN이나 실행 프레임워크 없이 동작합니다.
+원본 데이터, 인증 정보, 계좌 장부, 결과 CSV, 터널 토큰과 실행 파일은 저장소에서 제외합니다. `data/`, `.state/`, `.tools/`, `.env`는 Git에 포함하지 않습니다. 프런트엔드는 외부 CDN이나 실행 프레임워크 없이 동작합니다.
 
 ## 실행
 
@@ -81,7 +86,7 @@ python -m venv .venv
 
 데이터 탭의 **구간 마지막 원본 호가**는 같은 원본 행의 매수·매도 1호가를 함께 선택하므로 원래 호가 단위를 유지합니다. 매수 324원·매도 325원이면 중간가는 324.5원이며, 중간가는 주문 가격과 구분합니다. **구간 평균**을 선택하면 여러 틱의 평균을 계산하므로 매수·매도 평균에도 소수점이 생길 수 있습니다. 화면에 선택 방식·거래소·종목·통화와 KST 기준 시각을 함께 표시합니다.
 
-현재 수집기는 직전 완료 1시간을 Parquet로 저장하므로 조회 가능한 마지막 시각과 실시간 시세에는 차이가 있습니다. 종목·기간·조회 간격·가격 방식을 바꾸면 이전 결과를 비우고 새 조회가 완료된 뒤 가격·차트·표를 표시합니다.
+기존 `/data` 수집기는 직전 완료 1시간을 Parquet로 저장하므로 조회 가능한 마지막 시각과 실시간 시세에는 차이가 있습니다. 아래의 USDT 전용 수집기는 현재 시간의 파일도 기본 약 5초마다 갱신합니다. 종목·기간·조회 간격·가격 방식을 바꾸면 이전 결과를 비우고 새 조회가 완료된 뒤 가격·차트·표를 표시합니다.
 
 분석 탭도 선택한 가격 방식으로 소스 중간가·수식·차트·매수/매도 호가·CSV를 함께 계산합니다. 분석 기록과 저장한 조합을 복원하면 당시 가격 방식을 유지하며, 방식이 기록되지 않은 기존 결과는 당시 계산 방식인 평균으로 복원합니다. 구간 평균 가격은 원본 주문 호가보다 작은 소수점이 나올 수 있으므로 화면에 평균임을 표시합니다.
 
@@ -99,6 +104,41 @@ ZSCORE(A / B, 60)
 한 번에 최대 31일·소스당 250,000구간을 요청할 수 있습니다. 이 값은 조회 요청의 상한입니다. 현재 로더는 `.parquet`를 읽으며, 기존 수집기의 `.parquet.gz`로 보관한 오래된 자료나 체결 `tick` 파일은 이 초기 버전의 조회 대상에 포함하지 않습니다. 실제 조회 가능 범위는 종목별 저장 시각을 확인해야 합니다.
 
 실시간 분석은 서버가 거래소 공개 WebSocket에 직접 연결합니다. 빗썸·업비트 KRW 호가와 OKX USDT 무기한 호가를 지원하며 소스/수신 시각이 10초 이상 오래된 호가는 계산에서 제외합니다. 기존 Redis·Parquet 수집기와 별도 경로이므로 실시간 차트가 움직인다는 사실만으로 아카이브 수집 상태를 판단할 수는 없습니다.
+
+## USDT 1초 호가 수집
+
+`collect_usdt.py`는 빗썸·업비트 공개 WebSocket의 **KRW-USDT**를 구독하고, 1초마다 당시의 최신 매수·매도 1호가와 실제 USDT 수량을 함께 저장합니다. 가격은 KRW, `bid_size`·`ask_size`는 USDT입니다. 두 수량은 같은 원본 호가의 잔량이며 가격을 곱한 원화 금액으로 변환하지 않습니다.
+
+거래소 메시지는 일정한 1초 주기로 오지 않으므로 거래소 갱신 사이에는 같은 호가가 반복 저장될 수 있습니다. 거래소 시각이나 로컬 수신 시각이 10초보다 오래된 호가, 연결이 끊긴 상태, 유효하지 않은 가격·수량은 저장하지 않습니다. PC 정지나 처리 지연으로 건너뛴 초를 과거 값으로 소급해서 채우지 않습니다.
+
+| 컬럼 | 의미 |
+|---|---|
+| `sampleTime` | UTC 1초 기준 시각(epoch 밀리초), 거래소별 중복 저장 방지 키 |
+| `desktopTime`, `sampledAt` | 실제 호가 채택 시각(epoch 밀리초). 조회 기간과 마지막 원본 호가의 시각 기준 |
+| `serverTime` | 거래소 호가 시각을 밀리초로 정규화한 값 |
+| `receivedTime` | 해당 WebSocket 메시지를 로컬에서 받은 시각 |
+| `b1_p`, `a1_p` | 매수·매도 1호가(KRW) |
+| `bid_size`, `ask_size` | 같은 호가의 매수·매도 실제 수량(USDT), 소수 수량 유지 |
+| `quote_age_ms` | 실제 채택 시각에서 거래소 호가 시각을 뺀 밀리초 |
+| `price_unit`, `quantity_unit`, `sample_interval_ms`, `market` | `KRW`, `USDT`, `1000`, `KRW-USDT` |
+
+수집 파일은 기본 `data/market/{bithumb|upbit}/ob_1s/USDT/YYYY/MM/DD/HH.parquet`에 UTC 시간별로 저장합니다. `DASHBOARD_COLLECTOR_DATA_ROOT`로 경로를 바꾸면 대시보드와 수집기에 같은 값을 적용합니다. 기존 `/data`는 읽기 전용으로 유지하고, 새 저장소는 기존 수집기의 `/data` 압축·삭제 작업과 분리합니다.
+
+각 초의 표본은 먼저 SQLite WAL에 커밋하고 기본 약 5초마다 Parquet에 원자적으로 반영합니다. 따라서 대시보드 조회에는 정상 상태에서도 약 5초의 저장 반영 지연이 있습니다. 재시작하면 아직 반영하지 못한 표본을 복구하며, 상태와 임시 저장 DB는 기본 `.state/collectors/usdt/`에 둡니다. `DASHBOARD_STATE_DIR`를 지정하면 그 하위 `collectors/usdt/`를 사용합니다.
+
+수집 서비스를 설치하고 상태를 확인하려면 다음을 실행합니다.
+
+```bash
+cd /home/minsung1/dev/OMS_CLIENT
+OMS_PYTHON=/home/minsung1/dev/.venv/bin/python bash deploy/install_collector_service.sh
+systemctl --user status oms-usdt-collector.service
+/home/minsung1/dev/.venv/bin/python collect_usdt.py status
+journalctl --user -u oms-usdt-collector.service -n 50 --no-pager
+```
+
+서비스 시작·중지·재시작은 `systemctl --user start|stop|restart oms-usdt-collector.service`를 사용합니다. 설치 없이 직접 수집하려면 같은 Python으로 `collect_usdt.py run`을 실행합니다. 별도 시험 저장소는 `--data-root /tmp/oms-usdt-smoke/data --state-dir /tmp/oms-usdt-smoke/state --duration 30`으로 지정할 수 있습니다. 상태 API는 로그인한 세션의 `GET /api/collectors/usdt`이며 거래소 연결, 마지막 표본·Parquet 반영 시각, 미반영 행 수와 오류를 확인할 수 있습니다.
+
+Parquet 반영 후 데이터·분석 탭에서 빗썸 또는 업비트의 **USDT**를 선택합니다. 데이터 화면은 실제 USDT 매수·매도 수량을 추가로 표시하고, 마지막 원본 방식은 가격·수량을 같은 행에서 가져옵니다. 평균 방식은 같은 유효 원본 행들의 가격·수량 평균이며 표시 시각은 구간 시작입니다. 같은 종목의 기존 호가 저장소가 있으면 이 전용 1초 저장소를 우선합니다.
 
 ## 펀딩비율 조회와 조합
 
@@ -127,7 +167,7 @@ ZSCORE(A / B, 60)
 
 기간 입력은 KST이며 시작은 포함하고 종료는 제외합니다. 원본 `desktopTime`·`serverTime`은 저장된 UTC epoch 밀리초를 유지하고, 집계의 `time_kst`는 `+09:00` 시간대가 있는 시각입니다. 파일은 UTF-8 BOM을 포함해 Excel에서 한글을 읽을 수 있습니다. 문자열이 스프레드시트 수식으로 해석될 수 있으면 앞에 작은따옴표를 붙입니다.
 
-빗썸 원본 수집기의 `b*_q`·`a*_q`는 코인 수량에 가격을 곱해 정수로 저장한 호가 금액(KRW)입니다. 원본 CSV는 이 값을 그대로 유지합니다.
+기존 빗썸·업비트 수집기의 `b*_q`·`a*_q`는 코인 수량에 가격을 곱해 정수로 저장한 호가 금액(KRW)입니다. 원본 CSV는 이 값을 그대로 유지합니다. 새 USDT 1초 수집분의 `bid_size`·`ask_size`는 실제 USDT 수량이며, 원본 CSV는 모든 시각·단위 컬럼도 보존합니다. 평균 집계 CSV에는 같은 구간의 평균 수량과 `quantity_unit`, `source_kind`, `sample_interval_ms`를 추가합니다. 조회 결과 CSV도 실제 수량이 있는 소스에 수량·단위 컬럼을 포함합니다.
 
 한 번에 최대 31일, 원본 1,000,000행, 집계 250,000구간, 파일 256MiB까지 지원합니다. 한도를 넘으면 일부만 잘라 저장하지 않고 실패 이유를 표시합니다. 기간을 줄이거나 집계 간격을 늘려 다시 생성하면 됩니다. `.parquet` 호가 파일이 대상이며 압축 아카이브와 체결 `tick`은 포함하지 않습니다.
 
@@ -161,6 +201,7 @@ ZSCORE(A / B, 60)
 |---|---|
 | 메뉴·버전 | `GET /api/modules`, `GET /api/version` |
 | 데이터·분석 | `GET /api/catalog`, `GET /api/bounds`, `POST /api/analyses`, 결과·CSV 조회 |
+| USDT 수집 상태 | `GET /api/collectors/usdt` |
 | 펀딩비율 | 카탈로그의 `funding_exchanges`, `GET /api/bounds?data_type=funding&exchange=okx&ticker=BTC`, 펀딩 소스를 지정한 분석 요청·CSV |
 | 데이터 CSV 변환 | `POST /api/data/exports`, `GET /api/data/exports/{id}`, `GET /api/data/exports/{id}/csv` |
 | 백테스트 | `POST /api/backtests`, `GET /api/backtests/{id}`, `GET /api/backtests/{id}/csv` |
@@ -168,6 +209,8 @@ ZSCORE(A / B, 60)
 | OMS | `GET /api/oms/status` — 현재 연결 예정 상태 |
 
 `POST /api/analyses`는 `price_mode: "last" | "mean"`을 지원하며 생략하면 기존과 같이 `mean`입니다. 마지막 원본 방식의 각 `legs`에는 실제 원본 시각(epoch 밀리초)의 `quote_times` 배열이 포함됩니다. 데이터·분석 탭은 새 조회에서 `last`를 기본으로 요청하고 선택한 방식을 명시해서 전송합니다. 가격 방식은 분석 이력·저장한 조합·조회 결과 CSV에도 유지됩니다.
+
+USDT 전용 수집 소스의 price leg는 `bid_size`, `ask_size` 배열과 `quantity_unit: "USDT"`, `source_kind: "orderbook_1s"`, `sample_interval_ms: 1000`, `quote_time_basis: "sampled_at"`를 함께 반환합니다. 기존 호가 금액 컬럼을 실제 수량으로 해석하지 않습니다.
 
 각 leg의 `data_type`은 `price` 또는 `funding`이며 생략하면 기존 가격 소스입니다. 펀딩 leg는 `values`(%), `funding_rate`(비율 원단위), `source_times`, `server_times`, `next_funding_in_seconds`를 반환하며 가상의 bid/ask를 만들지 않습니다. 단독 조회도 `legs: [{id: "A", data_type: "funding", exchange: "okx", ticker: "BTC"}]`, `formula: "A"`, `unit: "%"`로 같은 분석 API를 사용합니다.
 
@@ -204,4 +247,4 @@ cd /home/minsung1/dev/OMS_CLIENT
 npm --prefix frontend run check
 ```
 
-인증·CSRF·경로 제한·조회 정렬·안전한 수식·작업 큐·원본 CSV 컬럼·행 보존·집계·파일 한도·비공개 다운로드·실시간 시세·백테스트의 다음 구간 체결·수수료·모의 장부 원자성·시세 유효성 등을 검증합니다. 원본 수집기나 운영 OMS를 재시작하거나 변경하는 테스트는 실행하지 않습니다.
+인증·CSRF·경로 제한·조회 정렬·안전한 수식·작업 큐·원본 CSV 컬럼·행 보존·집계·파일 한도·비공개 다운로드·실시간 시세·USDT 1초 샘플링과 복구·실제 수량·백테스트의 다음 구간 체결·수수료·모의 장부 원자성·시세 유효성 등을 검증합니다. 원본 수집기나 운영 OMS를 재시작하거나 변경하는 테스트는 실행하지 않습니다.

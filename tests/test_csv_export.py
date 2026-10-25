@@ -24,7 +24,7 @@ class CsvConversionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        env = patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": str(self.root / "data")})
+        env = patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": str(self.root / "data"), "DASHBOARD_COLLECTOR_DATA_ROOT": str(self.root / "collector")})
         env.start()
         self.addCleanup(env.stop)
         self.origin = int(pd.Timestamp("2026-10-25T00:00:00Z").timestamp() * 1000)

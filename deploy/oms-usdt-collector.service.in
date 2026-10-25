@@ -1,0 +1,23 @@
+[Unit]
+Description=OMS Client Bithumb and Upbit USDT one-second orderbooks
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@APP_ROOT@
+ExecStart="@PYTHON@" "@APP_ROOT@/collect_usdt.py" run --data-root "@DATA_ROOT@" --state-dir "@COLLECTOR_STATE@" --flush-seconds 5
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+MemoryMax=512M
+CPUQuota=100%
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

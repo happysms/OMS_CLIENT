@@ -161,6 +161,10 @@ def analyze(payload: dict) -> dict:
     smooth = result.ewm(span=span).mean()
     warnings = []
     has_funding = any(leg["data_type"] == "funding" for leg in legs)
+    if any(frame.attrs.get("source_kind") == "orderbook_1s" for frame in loaded.values()):
+        warnings.append("USDT 1초 호가는 수집 시점의 최신 매수·매도 1호가와 실제 USDT 수량입니다. 거래소 갱신 사이에는 같은 호가가 반복될 수 있으며, 원본 행의 시각은 실제 채택 시각입니다. 거래소·수신 시각은 원본 CSV에 보존합니다.")
+        if price_mode == "mean":
+            warnings.append("USDT 수량은 가격과 동일한 유효 원본 행들을 구간 평균한 값입니다.")
     if has_funding:
         warnings.append("펀딩 시리즈의 수식 값은 관측 펀딩비율(%)입니다. 계좌의 실제 지급·수취 금액이 아니며, 거래소·종목별 정산 주기를 환산하거나 합산하지 않습니다.")
         if price_mode == "mean":
@@ -196,12 +200,18 @@ def analyze(payload: dict) -> dict:
                 full_legs.append(funding_leg(frame))
             continue
         info = {**leg, "currency": "KRW" if leg["exchange"] in {"bithumb", "upbit", "ls"} else "USDT"}
-        output_leg = {**info, **{column: array(frame.iloc[selection][column]) for column in ["mid", "bid", "ask"]}}
+        columns = ["mid", "bid", "ask"]
+        if (frame.attrs.get("source_kind") == "orderbook_1s"
+                and frame.attrs.get("quantity_unit") == "USDT"
+                and {"bid_size", "ask_size"}.issubset(frame.columns)):
+            info.update({name: frame.attrs[name] for name in ["source_kind", "sample_interval_ms", "quantity_unit", "price_unit", "quote_time_basis"]})
+            columns.extend(["bid_size", "ask_size"])
+        output_leg = {**info, **{column: array(frame.iloc[selection][column]) for column in columns}}
         if price_mode == "last":
             output_leg["quote_times"] = [int(value) for value in frame.iloc[selection]["quote_time"]]
         output_legs.append(output_leg)
         if include_full:
-            full_leg = {**info, **{column: array(frame[column]) for column in ["mid", "bid", "ask"]}}
+            full_leg = {**info, **{column: array(frame[column]) for column in columns}}
             if price_mode == "last":
                 full_leg["quote_times"] = [int(value) for value in frame["quote_time"]]
             full_legs.append(full_leg)

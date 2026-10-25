@@ -59,6 +59,8 @@ def _write_csv(path: Path, result: dict, unit: str):
                     header.extend([f"{identifier}_{leg['exchange']}_{leg['ticker']}_funding_rate_pct", f"{identifier}_funding_rate_ratio", f"{identifier}_source_time_kst", f"{identifier}_server_time_kst", f"{identifier}_next_funding_in_seconds"])
                 else:
                     header.extend([f"{identifier}_{leg['exchange']}_{leg['ticker']}_mid", f"{identifier}_bid", f"{identifier}_ask"])
+                    if leg.get("quantity_unit") and "bid_size" in leg and "ask_size" in leg:
+                        header.extend([f"{identifier}_bid_size", f"{identifier}_ask_size", f"{identifier}_quantity_unit"])
             if include_mode:
                 header.append("price_mode")
             if last_quotes:
@@ -72,6 +74,8 @@ def _write_csv(path: Path, result: dict, unit: str):
                         row.extend([leg["values"][index], leg["funding_rate"][index], _kst_csv_time(leg["source_times"][index]), _kst_csv_time(_optional_value(leg, "server_times", index)), _optional_value(leg, "next_funding_in_seconds", index)])
                     else:
                         row.extend([leg["mid"][index], leg["bid"][index], leg["ask"][index]])
+                        if leg.get("quantity_unit") and "bid_size" in leg and "ask_size" in leg:
+                            row.extend([leg["bid_size"][index], leg["ask_size"][index], leg["quantity_unit"]])
                 if include_mode:
                     row.append("last" if last_quotes else "mean")
                 if last_quotes:
