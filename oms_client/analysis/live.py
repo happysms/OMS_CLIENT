@@ -14,6 +14,7 @@ from ..market_data.pricing import normalize_price_options, select_quote_price
 from ..market_data.validation import (DataError, IDENTIFIER, array, integer,
                                       iso_timestamp, number)
 from .formulas import evaluate, formula_ids, parse_formula
+from .sources import source_map
 
 MAX_SAMPLES = 3600
 QUOTE_TTL_MS = 10_000
@@ -24,14 +25,8 @@ class _LiveSession:
         self.id = identifier
         self.formula = payload["formula"]
         ids = formula_ids(self.formula)
-        candidates = payload.get("legs")
-        if not isinstance(candidates, list) or not 1 <= len(candidates) <= 4:
-            raise DataError("실시간 소스를 A~D 중 1~4개 선택하세요.")
-        by_id = {}
-        for leg in candidates:
-            if not isinstance(leg, dict) or not isinstance(leg.get("id"), str) or leg.get("id") not in {"A", "B", "C", "D"} or leg["id"] in by_id:
-                raise DataError("실시간 소스의 이름은 중복 없는 A~D여야 합니다.")
-            by_id[leg["id"]] = leg
+        by_id = source_map(payload.get("legs"))
+        self.tree = parse_formula(self.formula, set(by_id))
         self.legs = []
         for identifier in ids:
             leg = by_id.get(identifier)
@@ -48,7 +43,6 @@ class _LiveSession:
                               **normalize_price_options(leg)})
         self.legs_by_id = {leg['id']: leg for leg in self.legs}
         self.span = integer(payload.get("ewm_span", 60), "EMA 구간 수", 1, 1_000_000)
-        self.tree = parse_formula(self.formula, set(ids))
         for node in ast.walk(self.tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"MA", "ZSCORE", "RET", "DIFF"}:
                 if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and node.args[1].value >= MAX_SAMPLES:
@@ -161,6 +155,7 @@ class _LiveSession:
             with self.lock:
                 self.error = "실시간 계산을 완료하지 못했습니다. 수식과 소스를 확인하고 다시 시작하세요."
                 self.status = "failed"
+                self.samples.clear()
             self.feed.stop()
 
     def snapshot(self):
@@ -177,6 +172,7 @@ class _LiveSession:
             self.status = "stopped"
             self.last_access = time.monotonic()
             self.stop_event.set()
+            self.samples.clear()
         self.feed.stop()
         if self.thread.is_alive() and self.thread is not threading.current_thread():
             self.thread.join(timeout=2)

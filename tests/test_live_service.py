@@ -3,11 +3,13 @@ from pathlib import Path
 import sys
 import time
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from oms_client.market_data import validation as ds
 from oms_client.analysis.live import LiveAnalysisManager
-from oms_client.market_data.quotes import parse_quotes
+from oms_client.market_data.quotes import _subscription, parse_quotes
+from oms_client.analysis.sources import SOURCE_IDS
 
 
 class FakeFeed:
@@ -66,6 +68,60 @@ class LiveServiceTests(unittest.TestCase):
             with self.subTest(data_type=data_type), self.assertRaisesRegex(ds.DataError, "펀딩|1분봉"):
                 self.manager.start(config)
         self.assertEqual(len(FakeFeed.instances), before)
+
+    def test_twenty_six_sources_sample_and_subscribe_to_shared_market_once(self):
+        config = {"formula": "+".join(SOURCE_IDS), "legs": [
+            {"id": identifier, "exchange": "okx", "ticker": "BTC"} for identifier in SOURCE_IDS]}
+        identifier, session, feed = self.session(config)
+        now = time.time()
+        session.clock = lambda: now
+        feed.on_status({"exchange": "okx", "state": "connected", "message": ""})
+        for leg in session.legs:
+            feed.on_quote({**leg, "mid": 100, "bid": 99, "ask": 101, "ts": now * 1000, "receivedAt": now * 1000})
+        session._tick()
+        result = self.manager.get(identifier)["result"]
+        self.assertEqual(result["result"], [2600])
+        self.assertEqual([leg["id"] for leg in result["legs"]], list(SOURCE_IDS))
+        self.assertEqual(_subscription("okx", session.legs)["args"], [{"channel": "books5", "instId": "BTC-USDT-SWAP"}])
+
+    def test_extended_ids_reject_missing_duplicate_and_too_many_before_feed(self):
+        before = len(FakeFeed.instances)
+        valid = [{"id": identifier, "exchange": "bithumb", "ticker": "BTC"} for identifier in SOURCE_IDS]
+        for legs, formula in [(valid[:4], "E"), ([valid[4], valid[4]], "E"), (valid + [{"id": "AA"}], "A")]:
+            with self.subTest(legs=legs, formula=formula), self.assertRaises(ds.DataError):
+                self.manager.start({"legs": legs, "formula": formula})
+        self.assertEqual(len(FakeFeed.instances), before)
+
+    def test_stopped_sessions_release_raw_samples_but_keep_last_result(self):
+        identifier, session, feed = self.session()
+        now = time.time()
+        session.clock = lambda: now
+        self.quotes(session, feed, now)
+        session._tick()
+        result = session.result
+        self.assertEqual(len(session.samples), 1)
+        self.manager.stop(identifier)
+        self.assertEqual(len(session.samples), 0)
+        snapshot = self.manager.get(identifier)
+        self.assertIs(snapshot['result'], result)
+        self.assertEqual(snapshot['status'], 'stopped')
+        self.assertEqual(len(snapshot['quotes']), 2)
+        self.assertTrue(feed.stopped)
+
+    def test_failed_sessions_release_raw_samples_and_stop_feed(self):
+        identifier, session, feed = self.session()
+        now = time.time()
+        session.clock = lambda: now
+        self.quotes(session, feed, now)
+        session._tick()
+        result = session.result
+        with patch.object(session.stop_event, 'wait', return_value=False), patch.object(session, '_tick', side_effect=RuntimeError('test failure')):
+            session._sample_loop()
+        snapshot = self.manager.get(identifier)
+        self.assertEqual(snapshot['status'], 'failed')
+        self.assertIs(snapshot['result'], result)
+        self.assertEqual(len(session.samples), 0)
+        self.assertTrue(feed.stopped)
 
     def test_server_composes_once_all_sources_are_fresh_and_stops_on_stale(self):
         identifier, session, feed = self.session()

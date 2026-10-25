@@ -12,6 +12,7 @@ from ..market_data.validation import (DataError, INTERVALS, KST, MAX_RANGE_DAYS,
                                       MAX_BUCKETS, array, integer, number, parse_date)
 from .formulas import FUNCTIONS, FUNCTION_NAMES, evaluate, formula_ids, parse_formula
 from .sampling import select_points
+from .sources import MAX_SOURCES, MAX_TOTAL_SOURCE_BUCKETS, SOURCE_IDS, source_map
 
 
 def catalog() -> dict:
@@ -64,6 +65,7 @@ def catalog() -> dict:
             {"id": "candle", "label": "1분봉 종가", "formula_value": "values", "unit": "KRW",
              "kind": "completed_candle", "live_supported": False},
         ],
+        "source_ids": list(SOURCE_IDS),
         "defaults": {
             "legs": legs,
             "start": start.isoformat(),
@@ -77,7 +79,8 @@ def catalog() -> dict:
         "price_bases": ['mid', 'bid', 'ask', 'buy_vwap', 'sell_vwap'],
         "max_book_level": 5,
         "functions": [dict(item) for item in FUNCTIONS],
-        "limits": {"max_range_days": MAX_RANGE_DAYS, "max_buckets": MAX_BUCKETS, "max_chart_points": 6000},
+        "limits": {"max_range_days": MAX_RANGE_DAYS, "max_buckets": MAX_BUCKETS, "max_chart_points": 6000,
+                   "max_sources": MAX_SOURCES, "max_total_source_buckets": MAX_TOTAL_SOURCE_BUCKETS},
     }
 
 
@@ -91,15 +94,7 @@ def analyze(payload: dict) -> dict:
     """
     if not isinstance(payload, dict):
         raise DataError("조회 조건을 JSON 객체로 보내 주세요.")
-    requested = payload.get("legs")
-    if not isinstance(requested, list) or not 1 <= len(requested) <= 4:
-        raise DataError("분석 시리즈를 1~4개 선택해 주세요.")
-    requested_by_id = {}
-    for leg in requested:
-        if (not isinstance(leg, dict) or not isinstance(leg.get("id"), str)
-                or leg["id"] not in {"A", "B", "C", "D"} or leg["id"] in requested_by_id):
-            raise DataError("분석 시리즈 이름은 중복 없는 A~D로 지정해 주세요.")
-        requested_by_id[leg["id"]] = leg
+    requested_by_id = source_map(payload.get("legs"))
     default_formula = "((A / B) / (C / D) - 1) * 100" if len(requested_by_id) == 4 else "A"
     formula = payload.get("formula", default_formula)
     tree = parse_formula(formula, set(requested_by_id))
@@ -151,12 +146,17 @@ def analyze(payload: dict) -> dict:
     if type(include_full) is not bool:
         raise DataError("include_full_data는 true 또는 false로 지정해 주세요.")
 
-    loaded, rows_read, source_keys = {}, 0, {}
+    source_keys = {}
     for leg in legs:
         key = (leg["data_type"], leg["exchange"], leg["ticker"])
         if leg['data_type'] == 'price':
             key += (leg['price_basis'], leg['book_level'], leg['liquidity_amount'])
         source_keys[leg['id']] = key
+    if buckets * len(legs) > MAX_TOTAL_SOURCE_BUCKETS:
+        raise DataError(f"수식에 참조한 소스 수 × 시간 구간 수가 {MAX_TOTAL_SOURCE_BUCKETS:,}개를 초과합니다. 기간·소스 수를 줄이거나 조회 간격을 늘려 주세요.")
+    loaded, rows_read = {}, 0
+    for leg in legs:
+        key = source_keys[leg['id']]
         if key not in loaded:
             reader = {'funding': funding.read_buckets, 'candle': candles.read_buckets,
                       'price': parquet.read_buckets}[leg['data_type']]

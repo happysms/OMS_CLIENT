@@ -8,6 +8,9 @@ import numpy as np
 import pandas as pd
 
 from ..market_data.validation import DataError
+from .sources import SOURCE_ID_SET
+
+MAX_FORMULA_NODES = 192
 
 FUNCTIONS = [
     {"name": "MA", "syntax": "MA(A, 60)", "description": "최근 n개 공통 표본의 이동평균"},
@@ -27,7 +30,7 @@ def parse_formula(formula, ids: set[str]):
         tree = ast.parse(formula, mode="eval")
     except (SyntaxError, RecursionError) as exc:
         raise DataError("조합식 문법을 확인해 주세요. 예: (A / B) / (C / D)") from exc
-    if sum(1 for _ in ast.walk(tree)) > 96:
+    if sum(1 for _ in ast.walk(tree)) > MAX_FORMULA_NODES:
         raise DataError("조합식이 너무 복잡합니다.")
 
     def validate(node):
@@ -56,20 +59,20 @@ def parse_formula(formula, ids: set[str]):
             except (ValueError, OverflowError) as exc:
                 raise DataError("조합식의 숫자가 너무 큽니다.") from exc
         else:
-            raise DataError("조합식은 선택한 A~D와 숫자, 사칙연산, 괄호 및 지원하는 함수만 사용할 수 있습니다.")
+            raise DataError("조합식은 추가한 A~Z 소스와 숫자, 사칙연산, 괄호 및 지원하는 함수만 사용할 수 있습니다.")
 
     validate(tree)
     if not any(isinstance(node, ast.Name) and node.id in ids for node in ast.walk(tree)):
-        raise DataError("조합식에 가격 시리즈 A~D를 하나 이상 포함해 주세요.")
+        raise DataError("조합식에 추가한 데이터 소스 A~Z를 하나 이상 포함해 주세요.")
     return tree
 
 
 
 def formula_ids(formula: str) -> list[str]:
     """Validate a safe formula and list its source IDs, excluding function names."""
-    tree = parse_formula(formula, {"A", "B", "C", "D"})
+    tree = parse_formula(formula, SOURCE_ID_SET)
     return sorted({node.id for node in ast.walk(tree)
-                   if isinstance(node, ast.Name) and node.id in {"A", "B", "C", "D"}})
+                   if isinstance(node, ast.Name) and node.id in SOURCE_ID_SET})
 
 
 

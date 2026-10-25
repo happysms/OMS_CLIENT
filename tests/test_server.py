@@ -17,6 +17,7 @@ from urllib.parse import urljoin, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from oms_client.analysis import history as data_service
+from oms_client.analysis.sources import SOURCE_IDS
 from oms_client.api import create_app
 from oms_client.cli import _waitress_proxy_options
 from waitress.proxy_headers import proxy_headers_middleware
@@ -587,6 +588,49 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(saved.status_code, 201)
         self.assertEqual(self.client.get("/api/presets").json["items"][0]["config"]["legs"], config["legs"])
         self.assertEqual(self.client.get("/api/history").json["items"][0]["config"]["legs"], config["legs"])
+
+    def test_extended_sources_keep_ids_through_jobs_full_csv_presets_and_history(self):
+        self.login()
+        self.app.extensions["analysis_jobs"].analyzer = funding_result_fixture
+        config = {**self.query(), "formula": "+".join(SOURCE_IDS), "unit": "%", "price_mode": "last",
+                  "legs": [{"id": identifier, "exchange": "okx", "ticker": "BTC", "data_type": "funding"}
+                           for identifier in SOURCE_IDS]}
+        created = self.client.post('/api/analyses', json=config, headers=self.headers())
+        self.assertEqual(created.status_code, 202, created.get_data(as_text=True))
+        result = self.wait(created.json['id'])
+        self.assertEqual(result['status'], 'complete', result)
+        self.assertEqual(result['config']['legs'], config['legs'])
+        self.assertEqual([leg['id'] for leg in result['result']['legs']], list(SOURCE_IDS))
+        self.assertEqual(len(result['result']['times']), 2)
+        with self.client.get(f"/api/analyses/{result['id']}/csv") as response:
+            self.assertEqual(response.status_code, 200)
+            rows = list(csv.DictReader(io.StringIO(response.get_data().decode('utf-8-sig'))))
+            self.assertEqual(len(rows), 3)
+            for identifier in ('E', 'M', 'Z'):
+                self.assertEqual(float(rows[1][f'{identifier}_funding_rate_ratio']), -.0002)
+                self.assertIn(f'{identifier}_okx_BTC_funding_rate_pct', rows[0])
+                self.assertNotIn(f'{identifier}_bid', rows[0])
+        saved = self.client.post('/api/presets', json={'name':'26개 소스', 'config':config}, headers=self.headers())
+        self.assertEqual(saved.status_code, 201, saved.get_data(as_text=True))
+        self.assertEqual(self.client.get('/api/presets').json['items'][0]['config'], config)
+        self.assertEqual(self.client.get('/api/history').json['items'][0]['config'], config)
+
+    def test_source_id_validation_precedes_queue_preset_writes_and_live_sessions(self):
+        self.login()
+        variants = [
+            {**self.query(), 'formula':'E'},
+            {**self.query(), 'formula':'E', 'legs':[{'id':'E'}, {'id':'E'}]},
+            {**self.query(), 'formula':'AA', 'legs':[{'id':'AA'}]},
+            {**self.query(), 'legs':[{'id':identifier} for identifier in [*SOURCE_IDS, 'AA']]},
+        ]
+        for config in variants:
+            for path in ('/api/analyses', '/api/live', '/api/presets'):
+                payload = {'name':'거부될 조합', 'config':config} if path.endswith('presets') else config
+                with self.subTest(path=path, config=config):
+                    self.assertEqual(self.client.post(path, json=payload, headers=self.headers()).status_code, 400)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.live.items, {})
+        self.assertEqual(self.client.get('/api/presets').json['items'], [])
 
     def test_funding_catalog_bounds_are_typed_and_paths_are_restricted(self):
         self.login()

@@ -12,6 +12,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from oms_client.analysis import history as service
 from oms_client.analysis.formulas import FUNCTION_NAMES, formula_ids
+from oms_client.analysis.sources import SOURCE_IDS
 from oms_client.market_data import parquet
 from oms_client.market_data.validation import QueryTimeout
 from oms_client.market_data import export as export_history
@@ -137,6 +138,56 @@ class DataServiceTests(unittest.TestCase):
         result = service.catalog()
         self.assertEqual(set(result["exchanges"]), {"bithumb", "okx"})
         self.assertEqual(result["defaults"]["legs"][0]["ticker"], "CT")
+
+    def test_all_twenty_six_sources_compose_with_one_read_for_aliases(self):
+        legs = [{"id": identifier, "exchange": "bithumb", "ticker": "CT"} for identifier in SOURCE_IDS]
+        with patch.object(parquet, "read_buckets", wraps=parquet.read_buckets) as reader:
+            result = self.request(legs=legs, formula=" + ".join(SOURCE_IDS), max_points=2, include_full_data=True)
+        reader.assert_called_once()
+        self.assertEqual(result["result"], [260, 1300])
+        self.assertEqual(result["full"]["result"], [260, 520, 780, 1040, 1300])
+        self.assertEqual([leg["id"] for leg in result["full"]["legs"]], list(SOURCE_IDS))
+        self.assertEqual(result["meta"]["rows_read"], 5)
+        self.assertEqual(formula_ids("EMA(E / Z, 2) - ABS(F - Y)"), ["E", "F", "Y", "Z"])
+        catalog = service.catalog()
+        self.assertEqual(catalog["source_ids"], list(SOURCE_IDS))
+        self.assertEqual(catalog["limits"]["max_sources"], 26)
+        self.assertEqual(catalog["limits"]["max_total_source_buckets"], 1_000_000)
+
+    def test_nonconsecutive_added_ids_mix_price_and_funding_without_reconverting_units(self):
+        path = Path(self.temp.name) / "binance/funding/BTC/2026/10/25/00.parquet"
+        path.parent.mkdir(parents=True)
+        pd.DataFrame({"desktopTime": [self.origin + s * 1000 for s in [0, 60, 180, 240]],
+                      "serverTime": [self.origin + s * 1000 - 10 for s in [0, 60, 180, 240]],
+                      "fundingRate": [0, -.0001, .0002, .0003], "nextFundingTime": [60, 0, -1, 120]}).to_parquet(path, index=False)
+        result = self.request(legs=[{"id": "A", "exchange": "bithumb", "ticker": "CT"},
+                                    {"id": "E", "exchange": "binance", "ticker": "BTC", "data_type": "funding"},
+                                    {"id": "Z", "exchange": "okx", "ticker": "CT"}],
+                              formula="(A + Z) * E / 100", include_full_data=True)
+        self.assertEqual([leg["id"] for leg in result["legs"]], ["A", "E", "Z"])
+        self.assertEqual(result["legs"][1]["values"], [0, -.01, .02, .03])
+        self.assertEqual(result["legs"][1]["funding_rate"], [0, -.0001, .0002, .0003])
+        self.assertEqual(result["times"], [self.origin + s * 1000 for s in [0, 60, 180, 240]])
+        for actual, expected in zip(result["result"], [0, -.0024, .0096, .018]):
+            self.assertAlmostEqual(actual, expected)
+
+    def test_added_source_bounds_and_total_output_budget_fail_before_loading(self):
+        invalid = [[{"id": identifier, "exchange": "bithumb", "ticker": "CT"} for identifier in [*SOURCE_IDS, "AA"]],
+                   [{"id": "E"}, {"id": "E"}], [{"id": "AA"}], [{"id": "e"}], [{"id": "Ａ"}]]
+        with patch.object(parquet, "read_buckets") as reader:
+            for legs in invalid:
+                with self.subTest(legs=legs), self.assertRaises(service.DataError):
+                    self.request(legs=legs, formula="E")
+            legs = [{"id": identifier, "exchange": "bithumb", "ticker": "CT"} for identifier in SOURCE_IDS]
+            with self.assertRaisesRegex(service.DataError, "소스 수 × 시간 구간 수"):
+                self.request(legs=legs, formula="+".join(SOURCE_IDS), start="2026-10-25T09:00", end="2026-11-25T09:00")
+            with self.assertRaises(service.DataError):
+                self.request(legs=legs[:5], formula="Z")
+            reader.assert_not_called()
+        # Unused controls do not consume the output budget or force alignment.
+        result = self.request(legs=legs, formula="Z", start="2026-10-25T09:00", end="2026-11-25T09:00")
+        self.assertEqual([leg["id"] for leg in result["legs"]], ["Z"])
+        self.assertEqual(result["meta"]["rows_read"], 5)
 
     def test_unused_sources_are_not_validated_loaded_or_aligned(self):
         request = self.request(formula="A", legs=[

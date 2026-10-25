@@ -2,7 +2,8 @@
 import json
 
 from ..analysis import history as data_service
-from ..analysis.formulas import formula_ids
+from ..analysis.formulas import formula_ids, parse_formula
+from ..analysis.sources import source_map
 from ..market_data.pricing import normalize_price_options
 
 CONFIG_KEYS = {"legs", "formula", "start", "end", "interval", "ewm_span", "max_points", "unit", "price_mode"}
@@ -13,8 +14,7 @@ def _query_config(payload):
     unknown = set(payload) - CONFIG_KEYS
     if unknown:
         raise data_service.DataError("지원하지 않는 분석 조건입니다. 화면의 조회 설정을 확인해 주세요.")
-    if not isinstance(payload.get("legs"), list) or not 1 <= len(payload["legs"]) <= 4:
-        raise data_service.DataError("데이터 소스를 1~4개 선택해 주세요.")
+    by_id = source_map(payload.get("legs"))
     for leg in payload["legs"]:
         if not isinstance(leg, dict):
             raise data_service.DataError("각 데이터 소스는 JSON 객체로 보내 주세요.")
@@ -24,6 +24,7 @@ def _query_config(payload):
     if not isinstance(payload.get("formula"), str) or not 1 <= len(payload["formula"]) <= 256:
         raise data_service.DataError("조합식을 256자 이내로 입력해 주세요.")
     referenced = set(formula_ids(payload['formula']))
+    parse_formula(payload['formula'], set(by_id))
     for leg in payload['legs']:
         identifier = leg.get('id')
         if not isinstance(identifier, str) or identifier not in referenced:
