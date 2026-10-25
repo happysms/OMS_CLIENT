@@ -1,0 +1,22 @@
+[Unit]
+Description=OMS Client research and simulation server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@APP_ROOT@
+ExecStart="@PYTHON@" "@APP_ROOT@/server.py" --host 0.0.0.0 --port 8765 --behind-proxy
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile="@STATE_ROOT@/service.env"
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+MemoryMax=1G
+CPUQuota=200%
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

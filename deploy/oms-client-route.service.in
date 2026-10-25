@@ -1,0 +1,21 @@
+[Unit]
+Description=OMS Client temporary external HTTPS route
+After=network-online.target oms-client.service
+Wants=network-online.target oms-client.service
+
+[Service]
+Type=simple
+WorkingDirectory=@APP_ROOT@
+ExecStart="@PYTHON@" "@APP_ROOT@/routing.py" quick
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile="@STATE_ROOT@/service.env"
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+MemoryMax=512M
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

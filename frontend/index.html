@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101518">
+  <meta name="description" content="데이터 조회, 서버 분석, 백테스트와 모의투자를 한곳에서 사용하는 OMS Client">
+  <title>OMS Client · 리서치와 모의투자</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23101518'/%3E%3Cpath d='M8 27V16l8 8 8-14 8 9' fill='none' stroke='%235bdfb7' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="OMS Client 홈"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 24V12l8 8L22 5l6 10"/></svg><span>OMS<span class="brand-light"> Client</span><small>RESEARCH &amp; TRADING WORKSPACE</small></span></a>
+    <nav class="module-nav" aria-label="워크스페이스" role="tablist"><button id="tab-data" type="button" data-module="data" role="tab" aria-controls="module-data" aria-selected="false" tabindex="-1">데이터</button><button id="tab-analysis" type="button" class="active" data-module="analysis" role="tab" aria-controls="module-analysis" aria-selected="true">분석</button><button id="tab-backtest" type="button" data-module="backtest" role="tab" aria-controls="module-backtest" aria-selected="false" tabindex="-1">백테스트</button><button id="tab-paper" type="button" data-module="paper" role="tab" aria-controls="module-paper" aria-selected="false" tabindex="-1">모의투자</button><button id="tab-oms" type="button" data-module="oms" role="tab" aria-controls="module-oms" aria-selected="false" tabindex="-1">OMS <small>예정</small></button></nav>
+    <div class="top-actions"><span class="private-tag" id="account-label">개인 워크스페이스</span><button id="refresh-data" class="quiet-button" type="button">↻ 새 데이터 확인</button><button id="logout-button" class="small-button" type="button">로그아웃</button></div>
+  </header>
+  <div id="module-analysis" class="workspace" role="tabpanel" aria-labelledby="tab-analysis">
+    <aside class="sidebar" aria-label="분석 설정">
+      <div class="sidebar-heading"><span class="eyebrow">COMPOSER</span><span class="subtle">01 — 설정</span></div>
+      <form id="composer">
+        <label for="preset">분석 프리셋</label>
+        <select id="preset"><option value="relative">알트 / BTC 상대 프리미엄</option><option value="ratio">거래소 간 환산 비율</option><option value="mid">단일 종목 중간가</option><option value="custom">직접 조합</option></select>
+        <button id="delete-preset" class="delete-preset" type="button" hidden>선택한 저장 조합 삭제</button>
+        <div class="section-label"><span>데이터 소스</span><span class="subtle">MID PRICE</span></div>
+        <div id="leg-controls"></div>
+        <p class="tiny-help">각 소스는 (매수 1호가 + 매도 1호가) / 2입니다. 수식에 사용한 소스만 조회합니다.</p>
+        <div class="section-label"><label for="formula">조합 수식</label><span class="subtle">A · B · C · D</span></div>
+        <textarea id="formula" rows="3" spellcheck="false" aria-describedby="formula-help">((A / B) / (C / D) - 1) * 100</textarea>
+        <div class="formula-bottom"><span id="formula-help">사칙연산 · 괄호 · 시계열 함수</span><label class="inline-label" for="unit">단위 <select id="unit"><option value="%">%</option><option value="ratio">비율</option><option value="KRW">KRW</option><option value="USDT">USDT</option><option value="bp">bp</option><option value="">없음</option></select></label></div>
+        <details class="function-help"><summary>함수와 조합 예시 <span>＋</span></summary><div id="function-examples"><button type="button" data-formula="A - MA(A, 60)" data-unit="KRW">평균 대비 차이</button><button type="button" data-formula="RET(A, 1)" data-unit="%">구간 수익률</button><button type="button" data-formula="ZSCORE(A, 60)" data-unit="">Z-score</button></div><dl id="function-list"></dl><p>구간 수는 선택한 간격의 유효 관측 개수입니다. 예: 1분 간격의 MA(A, 60)는 최근 60개 관측의 평균입니다.</p></details>
+        <section id="history-controls">
+          <div class="section-label"><span>조회 기간</span><span class="subtle">KST · UTC+9</span></div>
+          <div class="range-presets" aria-label="최근 데이터 기준 조회 기간"><button type="button" data-hours="1">1H</button><button type="button" data-hours="6">6H</button><button type="button" class="selected" data-hours="24">24H</button><button type="button" data-hours="168">7D</button></div>
+          <label class="date-label" for="start">시작</label><input id="start" type="datetime-local" required>
+          <label class="date-label" for="end">종료</label><input id="end" type="datetime-local" required>
+          <p id="available-range" class="tiny-help">저장된 데이터 범위를 확인하고 있습니다.</p>
+          <div class="settings-row"><div><label for="interval">평균 간격</label><select id="interval"><option value="1s">1초</option><option value="10s">10초</option><option value="1min">1분</option><option value="5min" selected>5분</option><option value="1h">1시간</option></select></div><div><label for="ewm-span">EMA 구간 수</label><input id="ewm-span" type="number" min="1" max="1000000" value="60" required></div></div>
+        </section>
+        <section id="live-controls" hidden><div class="live-note"><span class="dot"></span><strong>실시간 중간가</strong><p>빗썸·업비트·OKX의 호가를 1초마다 조합합니다. 서버에서 계산한 최근 흐름과 소스별 호가를 함께 확인하세요.</p><p>10초 이상 지난 호가는 계산에서 제외합니다.</p></div></section>
+        <button id="run-button" class="primary-button" type="submit"><span>▶</span> 분석 실행</button>
+        <button id="save-combo" type="button" class="save-button">＋ 이 조합 저장</button>
+      </form>
+      <div class="sidebar-footer"><span class="file-icon">⌘</span><div>나만의 분석 워크스페이스<small>중간가 기준 · OKX USDT 무기한</small></div></div>
+    </aside>
+    <main>
+      <nav class="mode-nav research-mode-nav" aria-label="분석 모드"><button type="button" class="active" data-mode="history" aria-pressed="true"><span>◷</span> 과거 분석</button><button type="button" data-mode="live" aria-pressed="false"><span class="dot"></span> 실시간 모니터</button></nav>
+      <div class="page-heading"><div><div class="eyebrow" id="mode-eyebrow">RESEARCH / HISTORICAL</div><h1 id="page-title">가격을 조합하고,<br class="mobile-break"> 흐름을 비교하세요.</h1><p id="page-description">원하는 구간을 계산하고, 나만의 분석을 저장하세요.</p></div><div class="heading-actions"><button id="history-toggle" type="button" class="quiet-button" aria-expanded="false" aria-controls="history-panel">◷ 분석 기록</button><button id="export-button" type="button" class="quiet-button" disabled>↓ CSV 내보내기</button></div></div>
+      <section id="history-panel" class="panel history-panel" hidden aria-label="최근 분석 기록"><div class="history-heading"><h2>최근 분석</h2><button id="refresh-history" class="small-button" type="button">새로고침</button></div><div id="history-list" class="history-list"><p class="empty-history">아직 실행한 분석이 없습니다.</p></div></section>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <div id="error" class="error-box" role="alert" hidden></div>
+      <div id="job-progress" class="job-progress" role="status" hidden><span class="loading-ring" aria-hidden="true"></span><div><strong id="job-label">분석 준비 중</strong><span id="job-detail">조회 조건을 서버에 전달하고 있습니다.</span></div><span id="job-elapsed">0초</span></div>
+      <div id="connections" class="connections" hidden></div>
+      <div class="data-strip"><span id="data-status"><span class="dot muted"></span> 데이터 준비 중</span><span id="data-period">—</span><span id="updated-at">—</span></div>
+      <div class="stats-grid" id="stats"><article><span>마지막 조합 값</span><strong id="stat-latest">—</strong><small id="stat-formula">선택한 수식의 결과</small></article><article><span>구간 평균</span><strong id="stat-mean">—</strong><small id="stat-std">표준편차 —</small></article><article><span>최솟값 / 최댓값</span><strong class="range-value" id="stat-range">— / —</strong><small>전체 조회 구간 기준</small></article><article><span>유효 데이터</span><strong id="stat-count">—</strong><small id="stat-interval">동일 시간의 소스만 조합</small></article></div>
+      <section class="panel result-panel" aria-label="조합 결과 차트">
+        <div class="panel-heading"><div><div class="title-with-dot"><span class="line-dot"></span><h2>조합 결과</h2><span id="result-unit" class="unit-badge">%</span></div><code id="result-formula">((A / B) / (C / D) - 1) * 100</code></div><div class="chart-toggles"><label><input id="show-mean" type="checkbox" checked><span class="legend-line mean-line"></span>평균</label><label><input id="show-ema" type="checkbox" checked><span class="legend-line ema-line"></span>EMA</label><button id="reset-zoom" class="small-button" type="button" hidden>확대 해제</button></div></div>
+        <div class="chart-wrap large"><canvas id="result-chart" aria-label="시간별 조합 결과. 아래 데이터 표에서도 확인할 수 있습니다." role="img"></canvas><div id="chart-placeholder" class="chart-placeholder"><span class="placeholder-icon">⌁</span><strong>분석 공간을 준비하고 있습니다</strong><p>데이터 소스를 조합하면 이곳에 흐름이 나타납니다.</p></div></div>
+        <div class="chart-footer"><span id="cursor-info">차트 위에 마우스를 올려 값을 확인하세요.</span><span>드래그하여 구간 확대 · 모든 시간 KST</span></div>
+      </section>
+      <div class="section-heading"><div><h2>소스별 중간가</h2><span>같은 시간의 가격을 함께 확인하세요.</span></div><span class="subtle" id="source-count">— SOURCES</span></div>
+      <div id="source-charts" class="source-grid"></div>
+      <section class="panel table-panel"><details id="table-details"><summary><span><strong>계산 데이터</strong><small>최근 100개 행 · 전체 데이터는 CSV로 내보내기</small></span><span class="subtle">펼치기 ＋</span></summary><div class="table-scroll"><table><thead id="table-head"></thead><tbody id="table-body"></tbody></table></div></details></section>
+      <footer class="main-footer"><span>OMS CLIENT <b>/</b> 내 데이터로 만드는 리서치</span><span id="provenance">과거 호가 분석 · 실시간 조합 · 서버에 저장한 분석 조건</span></footer>
+    </main>
+  </div>
+  <main id="module-data" class="module-page" role="tabpanel" aria-labelledby="tab-data" hidden>
+    <div class="page-heading"><div><div class="eyebrow">DATA / STORED QUOTES</div><h1>저장된 호가를 확인하세요.</h1><p>거래소와 종목을 선택하고, 서버에 저장된 구간을 조회하세요.</p></div><span id="catalog-summary" class="module-badge">종목 확인 중</span></div>
+    <form id="data-form" class="panel module-form">
+      <div class="field"><label for="data-exchange">거래소</label><select id="data-exchange" required></select></div><div class="field"><label for="data-ticker">종목</label><input id="data-ticker" list="data-tickers" maxlength="80" autocomplete="off" required><datalist id="data-tickers"></datalist></div>
+      <div class="field"><label for="data-start">시작 · KST</label><input id="data-start" type="datetime-local" required></div><div class="field"><label for="data-end">종료 · KST</label><input id="data-end" type="datetime-local" required></div><div class="field"><label for="data-interval">평균 간격</label><select id="data-interval"><option value="1s">1초</option><option value="10s">10초</option><option value="1min" selected>1분</option><option value="5min">5분</option><option value="1h">1시간</option></select></div><button id="data-run" type="submit" class="primary-button">데이터 조회</button>
+      <div class="form-caption"><span id="data-bounds" role="status">저장 범위를 확인하고 있습니다.</span><button id="data-latest" type="button" class="small-button">최근 저장 24시간</button></div>
+    </form>
+    <p id="data-message" class="module-message" role="status">데이터 조회를 누르면 서버가 선택 구간을 계산합니다.</p><div id="data-error" class="error-box" role="alert" hidden></div>
+    <div class="stats-grid"><article><span>마지막 중간가</span><strong id="data-mid">—</strong><small id="data-currency">—</small></article><article><span>매수 / 매도 1호가</span><strong id="data-bidask" class="range-value">— / —</strong><small>마지막 집계 구간</small></article><article><span>스프레드</span><strong id="data-spread">—</strong><small>매도 1호가 − 매수 1호가</small></article><article><span>조회한 호가</span><strong id="data-rows">—</strong><small id="data-points">서버에 저장된 데이터 기준</small></article></div>
+    <section class="panel"><div class="panel-heading"><div><h2>중간가와 최우선 호가</h2><p id="data-chart-label" class="tiny-help">가격 단위와 조회 범위는 조회 후 표시됩니다.</p></div><button id="data-csv" type="button" class="quiet-button" disabled>↓ 전체 CSV</button></div><div class="chart-wrap large"><canvas id="data-chart" role="img" aria-label="저장된 중간가, 매수 및 매도 1호가 차트"></canvas><div id="data-placeholder" class="chart-placeholder"><strong>조회할 종목과 기간을 선택하세요.</strong></div></div><div class="chart-footer"><span>중간가 · 매수 1호가 · 매도 1호가</span><span>전체 구간 통계 · 차트 최대 6,000개 점</span></div></section>
+    <section class="panel module-table"><div class="panel-heading"><div><h2>호가 데이터 표</h2><p class="tiny-help">선택한 간격의 평균 · 차트 표본 중 최근 100개 · 원본 전체 집계는 CSV</p></div></div><div class="table-scroll"><table><thead><tr><th>시간 (KST)</th><th>중간가</th><th>매수 1호가</th><th>매도 1호가</th><th>스프레드</th></tr></thead><tbody id="data-table"><tr><td colspan="5" class="empty-cell">아직 조회한 데이터가 없습니다.</td></tr></tbody></table></div></section>
+  </main>
+  <main id="module-backtest" class="module-page" role="tabpanel" aria-labelledby="tab-backtest" hidden>
+    <div class="page-heading"><div><div class="eyebrow">RESEARCH / BACKTEST</div><h1>전략을 과거 데이터로 검증하세요.</h1><p>단일 종목의 이동평균 교차 전략을 서버에서 계산합니다.</p></div><span class="module-badge">현물형 · 매수 / 현금</span></div>
+    <form id="backtest-form" class="panel module-form">
+      <div class="field"><label for="backtest-exchange">거래소</label><select id="backtest-exchange" required></select></div><div class="field"><label for="backtest-ticker">종목</label><input id="backtest-ticker" list="backtest-tickers" maxlength="80" autocomplete="off" required><datalist id="backtest-tickers"></datalist></div><div class="field"><label for="backtest-start">시작 · KST</label><input id="backtest-start" type="datetime-local" required></div><div class="field"><label for="backtest-end">종료 · KST</label><input id="backtest-end" type="datetime-local" required></div><div class="field"><label for="backtest-interval">가격 평균 간격</label><select id="backtest-interval"><option value="1s">1초</option><option value="10s">10초</option><option value="1min" selected>1분</option><option value="5min">5분</option><option value="1h">1시간</option></select></div>
+      <div class="field"><label for="backtest-fast">단기 이동평균</label><input id="backtest-fast" type="number" min="1" max="10000" value="10" required></div><div class="field"><label for="backtest-slow">장기 이동평균</label><input id="backtest-slow" type="number" min="2" max="10000" value="30" required></div><div class="field"><label for="backtest-cash">초기 자금</label><input id="backtest-cash" type="number" min="0.01" step="any" value="1000000" required></div><div class="field"><label for="backtest-fee">편도 수수료 · bp</label><input id="backtest-fee" type="number" min="0" max="1000" step="0.1" value="5" required></div><div class="field"><label for="backtest-slippage">편도 슬리피지 · bp</label><input id="backtest-slippage" type="number" min="0" max="1000" step="0.1" value="2" required></div><button id="backtest-run" type="submit" class="primary-button">백테스트 실행</button>
+      <div class="form-caption"><span id="backtest-bounds" role="status">저장 범위를 확인하고 있습니다.</span><button id="backtest-latest" type="button" class="small-button">최근 저장 24시간</button></div>
+    </form>
+    <p id="backtest-message" class="module-message" role="status">단기 평균이 장기 평균을 상향 돌파하면 매수하고, 하향 돌파하면 전량 매도합니다. 1bp = 0.01%입니다.</p><div id="backtest-error" class="error-box" role="alert" hidden></div>
+    <div class="stats-grid"><article><span>총 수익률</span><strong id="bt-return">—</strong><small id="bt-final">최종 평가액 —</small></article><article><span>최대 낙폭</span><strong id="bt-drawdown">—</strong><small>자산 곡선의 최고점 대비</small></article><article><span>완료 거래 / 승률</span><strong id="bt-trades">—</strong><small id="bt-winrate">승률 —</small></article><article><span>지급 수수료</span><strong id="bt-fees">—</strong><small id="bt-currency">선택 종목의 호가 통화 기준</small></article></div>
+    <section class="panel"><div class="panel-heading"><div><h2>자산 곡선</h2><p id="backtest-chart-label" class="tiny-help">현금과 보유 종목의 평가액 합계</p></div><button id="backtest-reset-zoom" type="button" class="small-button">확대 해제</button></div><div class="chart-wrap large"><canvas id="backtest-chart" role="img" aria-label="백테스트 자산 평가액 차트"></canvas><div id="backtest-placeholder" class="chart-placeholder"><strong>백테스트를 실행하면 결과가 표시됩니다.</strong></div></div></section>
+    <section class="panel module-table"><div class="panel-heading"><h2>거래 내역</h2><span id="backtest-trade-count" class="subtle">0 FILLS</span></div><div class="table-scroll"><table><thead><tr><th>시간 (KST)</th><th>구분</th><th>체결가</th><th>수량</th><th>수수료</th><th>실현 손익</th></tr></thead><tbody id="backtest-trades"><tr><td colspan="6" class="empty-cell">아직 실행한 백테스트가 없습니다.</td></tr></tbody></table></div></section>
+    <section id="backtest-assumptions" class="panel assumptions" hidden><h2>계산 조건</h2><ul id="backtest-assumptions-list"></ul></section>
+  </main>
+  <main id="module-paper" class="module-page" role="tabpanel" aria-labelledby="tab-paper" hidden>
+    <div class="page-heading"><div><div class="eyebrow">TRADING / PAPER ACCOUNT</div><h1>모의 계좌로 주문을 연습하세요.</h1><p>서버가 조회한 시세로 가상 체결하며, 실제 거래소에 주문을 보내지 않습니다.</p></div><button id="paper-refresh" class="quiet-button" type="button">↻ 잔고·시세 새로고침</button></div>
+    <div class="notice">KRW 현물형 모의 계좌입니다. 빗썸·업비트에서 매수와 보유 수량 이내 매도를 지원하며, 잔고와 체결 내역은 서버에 저장됩니다.</div>
+    <p id="paper-message" class="module-message" role="status">모의 계좌를 불러오고 있습니다.</p><div id="paper-error" class="error-box" role="alert" hidden></div>
+    <div class="stats-grid"><article><span>총 평가액</span><strong id="paper-equity">—</strong><small id="paper-unit">—</small></article><article><span>주문 가능 현금</span><strong id="paper-cash">—</strong><small id="paper-initial">초기 자금 —</small></article><article><span>실현 손익</span><strong id="paper-realized">—</strong><small>매도한 수량 기준</small></article><article><span>평가 손익</span><strong id="paper-unrealized">—</strong><small>서버가 확인한 평가 시세 기준</small></article></div>
+    <div class="paper-grid"><section class="panel paper-order-panel"><div class="panel-heading"><h2>모의 시장가 주문</h2><span class="module-badge">PAPER ONLY</span></div><form id="paper-order-form" class="paper-form"><div class="field"><label for="paper-exchange">거래소</label><select id="paper-exchange" required></select></div><div class="field"><label for="paper-ticker">종목</label><input id="paper-ticker" list="paper-tickers" maxlength="80" autocomplete="off" required><datalist id="paper-tickers"></datalist></div><div class="field"><label for="paper-side">주문 방향</label><select id="paper-side"><option value="buy">매수</option><option value="sell">매도</option></select></div><div class="field"><label for="paper-quantity">수량</label><input id="paper-quantity" type="number" min="0.00000001" step="any" required placeholder="수량 입력"></div><p id="paper-order-note" class="tiny-help">체결 가격은 주문 시 서버가 확인합니다. 오래된 시세로는 주문할 수 없습니다.</p><button id="paper-submit" class="primary-button" type="submit">모의 매수 주문</button></form></section>
+    <section class="panel paper-account-panel"><div class="panel-heading"><h2>계좌 설정</h2></div><form id="paper-reset-form" class="paper-form"><p class="tiny-help">초기화하면 현재 모의 잔고, 포지션과 주문 내역이 삭제됩니다.</p><div class="field"><label for="paper-reset-currency">기준 통화</label><select id="paper-reset-currency"><option value="KRW">KRW</option></select></div><div class="field"><label for="paper-reset-cash">초기 자금</label><input id="paper-reset-cash" type="number" min="0.01" step="any" value="1000000" required></div><label class="reset-confirm"><input id="paper-reset-confirm" type="checkbox" required> 현재 모의 계좌를 초기화합니다.</label><button id="paper-reset" class="save-button" type="submit">모의 계좌 초기화</button></form></section></div>
+    <section class="panel module-table"><div class="panel-heading"><h2>보유 포지션</h2><span id="paper-position-count" class="subtle">0 POSITIONS</span></div><div class="table-scroll"><table><thead><tr><th>거래소 / 종목</th><th>수량</th><th>평균 매수가</th><th>평가 시세</th><th>평가액</th><th>평가 손익</th><th>시세 기준</th></tr></thead><tbody id="paper-positions"><tr><td colspan="7" class="empty-cell">모의 계좌를 불러오면 표시됩니다.</td></tr></tbody></table></div></section>
+    <section class="panel module-table"><div class="panel-heading"><h2>모의 주문 내역</h2><span id="paper-order-count" class="subtle">0 ORDERS</span></div><div class="table-scroll"><table><thead><tr><th>체결 시간 (KST)</th><th>거래소 / 종목</th><th>방향</th><th>수량</th><th>체결가</th><th>수수료</th><th>실현 손익</th><th>시세 출처 / 시각</th></tr></thead><tbody id="paper-orders"><tr><td colspan="8" class="empty-cell">아직 모의 주문이 없습니다.</td></tr></tbody></table></div></section>
+  </main>
+  <main id="module-oms" class="module-page" role="tabpanel" aria-labelledby="tab-oms" hidden><div class="page-heading"><div><div class="eyebrow">OPERATIONS / OMS</div><h1>OMS를 연결할 공간입니다.</h1><p>매매 운영과 리서치를 하나의 워크스페이스에서 관리할 수 있도록 준비했습니다.</p></div><span class="module-badge planned">연결 예정</span></div><section class="panel oms-planned"><span class="planned-icon" aria-hidden="true">⌘</span><h2>OMS 운영 기능은 아직 연결되지 않았습니다.</h2><p>주문·체결 상태, 포지션과 리스크, 전략 실행 제어를 이 탭에 추가할 수 있습니다.</p><p>현재 사용할 수 있는 기능은 데이터 조회, 과거·실시간 분석, 백테스트와 모의투자입니다.</p><div class="planned-items"><span>주문·체결 모니터링</span><span>포지션·리스크</span><span>전략 운영</span></div></section></main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

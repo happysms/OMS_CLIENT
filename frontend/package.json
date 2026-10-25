@@ -1,0 +1,8 @@
+{
+  "name": "oms-client-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --check workspace.js && node --check charts.js"
+  }
+}
