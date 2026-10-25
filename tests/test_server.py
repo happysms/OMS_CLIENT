@@ -307,6 +307,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual([float(row['A_bid_size']) for row in rows], [.125, 1.5, 23.456789])
         self.assertEqual([float(row['A_ask_size']) for row in rows], [40.25, 2.5, 0])
         self.assertEqual([row['A_quantity_unit'] for row in rows], ['USDT'] * 3)
+        self.assertEqual([row['price_mode'] for row in rows], ['mean'] * 3)
 
     def test_login_csrf_logout_and_cookie_boundary(self):
         self.assertEqual(self.client.post("/login", data={"password": "valid-password"}).status_code, 403)

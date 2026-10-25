@@ -42,7 +42,7 @@ def _write_csv(path: Path, result: dict, unit: str):
     complete = result.get("full") or result
     last_quotes = result.get("meta", {}).get("price_mode") == "last"
     price_legs = [leg for leg in complete["legs"] if leg.get("data_type", "price") == "price"]
-    include_mode = last_quotes or any(leg.get("data_type") == "funding" for leg in complete["legs"])
+    include_mode = last_quotes or any(leg.get("data_type") == "funding" or leg.get("quantity_unit") for leg in complete["legs"])
     # Labels may be supplied through the API. Keep spreadsheet applications from
     # interpreting a display label as a formula; numeric result columns stay numeric.
     if unit.lstrip().startswith(("=", "+", "-", "@")):
