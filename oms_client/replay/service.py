@@ -86,7 +86,7 @@ class ReplaySession:
                 self.engine.replace(payload.get('order_id'),payload.get('price'),payload.get('total_quantity'),payload.get('tif'))
             elif action == 'cancel_all':
                 for order in self.engine.working():
-                    if order['status']!='execution_unknown':self.engine.cancel(order['id'])
+                    if order.status!='execution_unknown':self.engine.cancel(order.id)
             elif action == 'cancel':
                 identifier = payload.get('order_id')
                 if not isinstance(identifier,str): raise ValueError('주문 ID를 확인하세요.')
@@ -97,7 +97,7 @@ class ReplaySession:
                 self.config['auto_mm'] = enabled
                 if not enabled:
                     for order in self.engine.working():
-                        if order['owner']=='bithumb_simple_mm' and order['status']!='execution_unknown': self.engine.cancel(order['id'])
+                        if order.owner=='bithumb_simple_mm' and order.status!='execution_unknown': self.engine.cancel(order.id)
                 self.engine.auto()
             self.command_sequence += 1
             self.commands.append(dict(sequence=self.command_sequence,virtual_time_ms=self.engine.now,**payload))

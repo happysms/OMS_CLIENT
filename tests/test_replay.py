@@ -67,12 +67,12 @@ class EngineTests(unittest.TestCase):
         e=self.engine();now=e.now
         a=e.place('buy','100','3');b=e.place('buy','100','2');e.advance(now)
         e.on_event(tick(now+1,100,-4)) # 2 external, 2 own
-        self.assertEqual(e.orders[a]['remaining'],1)
-        self.assertEqual(e.orders[b]['remaining'],2)
+        self.assertEqual(e.orders[a].remaining,1)
+        self.assertEqual(e.orders[b].remaining,2)
         self.assertEqual(e.coin,2);self.assertEqual(e.fill_count,1)
         frozen=deepcopy(e.last_fills[0])
         e.on_event(tick(now+2,100,-2))
-        self.assertEqual(e.fill_count,3);self.assertEqual(e.orders[b]['remaining'],1)
+        self.assertEqual(e.fill_count,3);self.assertEqual(e.orders[b].remaining,1)
         self.assertEqual(e.coin,4);self.assertEqual(e.last_fills[0],frozen)
         self.invariant(e)
 
@@ -80,7 +80,7 @@ class EngineTests(unittest.TestCase):
         e=self.engine(quantity=0);now=e.now
         a=e.place('buy','100','3');b=e.place('buy','99','3');e.advance(now)
         e.on_event(tick(now+1,99,-4))
-        self.assertNotIn(a,e.orders);self.assertEqual(e.orders[b]['filled'],1)
+        self.assertNotIn(a,e.orders);self.assertEqual(e.orders[b].filled,1)
         self.assertEqual(sum(f['quantity'] for f in e.last_fills),4)
         self.invariant(e)
 
@@ -114,7 +114,7 @@ class EngineTests(unittest.TestCase):
         e.on_event(tick(now+1,90,-50));self.assertEqual(e.coin,0)
         e.on_event(book(now+2,bid=90,ask=92,quantity=3))
         self.assertTrue(e.snapshot()['orders'][0]['queue_known'])
-        e.on_event(tick(now+3,90,-4));self.assertEqual(e.orders[a]['remaining'],1)
+        e.on_event(tick(now+3,90,-4));self.assertEqual(e.orders[a].remaining,1)
         self.invariant(e)
 
     def test_repeated_book_does_not_reset_consumed_queue_and_cancel_does_not_advance(self):
@@ -163,8 +163,8 @@ class EngineTests(unittest.TestCase):
         e=self.engine(quantity=0,auto_mm=True,latency_ms=20);now=e.now
         e.advance(now+20);self.assertEqual(len(e.working()),1)
         e.on_event(book(now+30,bid=99,ask=101,quantity=0))
-        self.assertEqual(len(e.working()),1);self.assertEqual(e.working()[0]['status'],'cancel_pending')
-        e.advance(now+50);self.assertEqual(e.working()[0]['price'],99)
+        self.assertEqual(len(e.working()),1);self.assertEqual(e.working()[0].status,'cancel_pending')
+        e.advance(now+50);self.assertEqual(e.working()[0].price,99)
         e.advance(now+1071);self.assertFalse(e.working());self.invariant(e)
 
     def test_config_rejects_unsupported_modes_and_more_than_two_venues(self):

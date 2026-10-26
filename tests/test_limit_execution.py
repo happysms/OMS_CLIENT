@@ -47,7 +47,7 @@ class LimitExecutionTests(unittest.TestCase):
                         self.assertEqual(e.fill_count,0);self.assertEqual(e.order_log[-1]['status'],'rejected')
                     else:
                         self.assertEqual(sum(f['quantity'] for f in e.last_fills),2)
-                        if tif=='gtc':self.assertEqual(e.orders[identifier]['remaining'],3)
+                        if tif=='gtc':self.assertEqual(e.orders[identifier].remaining,3)
                         else:self.assertEqual(e.order_log[-1]['quantity_state']['cancelled'],3)
                     self.check(e)
         for tif in ('gtc','ioc','post_only'):
@@ -71,21 +71,21 @@ class LimitExecutionTests(unittest.TestCase):
         self.assertEqual(e.depth.self_debt,{})
         e=self.engine();identifier=self.place(e,price='110',quantity='20',tif='fok')
         self.assertEqual(e.fill_count,0);self.assertEqual(e.depth.self_debt,{})
-        self.assertEqual(e.orders[identifier]['status'],'execution_unknown');self.check(e)
+        self.assertEqual(e.orders[identifier].status,'execution_unknown');self.check(e)
 
     def test_B10_K03_unknown_depth_preserves_known_fills_and_reserves(self):
         for tif in ('gtc','ioc'):
             e=self.engine();identifier=self.place(e,price='110',quantity='20',tif=tif)
             self.assertEqual(sum(f['quantity'] for f in e.last_fills),10)
-            self.assertEqual(e.orders[identifier]['remaining'],10)
-            self.assertGreater(e.orders[identifier]['reserve_cash'],0)
+            self.assertEqual(e.orders[identifier].remaining,10)
+            self.assertGreater(e.orders[identifier].reserve_cash,0)
             with self.assertRaises(ValueError):e.cancel(identifier)
             with self.assertRaises(ValueError):e.place('buy','100','1')
-            e.finish();self.assertEqual(e.orders[identifier]['status'],'execution_unknown');self.check(e)
+            e.finish();self.assertEqual(e.orders[identifier].status,'execution_unknown');self.check(e)
         for tif in ('gtc','ioc','fok'):
             e=self.engine();b=book(e.now+1);b['asks'][1]['quantity']=None;e.on_event(b)
             identifier=self.place(e,price='103',tif=tif)
-            self.assertEqual(e.orders[identifier]['status'],'execution_unknown')
+            self.assertEqual(e.orders[identifier].status,'execution_unknown')
             self.assertEqual(sum(f['quantity'] for f in e.last_fills),0 if tif=='fok' else 2)
 
     def test_B11_D08_K09_self_debt_survives_repeated_and_increased_books(self):
@@ -174,16 +174,16 @@ class LimitExecutionTests(unittest.TestCase):
     def test_F01_F03_F07_F09_F12_replace_recomputes_remaining_after_cancel(self):
         e=self.engine(quantity=0,latency_ms=20);t=e.now
         a=e.place('buy','100','5');e.advance(t+20)
-        e.replace(a,'100','5');self.assertEqual(e.orders[a]['status'],'live')
+        e.replace(a,'100','5');self.assertEqual(e.orders[a].status,'live')
         e.replace(a,'99','4');e.on_event(tick(t+25,100,-2));e.advance(t+40)
         new=e.working()[0]
-        self.assertEqual(new['remaining'],2);self.assertEqual(new['price'],99);self.assertEqual(new['replaces'],a)
-        self.assertEqual(new['status'],'in_flight');self.check(e)
+        self.assertEqual(new.remaining,2);self.assertEqual(new.price,99);self.assertEqual(new.replaces,a)
+        self.assertEqual(new.status,'in_flight');self.check(e)
 
     def test_F10_invalid_replace_preserves_old_or_records_new_failure(self):
         e=self.engine(quantity=0,price_step='1');a=self.place(e,price='100',quantity='2')
         with self.assertRaises(ValueError):e.replace(a,'99.5','2')
-        self.assertEqual(e.orders[a]['status'],'live')
+        self.assertEqual(e.orders[a].status,'live')
         e.replace(a,'100','10000000');e.advance(e.now)
         self.assertEqual(e.order_log[-1]['status'],'replace_failed');self.assertFalse(e.working())
 
@@ -200,7 +200,7 @@ class LimitExecutionTests(unittest.TestCase):
         e=self.engine(end_order_policy='preserve');a=self.place(e,price='100')
         before=e.free();e.finish('stopped')
         self.assertEqual(e.free(),before);self.assertEqual(e.end_orders[0]['id'],a)
-        self.assertEqual(e.orders[a]['status'],'live')
+        self.assertEqual(e.orders[a].status,'live')
 
     def test_K02_unknown_tick_direction_is_not_a_fill(self):
         e=self.engine(quantity=0);t=e.now;self.place(e,price='100',quantity='1')

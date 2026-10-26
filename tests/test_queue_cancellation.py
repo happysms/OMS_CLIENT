@@ -113,7 +113,7 @@ class QueueEngineTests(unittest.TestCase):
         self.assertEqual(self.public(e,b)['queue_ahead'],31)
         e.on_event(book(t+3,quantity=48))
         self.assertEqual(self.external(e),48);self.assertEqual(e.queue_cancel.cancelled,12)
-        self.assertEqual(e.orders[a]['remaining'],1);self.assertEqual(e.orders[b]['remaining'],1)
+        self.assertEqual(e.orders[a].remaining,1);self.assertEqual(e.orders[b].remaining,1)
         e.on_event(tick(t+4,100,-50))
         self.assertEqual([f['order_id'] for f in e.last_fills],[a,b])
         self.assertEqual(e.coin,2)
@@ -143,7 +143,7 @@ class QueueEngineTests(unittest.TestCase):
         e=self.engine(quantity=10,initial_coin='2',latency_ms=20);t=e.now
         a=e.place('sell','102','1');e.advance(t+20);e.cancel(a)
         e.on_event(book(t+21,quantity=0))
-        self.assertEqual(e.orders[a]['status'],'cancel_pending');self.assertEqual(e.free()[1],1)
+        self.assertEqual(e.orders[a].status,'cancel_pending');self.assertEqual(e.free()[1],1)
         e.on_event(tick(t+22,102,1));self.assertEqual(e.coin,1)
         e.advance(t+40);self.assertEqual(e.free()[1],1)
 

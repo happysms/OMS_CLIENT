@@ -105,7 +105,7 @@ class RegistryTests(unittest.TestCase):
             settings['strategy']=profile
             engine=ReplayEngine(settings);start=engine.now
             engine.on_event(book(start));engine.start();engine.advance(start)
-            self.assertEqual({o['side'] for o in engine.working()},expected)
+            self.assertEqual({o.side for o in engine.working()},expected)
             self.assertEqual(engine.mm.config.max_quote_age_ms,500)
             engine.advance(start+501)
             self.assertEqual(engine.working(),[])
