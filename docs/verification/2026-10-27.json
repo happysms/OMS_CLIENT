@@ -1,0 +1,343 @@
+{
+  "date_kst": "2026-10-27",
+  "recorded_at": "2026-10-27T04:34:38.524181+09:00",
+  "tested_product_commit": "33e64d71499661631876bc8f35a9b017934e2a4a",
+  "scope": "All requests in this conversation, including the 17 commits dated 2026-10-27 KST; offline verification only.",
+  "python": {
+    "passed": 524,
+    "failed": 0,
+    "seconds": 17.547,
+    "modules": {
+      "test_analysis_pricing": 4,
+      "test_analysis_timestamps": 8,
+      "test_backtesting": 8,
+      "test_candles": 10,
+      "test_collector_status": 3,
+      "test_csv_export": 12,
+      "test_data_service": 28,
+      "test_execution_controls": 12,
+      "test_file_browser": 15,
+      "test_fill_context": 8,
+      "test_fill_reports": 11,
+      "test_frontend_assets": 1,
+      "test_funding": 13,
+      "test_funding_archives": 11,
+      "test_instruments": 11,
+      "test_last_quotes": 9,
+      "test_limit_execution": 23,
+      "test_live_service": 17,
+      "test_manual_trading": 14,
+      "test_paper": 10,
+      "test_pnl_currency": 17,
+      "test_premiums": 12,
+      "test_pricing": 13,
+      "test_quality": 12,
+      "test_quality_live": 11,
+      "test_queue_cancellation": 14,
+      "test_remote_execution_contract": 3,
+      "test_replay": 28,
+      "test_replay_domain": 10,
+      "test_replay_performance": 8,
+      "test_retention": 16,
+      "test_routing": 10,
+      "test_server": 44,
+      "test_simple_mm": 18,
+      "test_strategy_registry": 12,
+      "test_ticks": 12,
+      "test_trade_activity": 11,
+      "test_usdt_backfill": 13,
+      "test_usdt_collector": 20,
+      "test_usdt_data": 12
+    }
+  },
+  "frontend": {
+    "passed": 24,
+    "failed": 0,
+    "network": "Real TCP/TLS/HTTP/fetch blocked; API responses stubbed",
+    "scenarios": [
+      {
+        "scenario": "activity",
+        "status": 0,
+        "seconds": 0.461,
+        "output": "Activity and currency DOM checks passed: KRW/USDT switching, fill cache, saved preference, historical FX, current valuation, pagination, legacy fallback, KRW book/reset, column counts.\n",
+        "source": "tests/frontend/scenarios/activity.mjs",
+        "sha256": "094edd1f0742d86bab317f89efe9a5f87992b8eb236246587f8e0b9b6b20aa11"
+      },
+      {
+        "scenario": "analysis-clock",
+        "status": 0,
+        "seconds": 0.392,
+        "output": "Analysis clock DOM checks passed: signed/null values, legends, linked cursor/zoom, table, mean mode, reset, old results.\n",
+        "source": "tests/frontend/scenarios/analysis-clock.mjs",
+        "sha256": "25190ffb8293f558df756f12601789bd3f1e0b0e8ab6aaad139ec2b6c6b27f87"
+      },
+      {
+        "scenario": "fill-entry",
+        "status": 0,
+        "seconds": 1.458,
+        "output": "Account DOM checks passed: named account summary/history, independent initial-condition copy, full result download.\nReplay DOM checks passed: outside orders above all 5 levels, in-range overlays, separate quantities, ticks, PnL, 32x, fast, pause/resume, cancel.\n",
+        "source": "tests/frontend/scenarios/fill-entry.mjs",
+        "sha256": "53b8a6addc0a4f8afdc81024e255bc16fd4b3691275d6755ef8869cafacd1326"
+      },
+      {
+        "scenario": "fill-inspector",
+        "status": 0,
+        "seconds": 0.348,
+        "output": "Fill inspector DOM passed: modal, frozen PnL/queue, causal slider, market switching, paging, selected tick, neighbouring fill recenter, stale response rejection, abort/close, old-server error and retry.\n",
+        "source": "tests/frontend/scenarios/fill-inspector.mjs",
+        "sha256": "f97f7f55f492cb01eb1dbd94b6ee1cfc46e2142e7c388c224e7b6c8634caaff0"
+      },
+      {
+        "scenario": "fill-reports",
+        "status": 0,
+        "seconds": 0.353,
+        "output": "Fill report DOM checks passed: realized/unrealized/theory columns, holdings, cumulative metrics, legacy records, pagination, missing valuations.\n",
+        "source": "tests/frontend/scenarios/fill-reports.mjs",
+        "sha256": "f8966c8a7992d0d00c9117b77ab43944d10191a96e346585fe38ba71de896e46"
+      },
+      {
+        "scenario": "handoff-old-server",
+        "status": 0,
+        "seconds": 0.405,
+        "output": "Minmaxma UI: separate type, source-specific settings, registration, and honest execution status passed.\nStrategy UI checks passed: templates, custom registration, revision edits, maker execution selection, point execution gating, archive, strategy-provided theory setting.\n",
+        "source": "tests/frontend/scenarios/handoff-old-server.mjs",
+        "sha256": "84fb7bdda511ef878d6d64fe3b6298e21c5ce756f44b9d2b473a1d1bedf29ade"
+      },
+      {
+        "scenario": "handoff-strategies",
+        "status": 0,
+        "seconds": 0.41,
+        "output": "Minmaxma UI: separate type, source-specific settings, registration, and honest execution status passed.\nStrategy UI checks passed: templates, custom registration, revision edits, maker execution selection, point execution gating, archive, strategy-provided theory setting.\n",
+        "source": "tests/frontend/scenarios/handoff-strategies.mjs",
+        "sha256": "c1155c789be37302cd5081c05fe590d1fc02a17358ec2fd567cd6a3d62e2d6ba"
+      },
+      {
+        "scenario": "latency-replay",
+        "status": 0,
+        "seconds": 1.474,
+        "output": "Account DOM checks passed: named account summary/history, independent initial-condition copy, full result download.\nReplay DOM checks passed: outside orders above all 5 levels, in-range overlays, separate quantities, ticks, PnL, 32x, fast, pause/resume, cancel.\n",
+        "source": "tests/frontend/scenarios/latency-replay.mjs",
+        "sha256": "edb6d551e74ed0b6fcffa1a60eb9a32a18a17a59a75af8a41e20a407dafa6e7f"
+      },
+      {
+        "scenario": "latency-strategies",
+        "status": 0,
+        "seconds": 0.386,
+        "output": "Minmaxma UI: separate type, source-specific settings, registration, and honest execution status passed.\nStrategy UI checks passed: templates, custom registration, revision edits, maker execution selection, point execution gating, archive, strategy-provided theory setting.\n",
+        "source": "tests/frontend/scenarios/latency-strategies.mjs",
+        "sha256": "cb7b4c65964c129a6fc17af134a12dae943f8b98c68fdcd976ec56b388f97036"
+      },
+      {
+        "scenario": "limit-replay",
+        "status": 0,
+        "seconds": 1.53,
+        "output": "Limit DOM checks passed: TIF/STP/GTD, replace, cancel-all, role fees, end policy, copy and legacy server gating.\nQueue DOM checks passed: front/back/probability, events, seeded run payload, account copy, old-server compatibility.\nAccount DOM checks passed: named account summary/history, independent initial-condition copy, full result download.\nReplay DOM checks passed: outside orders above all 5 levels, in-range overlays, separate quantities, ticks, PnL, 32x, fast, pause/resume, cancel.\n",
+        "source": "tests/frontend/scenarios/limit-replay.mjs",
+        "sha256": "d852ee88f507d46a7b79686a794ebc709377ca5ae161fd77bc3455d442f2cca8"
+      },
+      {
+        "scenario": "minmaxma",
+        "status": 0,
+        "seconds": 0.415,
+        "output": "Minmaxma UI: separate type, source-specific settings, registration, and honest execution status passed.\nStrategy UI checks passed: templates, custom registration, revision edits, maker execution selection, point execution gating, archive, strategy-provided theory setting.\n",
+        "source": "tests/frontend/scenarios/minmaxma.mjs",
+        "sha256": "09c9bbf225e8392cc5af238cc2b242e79c5044e970784e86288f1b12da600e96"
+      },
+      {
+        "scenario": "pnl-currency",
+        "status": 0,
+        "seconds": 0.457,
+        "output": "Currency DOM checks passed: KRW/USDT switching, fill cache, saved preference, historical FX, current valuation, pagination, legacy fallback, KRW book/reset, column counts.\n",
+        "source": "tests/frontend/scenarios/pnl-currency.mjs",
+        "sha256": "9f14339ba8566c8706cb850859dc7da5a2548e0f2bcc4ca7f7f752c5935d658c"
+      },
+      {
+        "scenario": "premium-comparison",
+        "status": 0,
+        "seconds": 0.42,
+        "output": "Comparison DOM: default/10-symbol cap, 3/7 days, partial failure, aligned table, max 3 requests, stale-selection response rejection, cancellation and manual clear passed.\n",
+        "source": "tests/frontend/scenarios/premium-comparison.mjs",
+        "sha256": "5b691b131e224f2494f29849b3b3765a55014c8e8aab6213f888e092aa246218"
+      },
+      {
+        "scenario": "premium-integration",
+        "status": 0,
+        "seconds": 1.792,
+        "output": "Premium panel DOM checks passed: lazy load, missing/negative means, coverage, filtering, hourly selection, persisted toggle, refresh.\n",
+        "source": "tests/frontend/scenarios/premium-integration.mjs",
+        "sha256": "7f0138e47caa1e66720bf1c61548c25832a4c0f24e4c552f26ba8e4fda3092f4"
+      },
+      {
+        "scenario": "premium",
+        "status": 0,
+        "seconds": 0.367,
+        "output": "Premium panel DOM checks passed: lazy load, missing/negative means, coverage, filtering, hourly selection, persisted toggle, refresh.\n",
+        "source": "tests/frontend/scenarios/premium.mjs",
+        "sha256": "fa39f66536b4deacde9d7049862cddf8d9eef8067d7f7fc4e178c57527b391b9"
+      },
+      {
+        "scenario": "quality",
+        "status": 0,
+        "seconds": 2.006,
+        "output": "PASS lazy catalog/retry, max eight exchanges, explicit KST→UTC request, per-source symbols/errors, signed means and sparse no-fill comparison, excluded clocks and late history suppression\nPASS live 2s polling, original timestamp dedup, server values and signed future/old ages, parquet labels, no-data current value, 900-point/30-minute bounds, setting/tab/document stop and late live suppression\nFINDINGS []\n",
+        "source": "tests/frontend/scenarios/quality.mjs",
+        "sha256": "299f23e221f31111df4bbaacb555e77ab755f3f1726e7304727df3db7cd979c1"
+      },
+      {
+        "scenario": "queue-replay",
+        "status": 0,
+        "seconds": 1.455,
+        "output": "Queue DOM checks passed: front/back/probability, events, seeded run payload, account copy, old-server compatibility.\nAccount DOM checks passed: named account summary/history, independent initial-condition copy, full result download.\nReplay DOM checks passed: outside orders above all 5 levels, in-range overlays, separate quantities, ticks, PnL, 32x, fast, pause/resume, cancel.\n",
+        "source": "tests/frontend/scenarios/queue-replay.mjs",
+        "sha256": "447a1430fe811bae32ba9eb60fd8a3ef6e0a0f9807ac31cd7ccddb00a23bcfd5"
+      },
+      {
+        "scenario": "replay-accounts",
+        "status": 0,
+        "seconds": 1.433,
+        "output": "Account DOM checks passed: named account summary/history, independent initial-condition copy, full result download.\nReplay DOM checks passed: outside orders above all 5 levels, in-range overlays, separate quantities, ticks, PnL, 32x, fast, pause/resume, cancel.\n",
+        "source": "tests/frontend/scenarios/replay-accounts.mjs",
+        "sha256": "e23f1535de0dc8733f4590367ff1b814b8cf6daa0da8dd728f8ddd69a0ed97ab"
+      },
+      {
+        "scenario": "replay-period",
+        "status": 0,
+        "seconds": 0.377,
+        "output": "Period DOM checks passed: input, preview, validation, exact request, manual range preservation, explicit latest, async race, empty defaults.\n",
+        "source": "tests/frontend/scenarios/replay-period.mjs",
+        "sha256": "3eefc89564d0c021a5a1e5e619ddbc3df04fdee8f94f1bf9979a56308413b05f"
+      },
+      {
+        "scenario": "replay",
+        "status": 0,
+        "seconds": 0.365,
+        "output": "Replay DOM checks passed: outside orders above all 5 levels, in-range overlays, separate quantities, ticks, PnL, 32x, fast, pause/resume, cancel.\n",
+        "source": "tests/frontend/scenarios/replay.mjs",
+        "sha256": "717361708a686c96ab18fd2dad8712803812ab6ffc9f1d37b68451721cff866f"
+      },
+      {
+        "scenario": "strategies",
+        "status": 0,
+        "seconds": 0.363,
+        "output": "Strategy UI checks passed: templates, custom registration, revision edits, maker execution selection, point execution gating, archive, strategy-provided theory setting.\n",
+        "source": "tests/frontend/scenarios/strategies.mjs",
+        "sha256": "3bf6e332c586bdba1202f55f7718dea2b576550e0f9d6a1c10b41512fcbd5320"
+      },
+      {
+        "scenario": "workspace-manual",
+        "status": 0,
+        "seconds": 0.348,
+        "output": "PASS full workspace legacy #funding redirects to unified funding data, nine tabs, analysis→sidebar tick auto-select/query with exact range, runtime errors=[]\n",
+        "source": "tests/frontend/scenarios/workspace-manual.mjs",
+        "sha256": "1bc403f1993685eee2a95e61e8af63764c3ca5af79c480687d75c66e1d2f8ce3"
+      },
+      {
+        "scenario": "manual_trading",
+        "status": 0,
+        "seconds": 0.463,
+        "output": "Manual trading DOM: public-only default, credential clearing, explicit orders, stale gate, double-submit, unknown reconciliation, cancel ACK and out-of-depth overlay passed.\nRemote default DOM: public-only subscription, hidden credentials and disabled private controls passed.\n",
+        "source": "tests/frontend/manual_trading.mjs",
+        "sha256": "35bb78935d87d3cc6970542697bcc02f4532a89117ac61b201e89513edddd4f2"
+      },
+      {
+        "scenario": "storage",
+        "status": 0,
+        "seconds": 0.344,
+        "output": "Storage DOM: disk grouping/free space, disabled default, preview isolation, policy save, active-data deferral and empty-scope validation passed.\n",
+        "source": "tests/frontend/scenarios/storage.mjs",
+        "sha256": "daf096f62b815ad77bb9ae6c578d93b6099708f8541421580fc8004cdc8e6c35"
+      }
+    ]
+  },
+  "javascript_syntax": "npm run check --prefix frontend: passed",
+  "documentation": {
+    "limit_cases": 142,
+    "overview_diagrams": 37,
+    "checked_artifacts": 228,
+    "case_states": {
+      "implemented": 62,
+      "partial": 17,
+      "model_assumption": 16,
+      "unsupported": 47
+    }
+  },
+  "performance": {
+    "events": 20000,
+    "repetitions": 1,
+    "scenarios": {
+      "idle": {
+        "median_seconds": 0.16815233416855335,
+        "samples_seconds": [
+          0.16815233416855335
+        ],
+        "sha256": "f133461f28d6cba173e94cf4f7fc3b979535380832c8f773442059a24feaea09"
+      },
+      "orders100": {
+        "median_seconds": 0.7019198145717382,
+        "samples_seconds": [
+          0.7019198145717382
+        ],
+        "sha256": "9d7428e87fcf046387974df038d231247c2236f5e96c64d0d451363a582a7f64"
+      },
+      "mm": {
+        "median_seconds": 4.3838605135679245,
+        "samples_seconds": [
+          4.3838605135679245
+        ],
+        "sha256": "b9410d4f40d3b69cd3aa086c59f1c7a2287a31ae84cb754e24556fe36804835e"
+      },
+      "snapshot100": {
+        "median_seconds": 0.921971233561635,
+        "samples_seconds": [
+          0.921971233561635
+        ],
+        "sha256": "470472098d9c82056b58c6f4b6981a32b981d2685a55796e8928d08b6b1f7c18"
+      },
+      "http100": {
+        "median_seconds": 0.011982680298388004,
+        "samples_seconds": [
+          0.011982680298388004
+        ],
+        "sha256": "470472098d9c82056b58c6f4b6981a32b981d2685a55796e8928d08b6b1f7c18"
+      },
+      "source": {
+        "median_seconds": 0.07109115365892649,
+        "samples_seconds": [
+          0.07109115365892649
+        ],
+        "sha256": "5d7fa54aa57b6a47fc5c4de8ae95b28e3dd4943b4fe542ade6e9a2e80b0c2d52"
+      }
+    },
+    "formatter": {
+      "before_ms": [
+        162.605847,
+        164.069033,
+        167.12374700000004
+      ],
+      "after_ms": [
+        5.9716180000000065,
+        5.508474999999976,
+        9.38884399999995
+      ],
+      "speedup": 27.474803813639756
+    },
+    "scope": "Synthetic smoke measurement, no SLA or whole-system optimization claim; historical result hashes differ after later report fields were added."
+  },
+  "initial_fixture_failures": [
+    "fill-reports: previous 17-column expectation; now 19 including FX and turnover",
+    "pnl-currency: previous 18/16 columns; now paper 19/replay 17",
+    "latency-strategies and minmaxma: previous Point display name",
+    "strategies: two-type catalog predates minmaxma",
+    "replay-accounts: missing original strategy revision GET fixture and async completion"
+  ],
+  "runtime_code_changes": [],
+  "not_executed": [
+    "Real exchange private API and financial orders",
+    "Deployment/restart of operational server",
+    "Remote WSS end-to-end: implementation pending",
+    "Point and minmaxma full replay execution: registration only",
+    "Real execution import/calibration pipeline: design only",
+    "Unsupported limit cases: catalog/diagram validation only",
+    "Actual browser pixel/layout inspection"
+  ]
+}
