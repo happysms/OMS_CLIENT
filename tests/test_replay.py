@@ -327,6 +327,40 @@ class ReplayApiTests(unittest.TestCase):
             response=self.client.post('/api/replays',json=payload,headers=self.headers)
             self.assertEqual(response.status_code,400,response.get_data(as_text=True))
 
+    def test_invalid_period_creates_no_virtual_account(self):
+        cases = [self.payload(start=''), self.payload(end=''), self.payload(start=None),
+                 self.payload(end='not-a-date'), self.payload(end='2026-10-26T12:00:00+09:00'),
+                 self.payload(end='2026-10-26T11:59:59+09:00'),
+                 self.payload(end='2026-11-02T12:00:00.001+09:00')]
+        for field in ('start', 'end'):
+            missing = self.payload()
+            del missing[field]
+            cases.append(missing)
+        for payload in cases:
+            with self.subTest(payload=payload):
+                response = self.client.post('/api/replays', json=payload, headers=self.headers)
+                self.assertEqual(response.status_code, 400, response.get_data(as_text=True))
+        self.assertEqual(self.client.get('/api/replays').json['items'], [])
+        self.assertIsNone(self.manager.active)
+
+    def test_requested_kst_period_survives_history_and_result_export(self):
+        # The datetime-local UI omits an offset; the API interprets it as KST.
+        payload = self.payload(start='2026-10-26T12:00:00', end='2026-10-26T12:00:00.120')
+        response = self.client.post('/api/replays', json=payload, headers=self.headers)
+        self.assertEqual(response.status_code, 201)
+        identifier = response.json['id']
+        self.manager.active.thread.join(2)
+        expected = config(start='2026-10-26T03:00:00Z', end='2026-10-26T03:00:00.120Z')
+        result = self.client.get(f'/api/replays/{identifier}/result.json').json
+        history = self.client.get('/api/replays').json['items'][0]
+        self.assertEqual(result['status'], 'finished')
+        for stored in (result['config'], result['initial_config'], history['config']):
+            self.assertEqual(stored['start_ms'], expected['start_ms'])
+            self.assertEqual(stored['end_ms'], expected['end_ms'])
+        fills = self.client.get(f'/api/replays/{identifier}/fills').json['items']
+        self.assertTrue(fills)
+        self.assertTrue(all(expected['start_ms'] <= fill['timestamp'] < expected['end_ms'] for fill in fills))
+
     def test_run_fill_export_history_and_missing_routes(self):
         import csv,io
         response=self.client.post('/api/replays',json=self.payload(),headers=self.headers)

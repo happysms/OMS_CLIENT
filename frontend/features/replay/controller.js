@@ -1,4 +1,5 @@
 import {pnlCurrency,pnlAccount,pnlFill,fxDescription,pnlTheoryPrice,fillNotional,renderTradeActivity} from '../../shared/dom.js';
+import {replayPeriod,formatReplayPeriod} from './period.js';
 // Reuse ICU formatters across the hundreds of cells in every replay update.
 const numbers = new Intl.NumberFormat('ko-KR', {maximumFractionDigits: 8});
 const timestamps = new Intl.DateTimeFormat('ko-KR', {
@@ -78,8 +79,15 @@ export function initReplay({api,getCatalog}){
   $('strategy').addEventListener('change',strategyHelp);
 
   function error(value){$('error').hidden=!value;$('error').textContent=value||'';}
+  function periodPreview(){
+    const period=replayPeriod($('start').value,$('end').value);
+    $('period-preview').textContent=period.error||`${period.label} · 총 ${num(period.durationMs/1000)}초`;
+    $('end').setCustomValidity(period.error||'');
+    return period;
+  }
+  for(const field of ['start','end'])$(field).addEventListener('input',periodPreview);
   function populate(){const tickers=getCatalog()?.exchanges?.bithumb||[];$('tickers').replaceChildren(...tickers.map(t=>new Option(t,t)));}
-  async function bounds(){
+  async function bounds(useLatest=false){
     const ticker=$('ticker').value.trim().toUpperCase();$('ticker').value=ticker;
     if(!ticker)return;
     const version=++boundsEpoch,previousStart=$('start').value,previousEnd=$('end').value;
@@ -88,9 +96,12 @@ export function initReplay({api,getCatalog}){
       if(version!==boundsEpoch||ticker!==$('ticker').value.trim().toUpperCase())return;
       const start=Date.parse(result.start),last=Date.parse(result.end);
       if(!Number.isFinite(start)||!Number.isFinite(last))throw new Error('저장된 호가 범위가 없습니다.');
-      $('bounds').textContent=`저장 범위 ${stamp(start)} ~ ${stamp(last)} KST · 틱은 실행 시 함께 확인합니다.`;
+      $('bounds').textContent=`저장된 호가 범위 ${formatReplayPeriod(start,last).split(' · ')[0]} · 구간 내 누락 여부와 틱은 실행 시 확인합니다.`;
       const completeHour=Math.floor(last/3600000)*3600000,end=completeHour>start?completeHour:Math.floor(last/1000)*1000;
-      if(previousStart===$('start').value&&previousEnd===$('end').value){$('start').value=local(Math.max(start,end-60000));$('end').value=local(end);}
+      if((useLatest||(!previousStart&&!previousEnd))&&previousStart===$('start').value&&previousEnd===$('end').value){
+        $('start').value=local(Math.max(start,end-60000));$('end').value=local(end);
+        periodPreview();
+      }
     }catch(e){if(version===boundsEpoch)$('bounds').textContent=e.message;}
   }
   function renderBook(){
@@ -141,6 +152,8 @@ export function initReplay({api,getCatalog}){
     $('account-info').textContent=identity?`${identity.name} · 계좌 ${identity.id} · 초기 ${num(identity.initial_krw)}원 / ${num(identity.initial_coin)} ${identity.ticker} · ${terminal(next.status)?(next.status==='finished'?'완료 결과 저장됨':'중단 시점까지 저장됨'):'계좌·체결·손익 자동 저장 중'}`:'이전 실행의 계좌 기록';
     const used=next.initial_config?.strategy||next.config.strategy;
     $('account-info').textContent+=used?` · 사용 전략 ${used.name} v${used.revision}`:' · 사용 전략 단일 거래소 메이커 (이전 실행)';
+    const period=next.initial_config||next.config;
+    $('account-info').textContent+=` · 요청 기간 ${formatReplayPeriod(period.start_ms,period.end_ms)}`;
     // Do not move a slider while the user is dragging it.
     if(document.activeElement!==$('speed'))$('speed').value=next.speed;
     $('speed-label').textContent=`${next.speed}×`;$('fast').checked=next.fast;
@@ -192,7 +205,7 @@ export function initReplay({api,getCatalog}){
       if(version!==historyEpoch)return;
       const elements=list.items.map(item=>{
         const metadata=item.virtual_account||{},account=pnlAccount(item,unit);
-        const tr=row(['',`${item.config.strategy?item.config.strategy.name+' v'+item.config.strategy.revision+' / ':''}${item.config.ticker} · ${stamp(item.config.start_ms)}`,(states[item.status]||item.status)+(item.uncertain?' · 체결 판정 불가':''),
+        const tr=row(['',`${item.config.strategy?item.config.strategy.name+' v'+item.config.strategy.revision+' / ':''}${item.config.ticker} · ${formatReplayPeriod(item.config.start_ms,item.config.end_ms)}`,(states[item.status]||item.status)+(item.uncertain?' · 체결 판정 불가':''),
           `${num(metadata.initial_krw)}원 / ${num(metadata.initial_coin)}개`,num(item.fill_count),num(account.equity)+' '+unit,num(account.realized_pnl)+' '+unit,num(account.unrealized_pnl)+' '+unit,num(account.total_pnl)+' '+unit,num(item.activity?.[unit]?.turnover)+' '+unit]);
         const button=document.createElement('button');button.type='button';button.className='quiet-button';button.textContent=metadata.name||item.config.ticker+' 모의계좌';button.title=metadata.id||item.id;button.addEventListener('click',()=>select(item.id));tr.firstChild.append(button);return tr;
       });
@@ -210,7 +223,10 @@ export function initReplay({api,getCatalog}){
     return controlTail;
   }
   $('form').addEventListener('submit',async event=>{
-    event.preventDefault();if(creating)return;const strategy=selectedStrategy();if(!strategy||strategy.archived||!strategy.executable){error('실행 가능한 등록 전략을 선택하세요.');return;}creating=true;$('run').disabled=true;error('');
+    event.preventDefault();if(creating)return;
+    const period=periodPreview();
+    if(period.error){error(period.error);return;}
+    const strategy=selectedStrategy();if(!strategy||strategy.archived||!strategy.executable){error('실행 가능한 등록 전략을 선택하세요.');return;}creating=true;$('run').disabled=true;error('');
     const body={strategy_id:strategy.id,strategy_revision:strategy.revision,account_name:$('account-name').value.trim(),ticker:$('ticker').value.trim().toUpperCase(),start:$('start').value,end:$('end').value,initial_krw:$('cash').value,initial_coin:$('coin').value,fee_bps:$('fee').value,quantity_step:$('step').value,min_notional:$('minimum').value,latency_ms:Number($('latency').value),queue_cancel_mode:$('queue-mode').value,queue_cancel_bias:$('queue-bias').value,queue_cancel_chunks:Number($('queue-chunks').value),queue_cancel_seed:Number($('queue-seed').value),speed:Number($('speed').value),fast:$('fast').checked,include_okx:$('okx').checked,auto_mm:$('mm').checked};
     if(limitSupported())Object.assign(body,{maker_fee_bps:$('maker-fee').value||$('fee').value,taker_fee_bps:$('taker-fee').value||$('fee').value,price_step:$('price-step').value||'0',end_order_policy:$('end-policy').value,cancel_ack_policy:$('cancel-policy').value});
     if(!queueSupported())for(const key of ['queue_cancel_mode','queue_cancel_bias','queue_cancel_chunks','queue_cancel_seed'])delete body[key];
@@ -241,7 +257,7 @@ export function initReplay({api,getCatalog}){
   });
   $('replace-form').addEventListener('submit',event=>{event.preventDefault();control({action:'replace',order_id:$('replace-id').value,price:$('replace-price').value,total_quantity:$('replace-total').value});});
   $('orders').addEventListener('click',event=>{const button=event.target.closest('[data-cancel]');if(button)control({action:'cancel',order_id:button.dataset.cancel});});
-  $('ticker').addEventListener('change',bounds);$('latest').addEventListener('click',bounds);
+  $('ticker').addEventListener('change',()=>bounds());$('latest').addEventListener('click',()=>bounds(true));
   $('copy').addEventListener('click',async()=>{
     if(!snapshot)return;
     const version=epoch;
@@ -258,6 +274,7 @@ export function initReplay({api,getCatalog}){
     $('queue-seed').value=original.queue_cancel_seed??1;
     for(const [field,key] of Object.entries({ticker:'ticker',cash:'initial_krw',coin:'initial_coin',fee:'fee_bps',step:'quantity_step',minimum:'min_notional',latency:'latency_ms',speed:'speed'}))$(field).value=original[key]??'';
     $('start').value=local(original.start_ms);$('end').value=local(original.end_ms);
+    periodPreview();
     $('okx').checked=original.venues.includes('okx');$('mm').checked=original.auto_mm;$('fast').checked=original.fast;
     $('speed-label').textContent=original.speed+'×';$('account-name').value=((snapshot.virtual_account?.name||original.ticker+' 모의계좌')+' 복사').slice(0,80);
     $('bounds').textContent='선택한 계좌의 초기조건을 복사했습니다. 시작 버튼을 누르면 별도 계좌를 생성합니다.';
@@ -278,6 +295,6 @@ export function initReplay({api,getCatalog}){
   $('csv').addEventListener('click',async()=>{
     const selected=id;try{const blob=await api(`/api/replays/${selected}/fills.csv`,{responseType:'blob'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`replay-${selected}-fills.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){error(e.message);}
   });
-  populate();updateRunButton();
+  populate();periodPreview();updateRunButton();
   return {ready:Promise.resolve(),refresh:populate,onEnter(){visible=true;loadStrategies().catch(e=>error(e.message));history(true).catch(e=>error(e.message));poll();schedule();},onLeave(){visible=false;clearInterval(timer);}};
 }
