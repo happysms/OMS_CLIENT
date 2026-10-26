@@ -84,3 +84,4 @@
 .storage-actions{display:flex;flex-wrap:wrap;gap:8px}
 #storage-sample-list{font-size:12px;max-height:240px;overflow:auto;overflow-wrap:anywhere}
 @media(max-width:760px){.storage-panel{margin:10px 12px 0;padding:12px}.storage-disks{grid-template-columns:1fr}}
+.premium-comparison{margin:24px 0;padding:12px 0 20px;border-top:1px solid #32434b;border-bottom:1px solid #32434b;min-width:0}.premium-comparison .premium-actions select{width:auto;min-width:100px}.premium-comparison details>summary{font-size:11px;padding:14px 0}.premium-table input[type=checkbox]{width:16px;height:16px;accent-color:var(--mint)}
