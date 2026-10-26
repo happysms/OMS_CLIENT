@@ -15,6 +15,7 @@ from ..market_data.validation import IDENTIFIER
 from ..market_data.quotes import PublicQuoteFeed
 from .reporting import evaluate_positions, valid_theories
 from .currency import FxQuote, UsdtLedger
+from .activity import TradingActivity, saved_trade
 
 
 EXCHANGES = {"bithumb", "upbit"}
@@ -186,6 +187,9 @@ class PaperTradingService:
                 CREATE TABLE IF NOT EXISTS paper_usdt_state (
                     id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS paper_activity_state (
+                    id INTEGER PRIMARY KEY CHECK(id=1), last_rowid INTEGER NOT NULL, state TEXT NOT NULL
+                );
             """)
             # Old fills have no historical marks. Preserve their known execution
             # fields explicitly, without inventing past valuations from today's book.
@@ -206,6 +210,28 @@ class PaperTradingService:
             return provider.get('bithumb', 'USDT') if hasattr(provider, 'get') else provider('bithumb', 'USDT')
         except (KeyError, RuntimeError, ValueError, OSError):
             return None
+
+    @staticmethod
+    def _save_activity(connection, activity, cursor):
+        connection.execute('INSERT INTO paper_activity_state VALUES (1,?,?) '
+                           'ON CONFLICT(id) DO UPDATE SET last_rowid=excluded.last_rowid,state=excluded.state',
+                           (cursor, json.dumps(activity.state(), allow_nan=False)))
+
+    @classmethod
+    def _activity(cls, connection):
+        checkpoint = connection.execute('SELECT last_rowid,state FROM paper_activity_state WHERE id=1').fetchone()
+        cursor = checkpoint['last_rowid'] if checkpoint else 0
+        activity = TradingActivity(json.loads(checkpoint['state']) if checkpoint else None)
+        previous = cursor
+        rows = connection.execute('SELECT o.rowid AS source_rowid,o.*,r.report FROM paper_orders o '
+                                  'LEFT JOIN paper_fill_reports r ON r.fill_id=o.id '
+                                  'WHERE o.rowid>? ORDER BY o.rowid', (cursor,))
+        for row in rows:
+            activity.record(saved_trade(dict(row), json.loads(row['report']) if row['report'] else None))
+            cursor = row['source_rowid']
+        if checkpoint is None or cursor != previous:
+            cls._save_activity(connection, activity, cursor)
+        return activity
 
     @staticmethod
     def _usdt_ledger(connection, account, positions, fx, force=False):
@@ -293,11 +319,12 @@ class PaperTradingService:
             account, positions = evaluate_positions(account, positions, self._marks_at(marks, now),
                                                     valid_theories(theories, now, MAX_QUOTE_AGE_MS))
             usdt = ledger.valuation(account, positions, fx)
+            activity = self._activity(connection).report()
             fills = self.fills()
         valued = sum(position['mark_price'] is not None for position in positions)
         complete = valued == len(positions)
         equity = account['equity']
-        return {"account": account, "positions": positions, "orders": orders, "equity": equity, "usdt": usdt, "fills": fills["items"], "fill_count": fills["total"], "next_fill_before": fills["next_before"],
+        return {"account": account, "positions": positions, "orders": orders, "equity": equity, "usdt": usdt, "activity": activity, "fills": fills["items"], "fill_count": fills["total"], "next_fill_before": fills["next_before"],
                 "quote_status": {"state": "fresh" if complete else "partial" if valued else "unavailable",
                                  "message": "보유 종목이 없습니다." if not positions else "실시간 호가로 평가했습니다." if complete else "일부 실시간 호가가 없어 전체 평가액을 표시하지 않습니다.",
                                  "updated_at": now},
@@ -347,6 +374,7 @@ class PaperTradingService:
                 order = dict(existing)
             else:
                 account = dict(connection.execute("SELECT * FROM paper_account WHERE id=1").fetchone())
+                activity = self._activity(connection)
                 position = connection.execute("SELECT * FROM paper_positions WHERE exchange=? AND ticker=?", (exchange, ticker)).fetchone()
                 old_quantity = position["quantity"] if position else 0.0
                 average = position["avg_price"] if position else 0.0
@@ -386,7 +414,7 @@ class PaperTradingService:
                 order = {"id": secrets.token_hex(12), "timestamp": now, "exchange": exchange, "ticker": ticker,
                          "side": side, "price": price, "quantity": quantity, "fee": fee, "cash": cash,
                          "realized_pnl": realized, "quote_time": quote["ts"], "status": "filled", "client_order_id": client_id}
-                connection.execute("INSERT INTO paper_orders VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", tuple(order.values()))
+                order_rowid = connection.execute("INSERT INTO paper_orders VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", tuple(order.values())).lastrowid
                 after = dict(connection.execute('SELECT * FROM paper_account WHERE id=1').fetchone())
                 after.pop('id', None)
                 after['fees_paid'] = connection.execute('SELECT coalesce(sum(fee),0) FROM paper_orders').fetchone()[0]
@@ -394,9 +422,11 @@ class PaperTradingService:
                 valuation, positions = evaluate_positions(after, positions, self._marks_at(marks, now),
                                                           valid_theories(theories, now, MAX_QUOTE_AGE_MS))
                 usdt_fill = usdt_ledger.record_fill(f'{exchange}:{ticker}', side, quantity, price, fee, old_quantity, fx)
+                activity.record(saved_trade(order, dict(usdt=dict(fill=usdt_fill))))
+                self._save_activity(connection, activity, order_rowid)
                 self._save_usdt(connection, usdt_ledger)
                 report = dict(schema_version=1, valuation_status='recorded', as_of_ms=now,
-                              fill=order, account=valuation, positions=positions,
+                              fill=order, account=valuation, positions=positions, activity=activity.report(),
                               before=dict(cash=account['cash'], quantity=old_quantity, avg_price=average),
                               execution_quote=quote,
                               execution_theory=valid_theories(theories, now, MAX_QUOTE_AGE_MS).get((exchange,ticker)),
@@ -421,6 +451,7 @@ class PaperTradingService:
             connection.execute("DELETE FROM paper_orders")
             connection.execute("DELETE FROM paper_positions")
             connection.execute("DELETE FROM paper_usdt_state")
+            connection.execute("DELETE FROM paper_activity_state")
             connection.execute("UPDATE paper_account SET initial_cash=?,cash=?,realized_pnl=0,quote_currency='KRW',fee_bps=?,slippage_bps=? WHERE id=1", (cash, cash, fee, slip))
         return self.snapshot()
 

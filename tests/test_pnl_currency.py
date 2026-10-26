@@ -242,7 +242,7 @@ class ReplayCurrencyTests(unittest.TestCase):
         self.assertEqual(report['usdt']['fill']['fx']['krw_per_usdt'],1200)
         self.assertAlmostEqual(report['usdt']['fill']['price'],999/1200)
         def krw(value):
-            if isinstance(value,dict):return {k:krw(v) for k,v in value.items() if k!='usdt'}
+            if isinstance(value,dict):return {k:krw(v) for k,v in value.items() if k not in {'usdt','USDT'}}
             if isinstance(value,list):return [krw(v) for v in value]
             return value
         self.assertEqual(krw(baseline.snapshot()),krw(rated.snapshot()))

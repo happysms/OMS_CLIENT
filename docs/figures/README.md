@@ -3,7 +3,7 @@
 이 폴더의 SVG는 외부 폰트·스크립트·네트워크 의존성이 없는 설명 그림이다. Markdown 미리보기에서 이미지를 직접 표시한다. 한글 글꼴은 `Noto Sans CJK KR`, `Noto Sans KR`, 시스템 sans-serif 순서로 사용한다. 크게 보려면 SVG 파일을 연다. `title`, `desc`, 문서의 대체 텍스트와 본문 설명도 함께 제공한다.
 
 - `limit-scenes.json`: A01~L10 전체 142개 사례의 상황 → 판단·변화 → 결과를 직접 작성한 설명 원본. 현재 상태·제안 문구는 `oms_client/replay/limit_case_matrix.json`과 결합한다.
-- `overview-scenes.json`: 전략·재생·대기열·헤지·회계·운영 개념도 36개의 원본과 설명.
+- `overview-scenes.json`: 전략·재생·대기열·헤지·회계·운영 개념도 37개의 원본과 설명.
 - `document-bindings.json`: 각 개념도를 넣은 문서·절의 위치. 본문 변경 시 설명과 위치도 함께 갱신한다.
 - `a01.svg` 등: 사례별 그림. 수정용 Mermaid는 `docs/illustrated/limit-*.ko.md`에서 접어서 제공한다.
 - 개념도 `.svg`와 `.mmd`: 바로 보는 그림과 대응하는 Mermaid 흐름도 원본.

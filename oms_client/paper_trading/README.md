@@ -21,3 +21,7 @@
 ## KRW / USDT 보고 통화
 
 `currency.py`의 `FxQuote`·`UsdtLedger`가 체결 당시 빗썸 USDT 중간가에 따른 별도 가중 원가를 관리한다. KRW 결제 원장을 유지하면서 `usdt.account`, `usdt.positions`, 체결 `usdt.fill.fx`를 추가한다. 실시간 상태 `paper_usdt_state`와 체결 보고서는 KRW 정산과 같은 트랜잭션에 저장한다. 환율 결측은 null이며 오늘 환율로 과거 원가를 복원하지 않는다. `fx_provider`를 선택적으로 주입할 수 있고 기본값은 공개 실행 시세 공급자다. [환율 계산·저장 계약·미결정 쿼리](../../docs/pnl_currency.ko.md)를 참고한다.
+
+## 거래 활동 집계
+
+공통 `paper_trading/activity.py`가 확정 체결만 Decimal로 누적하고 `activity.KRW/USDT`에 거래대금·수수료·건수 및 거래소·종목별 수량·VWAP를 제공한다. USDT는 각 체결 당시 환율로 계산한다. [계산·저장·기존 결과 처리](../../docs/trade_activity.ko.md)를 참고한다.

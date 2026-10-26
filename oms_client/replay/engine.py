@@ -6,6 +6,7 @@ from typing import Mapping
 from ..market_data.validation import DataError
 from ..paper_trading.reporting import evaluate_positions
 from ..paper_trading.currency import UsdtLedger
+from ..paper_trading.activity import TradingActivity, ExecutedTrade
 from ..strategies.simple_mm import (
     AccountView, MMConfig, QuoteView, SimpleMM, _amount,
 )
@@ -52,6 +53,7 @@ class ReplayEngine:
         self.fee_schedule = FeeSchedule.from_config(config)
         self.account = SpotLedger(D(config['initial_krw']), D(config['initial_coin']), self.fee_schedule)
         self.usdt_ledger = UsdtLedger()
+        self.activity = TradingActivity()
         self.fx_provider = fx_provider or (lambda now: None)
         self.books = {}
         self.queues = {}
@@ -637,6 +639,8 @@ class ReplayEngine:
         before_quantity = self.coin
         fx = self._fx_quote()
         settlement = self.account.settle(order, size, price, role)
+        self.activity.record(ExecutedTrade('bithumb', self.config['ticker'], order.side,
+                                           size, price, settlement.fee, fx.rate if fx else None))
         usdt_fill = self.usdt_ledger.record_fill(f"bithumb:{self.config['ticker']}", order.side,
                                                 size, price, settlement.fee, before_quantity, fx)
         fee, realized = (settlement.fee, settlement.realized_pnl)
@@ -661,6 +665,7 @@ class ReplayEngine:
             remaining=float(order.remaining),
             source_tick=tick['source_id'],
             account=valuation['account'],
+            activity=valuation['activity'],
             positions=valuation['positions'],
             theory=valuation['theory'],
             order_guard=self.guard.snapshot(self.now),
@@ -715,6 +720,7 @@ class ReplayEngine:
             initial_equity=float(self.initial_equity) if self.initial_equity is not None else None,
         )
         return dict(account=account, positions=positions, theory=theory,
+                    activity=self.activity.report(),
                     usdt=self.usdt_ledger.valuation(account, positions, self._fx_quote()))
 
     def finish(self, reason='end_of_run'):

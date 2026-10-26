@@ -195,5 +195,10 @@
     "## 전체 공통 종목 괴리 누적": [
       "premium-hourly"
     ]
+  },
+  "trade_activity.ko.md": {
+    "## 계산과 표시": [
+      "trade-activity"
+    ]
   }
 }

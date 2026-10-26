@@ -182,3 +182,7 @@ MM은 가용 원화를 최우선 매수호가에, 가용 코인을 최우선 매
 ## 체결 당시 환율과 USDT 손익
 
 `source.py`는 `fx.py:AsOfFxQuotes`로 빗썸 USDT 참조 원본을 별도로 순차 소비한다. 이 참조는 시장 이벤트 순서·전략 실행·체결 예산을 바꾸지 않는다. 엔진은 공통 `paper_trading.currency.UsdtLedger`에 초기 원가와 체결별 환율을 기록하고, 체크포인트·체결·계좌 목록에 `usdt` 평가를 저장한다. 현재 환율로 과거 체결 원가를 다시 계산하지 않는다. 원본이 없거나 지연되면 원화 결과를 유지하고 관련 USDT 값은 null이다. [계산 수식·현금 환산손익·CSV·소스 정책](../../docs/pnl_currency.ko.md)을 참고한다.
+
+## 거래 활동 집계
+
+공통 `paper_trading/activity.py`가 확정 체결만 Decimal로 누적하고 `activity.KRW/USDT`에 거래대금·수수료·건수 및 거래소·종목별 수량·VWAP를 제공한다. USDT는 각 체결 당시 환율로 계산한다. [계산·저장·기존 결과 처리](../../docs/trade_activity.ko.md)를 참고한다.

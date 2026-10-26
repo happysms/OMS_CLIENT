@@ -1,6 +1,6 @@
 # 그림으로 보는 모의거래 설계와 알고리즘
 
-기존 지정가 **142개 사례 모두에 개별 설명 그림**을 추가했다. 관련 제안서·전략·알고리즘·운영 문서 16개에도 핵심 개념도 36종을 배치했다. SVG는 문서에서 바로 보고 확대할 수 있으며, 사례 문서의 접힌 영역과 개념도 `.mmd` 파일에는 수정용 Mermaid 원본이 있다.
+기존 지정가 **142개 사례 모두에 개별 설명 그림**을 추가했다. 관련 제안서·전략·알고리즘·운영 문서 17개에도 핵심 개념도 37종을 배치했다. SVG는 문서에서 바로 보고 확대할 수 있으며, 사례 문서의 접힌 영역과 개념도 `.mmd` 파일에는 수정용 Mermaid 원본이 있다.
 
 ## 먼저 읽을 그림
 
@@ -44,6 +44,7 @@
 | [minmaxma](minmaxma_strategy.ko.md) | microprice→min/max/MA→신호, 시간 가중 MA 수치 예시 |
 | [헤지 지연·핑 보호](execution_latency_controls.ko.md) | 도착·응답·완료의 차이, 시간차 급등 차단·복구 |
 | [확률 취소](queue_cancellation_model.ko.md) | 틱으로 설명된 감소 제외, 공유 FIFO, 앞·뒤 취소 추첨 |
+| [거래 활동 집계](trade_activity.ko.md) | 전체 체결의 대금·수량·평균가, 수수료 분리 |
 | [KRW·USDT 손익](pnl_currency.ko.md) | 체결 환율 원가, 현금 환산손익, 미래 환율 차단 |
 | [실제 체결 피드백](real_execution_feedback.ko.md) | 실제 주문 재생과 전략 재실행 구분, 대사·검증·버전 |
 | [객체 구조](replay_architecture.ko.md) | 전략·주문·원장 책임, FOK 계획의 원자성, commit 후 공개 |
@@ -98,5 +99,6 @@
 | [모듈 제안서를 데이터 흐름으로 읽기](figures/module-pipeline.svg) | [원본](figures/module-pipeline.mmd) |
 | [Point 가격: 해외 기준가격과 USDT 환율에서 매수·매도 한계가로](figures/point-pricing.svg) | [원본](figures/point-pricing.mmd) |
 | [공통 종목 괴리: 1초 표본에서 시간별 누적과 3일·7일 평균으로](figures/premium-hourly.svg) | [원본](figures/premium-hourly.mmd) |
+| [체결만 누적해 거래 활동을 계산](figures/trade-activity.svg) | [원본](figures/trade-activity.mmd) |
 
 수정·재생성·검증 방법은 [그림 제작 안내](figures/README.md)를 참고한다.

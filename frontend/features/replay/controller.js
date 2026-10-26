@@ -1,4 +1,4 @@
-import {pnlCurrency,pnlAccount,pnlFill,fxDescription,pnlTheoryPrice} from '../../shared/dom.js';
+import {pnlCurrency,pnlAccount,pnlFill,fxDescription,pnlTheoryPrice,fillNotional,renderTradeActivity} from '../../shared/dom.js';
 // Reuse ICU formatters across the hundreds of cells in every replay update.
 const numbers = new Intl.NumberFormat('ko-KR', {maximumFractionDigits: 8});
 const timestamps = new Intl.DateTimeFormat('ko-KR', {
@@ -118,8 +118,8 @@ export function initReplay({api,getCatalog}){
       rows($('fills'),fills.map(f=>{
         const value=pnlFill(f,unit),a=pnlAccount(f,unit),fx=f.usdt?.fill?.fx;
         const theoryPrice=pnlTheoryPrice(f,unit);
-        return row([stamp(f.timestamp),f.order_id,side(f.side),num(value.price),num(f.quantity),num(value.fee),num(value.realized_pnl),num(a.realized_pnl),num(a.unrealized_pnl),num(a.theory_unrealized_pnl),num(a.total_pnl),num(a.equity),num(theoryPrice),stamp(f.theory?.available_at_ms??f.positions?.[0]?.theory?.available_at_ms),f.liquidity??'maker',num(fx?.krw_per_usdt)]);
-      }),16,'아직 모의 체결이 없습니다.');
+        return row([stamp(f.timestamp),f.order_id,side(f.side),num(value.price),num(f.quantity),num(value.fee),num(value.realized_pnl),num(a.realized_pnl),num(a.unrealized_pnl),num(a.theory_unrealized_pnl),num(a.total_pnl),num(a.equity),num(theoryPrice),stamp(f.theory?.available_at_ms??f.positions?.[0]?.theory?.available_at_ms),f.liquidity??'maker',num(fx?.krw_per_usdt),num(fillNotional(f,unit))]);
+      }),17,'아직 모의 체결이 없습니다.');
       renderedFills={id:snapshot.id,source,unit};
     }
     if(!historicalFills)nextBefore=fills.length===100?fills.at(-1).sequence:null;
@@ -157,6 +157,7 @@ export function initReplay({api,getCatalog}){
     const metrics=[['평가액 · '+unit,a.equity],['주문 가능 현금 · '+unit,a.free_cash],['예약 원화 · KRW',Number.isFinite(base.cash)&&Number.isFinite(base.free_cash)?base.cash-base.free_cash:null],['보유 코인',base.coin],['주문 가능 코인',base.free_coin],['실현손익 · '+unit,a.realized_pnl],['미실현손익 · '+unit,a.unrealized_pnl],['이론가 미실현 · '+unit,a.theory_unrealized_pnl],['매매 총손익 · '+unit,a.total_pnl]];
     if(unit==='USDT')metrics.push(['원화 현금 환산손익 · USDT',a.cash_fx_pnl],['초기 대비 평가액 변화 · USDT',a.equity_change_pnl]);
     $('fx-info').textContent=fxDescription(next,unit);
+    renderTradeActivity('replay',next,unit);
     $('stats').replaceChildren(...metrics.map(([title,value])=>{const article=document.createElement('article'),label=document.createElement('span'),strong=document.createElement('strong');label.textContent=title;strong.textContent=num(value);article.append(label,strong);return article;}));
     const theory=next.theory;
     $('theory-info').textContent=theory?`전략 이론가 ${num(theory.price)}원 · ${stamp(theory.available_at_ms)} KST · ${theory.formula||theory.basis}`:'전략 이론가 미평가 · 전략이 값을 제공하지 않았거나 유효시간이 지났습니다.';
@@ -192,10 +193,10 @@ export function initReplay({api,getCatalog}){
       const elements=list.items.map(item=>{
         const metadata=item.virtual_account||{},account=pnlAccount(item,unit);
         const tr=row(['',`${item.config.strategy?item.config.strategy.name+' v'+item.config.strategy.revision+' / ':''}${item.config.ticker} · ${stamp(item.config.start_ms)}`,(states[item.status]||item.status)+(item.uncertain?' · 체결 판정 불가':''),
-          `${num(metadata.initial_krw)}원 / ${num(metadata.initial_coin)}개`,num(item.fill_count),num(account.equity)+' '+unit,num(account.realized_pnl)+' '+unit,num(account.unrealized_pnl)+' '+unit,num(account.total_pnl)+' '+unit]);
+          `${num(metadata.initial_krw)}원 / ${num(metadata.initial_coin)}개`,num(item.fill_count),num(account.equity)+' '+unit,num(account.realized_pnl)+' '+unit,num(account.unrealized_pnl)+' '+unit,num(account.total_pnl)+' '+unit,num(item.activity?.[unit]?.turnover)+' '+unit]);
         const button=document.createElement('button');button.type='button';button.className='quiet-button';button.textContent=metadata.name||item.config.ticker+' 모의계좌';button.title=metadata.id||item.id;button.addEventListener('click',()=>select(item.id));tr.firstChild.append(button);return tr;
       });
-      if(append)$('history').append(...elements);else rows($('history'),elements,9,'저장된 모의계좌가 없습니다.');
+      if(append)$('history').append(...elements);else rows($('history'),elements,10,'저장된 모의계좌가 없습니다.');
       historyCursor=list.next_before||null;$('history-more').hidden=!historyCursor;
       if(restore&&!id&&list.items.length)await select((list.items.find(item=>!terminal(item.status))||list.items[0]).id);
     }finally{if(version===historyEpoch)$('history-more').disabled=false;}

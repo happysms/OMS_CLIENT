@@ -18,6 +18,27 @@ export function pnlCurrency(section, value) {
   } catch {return value==='USDT'?'USDT':'KRW';}
 }
 export function pnlAccount(report, unit) {return (unit==='USDT'?report?.usdt?.account:report?.account)||{};}
+export function fillNotional(report, unit) {
+  if(unit==='USDT')return report?.usdt?.fill?.notional;
+  const fill=report?.fill??report;
+  return Number.isFinite(fill?.price)&&Number.isFinite(fill?.quantity)?fill.price*fill.quantity:null;
+}
+export function renderTradeActivity(prefix, report, unit) {
+  const activity=report?.activity?.[unit]||{},digits=unit==='USDT'?6:2;
+  const metrics=[['누적 거래대금',activity.turnover],['매수 거래대금',activity.buy_turnover],
+    ['매도 거래대금',activity.sell_turnover],['누적 수수료',activity.fees_paid]];
+  $(prefix+'-activity-stats').replaceChildren(...metrics.map(([title,value])=>{
+    const article=document.createElement('article'),label=document.createElement('span'),strong=document.createElement('strong');
+    label.textContent=title+' · '+unit;strong.textContent=number(value,digits);article.append(label,strong);return article;
+  }));
+  $(prefix+'-activity-info').textContent=`실제 체결 합계 · 매수 ${number(activity.buy_fill_count,0)}건 / 매도 ${number(activity.sell_fill_count,0)}건 (부분체결 포함). 수수료 제외 거래대금이며 미체결·취소 주문과 초기 보유량은 제외합니다. 금액·평균 체결가: ${unit}.`+
+    (!report?.activity?' 이전 결과 또는 서버에는 누적 집계가 없습니다.':activity.status==='missing_historical_fx'?' 일부 체결 환율이 없어 관련 USDT 합계는 미평가입니다.':'');
+  tableRows(prefix+'-activity-markets',(activity.markets||[]).map(m=>[
+    `${exchanges[m.exchange]||m.exchange} / ${m.ticker}`,number(m.buy_quantity,8),number(m.sell_quantity,8),
+    number(m.traded_quantity,8),price(m.buy_vwap),price(m.sell_vwap),number(m.buy_turnover,digits),
+    number(m.sell_turnover,digits),number(m.turnover,digits),number(m.fees_paid,digits),number(m.fill_count,0)
+  ]),11,report?.activity?'아직 체결된 거래가 없습니다.':'이전 결과에는 누적 거래 집계가 없습니다.');
+}
 export function pnlFill(report, unit) {return (unit==='USDT'?report?.usdt?.fill:report?.fill??report)||{};}
 export function pnlTheoryPrice(report, unit) {
   const value=report?.fill?report.execution_theory?.price:(report?.theory?.price??report?.positions?.[0]?.theory_price);

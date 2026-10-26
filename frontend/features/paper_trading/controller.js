@@ -1,4 +1,4 @@
-import {$,exchanges,number,price,stamp,time,errorAt,clearError,tableRows,source,pnlCurrency,pnlAccount,pnlFill,fxDescription,pnlTheoryPrice} from '../../shared/dom.js';
+import {$,exchanges,number,price,stamp,time,errorAt,clearError,tableRows,source,pnlCurrency,pnlAccount,pnlFill,fxDescription,pnlTheoryPrice,fillNotional,renderTradeActivity} from '../../shared/dom.js';
 import {populateSource,populateTickers} from '../../shared/source-controls.js';
 
 export function initPaperTrading({api,getCatalog}) {
@@ -23,6 +23,7 @@ export function initPaperTrading({api,getCatalog}) {
     }
     renderFills();
     $('paper-fx-info').textContent=fxDescription(snapshot,unit);
+    renderTradeActivity('paper',snapshot,unit);
     $('paper-fx-pnl').textContent=unit==='USDT'?`원화 현금 환산손익 ${number(account.cash_fx_pnl,6)} USDT · 초기 대비 평가액 변화 ${number(account.equity_change_pnl,6)} USDT`:'';
     const quote=snapshot.quote_status||{};
     $('paper-message').textContent=(quote.message||'서버 모의 계좌 조회 완료')+(quote.updated_at?' · 확인 '+time(quote.updated_at)+' KST':'');
@@ -34,8 +35,8 @@ export function initPaperTrading({api,getCatalog}) {
   function renderFills(){
     tableRows('paper-orders',state.fills.map(report=>{
       const f=report.fill,value=pnlFill(report,unit),a=pnlAccount(report,unit),position=report.positions?.find(p=>p.exchange===f.exchange&&p.ticker===f.ticker);
-      return [time(f.timestamp),`${exchanges[f.exchange]||f.exchange} / ${f.ticker}`,f.side==='buy'?'매수':'매도',number(f.quantity,8),price(value.price),number(value.fee,6),number(value.realized_pnl,6),number(a.realized_pnl,4),number(a.unrealized_pnl,4),number(a.theory_unrealized_pnl,4),number(a.total_pnl,4),number(a.theory_total_pnl,4),number(a.cash??(unit==='KRW'?f.cash:null),2),number(a.equity,2),number(position?.quantity??(report.account?0:null),8),price(pnlTheoryPrice(report,unit)),unit==='USDT'&&report.usdt?.status!=='complete'?'환율·원가 미평가':report.valuation_status==='legacy_unavailable'?'과거 평가 기록 없음':a.unrealized_pnl===null?'시장가 평가 불가':a.theory_unrealized_pnl===null?'이론가 평가 불가':'기록됨',number(report.usdt?.fill?.fx?.krw_per_usdt,4)];
-    }),18,'아직 모의 체결이 없습니다.');
+      return [time(f.timestamp),`${exchanges[f.exchange]||f.exchange} / ${f.ticker}`,f.side==='buy'?'매수':'매도',number(f.quantity,8),price(value.price),number(value.fee,6),number(value.realized_pnl,6),number(a.realized_pnl,4),number(a.unrealized_pnl,4),number(a.theory_unrealized_pnl,4),number(a.total_pnl,4),number(a.theory_total_pnl,4),number(a.cash??(unit==='KRW'?f.cash:null),2),number(a.equity,2),number(position?.quantity??(report.account?0:null),8),price(pnlTheoryPrice(report,unit)),unit==='USDT'&&report.usdt?.status!=='complete'?'환율·원가 미평가':report.valuation_status==='legacy_unavailable'?'과거 평가 기록 없음':a.unrealized_pnl===null?'시장가 평가 불가':a.theory_unrealized_pnl===null?'이론가 평가 불가':'기록됨',number(report.usdt?.fill?.fx?.krw_per_usdt,4),number(fillNotional(report,unit),unit==='USDT'?6:2)];
+    }),19,'아직 모의 체결이 없습니다.');
     $('paper-fills-more').hidden=state.nextFill===null;
   }
   async function loadPaper({clear=true,preserveFills=false}={}) {

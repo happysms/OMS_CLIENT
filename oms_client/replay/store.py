@@ -101,7 +101,7 @@ class ReplayStore:
                 'WHERE a.sequence<? ORDER BY a.sequence DESC LIMIT ?',
                 (before if before is not None else 2**63-1, limit)).fetchall()
         return [dict({key: snapshot.get(key) for key in
-                      ('id','status','config','virtual_account','virtual_time_ms','fill_count','account','usdt','error','uncertain')},
+                      ('id','status','config','virtual_account','virtual_time_ms','fill_count','account','usdt','activity','error','uncertain')},
                      history_sequence=sequence)
                 for sequence,raw in rows for snapshot in [json.loads(raw)]]
 
