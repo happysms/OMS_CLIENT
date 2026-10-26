@@ -85,6 +85,8 @@ def _write_csv(path: Path, result: dict, unit: str):
                 header.append("price_mode")
             if last_quotes:
                 header.extend([f"{leg['id']}_quote_time_kst" for leg in price_legs])
+            clock_legs = [leg for leg in complete['legs'] if 'timestamp_delta_ms' in leg]
+            header.extend(f"{leg['id']}_timestamp_delta_ms" for leg in clock_legs)
             writer.writerow(header)
             for index, timestamp in enumerate(complete["times"]):
                 label = datetime.fromtimestamp(timestamp / 1000, timezone(timedelta(hours=9))).isoformat()
@@ -108,6 +110,7 @@ def _write_csv(path: Path, result: dict, unit: str):
                     for leg in price_legs:
                         quote_time = leg["quote_times"][index]
                         row.append(_kst_csv_time(quote_time))
+                row.extend(_optional_value(leg, 'timestamp_delta_ms', index) for leg in clock_legs)
                 writer.writerow(row)
         os.replace(temporary, path)
     finally:

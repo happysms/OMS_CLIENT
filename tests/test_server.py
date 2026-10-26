@@ -762,7 +762,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/modules").status_code, 401)
         self.login()
         modules = self.client.get("/api/modules").json["items"]
-        self.assertEqual([item["id"] for item in modules], ["data", "quality", "funding", "analysis", "backtest", "paper", "oms"])
+        self.assertEqual([item["id"] for item in modules], ["data", "quality", "analysis", "backtest", "strategies", "replay", "paper", "oms"])
         self.assertEqual(modules[-1]["status"], "planned")
         self.assertFalse(self.client.get("/api/oms/status").json["live_orders"])
         self.assertEqual(self.client.post("/api/oms/orders", json={}, headers=self.headers()).status_code, 405)
@@ -776,7 +776,7 @@ class ServerTests(unittest.TestCase):
             version = self.client.get("/api/version").json
             self.assertEqual(version["application"], "OMS_CLIENT")
             self.assertEqual(version["revision"], "ab12cd3")
-            self.assertEqual([item["id"] for item in version["modules"]], ["data", "quality", "funding", "analysis", "backtest", "paper", "oms"])
+            self.assertEqual([item["id"] for item in version["modules"]], ["data", "quality", "analysis", "backtest", "strategies", "replay", "paper", "oms"])
             self.assertEqual(self.app.test_client().get("/api/health").json,
                              {"ok": True, "service": "oms-client", "revision": "ab12cd3"})
 

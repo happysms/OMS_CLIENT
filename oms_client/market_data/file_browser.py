@@ -263,9 +263,9 @@ def _read_footer(parts):
 
 def _query(parts):
     exchange, kind, ticker = parts[:3]
-    if kind in {"tick", "fx"}:
-        return None, "체결·환율 파일은 현재 분석 조회 소스로 지원하지 않습니다."
-    if parts[-1].endswith(".gz") and kind != "funding":
+    if kind == "fx":
+        return None, "환율 파일은 현재 데이터 조회 소스로 지원하지 않습니다."
+    if parts[-1].endswith(".gz") and kind not in {"funding", "tick"}:
         return None, "이 유형의 압축 파일은 현재 분석 조회에서 지원하지 않습니다."
     if kind in {"ob", "ob_1s"}:
         try:
@@ -275,6 +275,10 @@ def _query(parts):
         if selected["directory"].resolve() != _root(kind).joinpath(*parts[:3]).resolve():
             return None, "같은 종목의 1초 수집 데이터가 우선 선택되므로 이 기존 파일은 바로 조회할 수 없습니다."
         data_type = "price"
+    elif kind == "tick":
+        if parts[-1].endswith(".gz") and _safe_path(_root(kind).joinpath(*parts).with_suffix(""), _root(kind), is_file=True):
+            return None, "같은 시간의 일반 Parquet 체결 파일이 우선 선택됩니다. 압축 파일 대신 해당 일반 파일을 선택해 주세요."
+        data_type = "tick"
     elif kind == "candles_1m":
         if exchange not in {"bithumb", "upbit"} or ticker != "USDT":
             return None, "이 1분봉 파일의 소스는 현재 분석 조회에서 지원하지 않습니다."
@@ -290,7 +294,7 @@ def _query(parts):
         end = start + timedelta(hours=1)
     return {"data_type": data_type, "exchange": exchange, "ticker": ticker,
             "start": start.isoformat().replace("+00:00", "Z"), "end": end.isoformat().replace("+00:00", "Z"),
-            "interval": "1min"}, None
+            "interval": "1s" if kind == "tick" else "1min"}, None
 
 
 def _time_stats(metadata):

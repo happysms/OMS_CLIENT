@@ -12,6 +12,7 @@ STATIC_FILES = {
     "shared/api.js", "shared/charts.js", "shared/dom.js", "shared/jobs.js",
     "shared/source-controls.js",
     "features/analysis/controller.js", "features/data/controller.js",
+    "features/analysis/premiums.js", "features/replay/controller.js", "features/strategies/controller.js",
     "features/funding/controller.js",
     "features/files/controller.js",
     "features/quality/controller.js",
@@ -20,9 +21,10 @@ STATIC_FILES = {
 MODULES = [
     {"id": "data", "label": "데이터 확인", "status": "ready"},
     {"id": "quality", "label": "데이터 품질", "status": "ready"},
-    {"id": "funding", "label": "펀딩비율", "status": "ready"},
     {"id": "analysis", "label": "분석", "status": "ready"},
     {"id": "backtest", "label": "백테스트", "status": "ready"},
+    {"id": "strategies", "label": "전략 관리", "status": "ready"},
+    {"id": "replay", "label": "시뮬레이션", "status": "ready"},
     {"id": "paper", "label": "모의투자", "status": "ready"},
     {"id": "oms", "label": "OMS", "status": "planned"},
 ]

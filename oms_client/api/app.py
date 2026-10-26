@@ -5,13 +5,15 @@ import os
 from flask import Flask
 
 from ..analysis import history as data_service
+from ..analysis.premiums import PremiumService
 from ..paths import ROOT
+from ..replay.service import ReplayManager
 from ..storage.state import StateStore
 from . import errors
 from .auth import TransportAwareSessionInterface, configure_auth
 from .data_exports import DataExportJobs
 from .jobs import AnalysisJobs
-from .routes import analysis, backtesting, collectors, data, files, oms, paper_trading, quality, workspace
+from .routes import analysis, backtesting, collectors, data, files, oms, paper_trading, premiums, quality, replays, strategies, workspace
 from .services import configure_services
 
 
@@ -53,12 +55,19 @@ def create_app(config=None):
         max_rows=app.config["DATA_EXPORT_MAX_ROWS"],
     )
     app.extensions.update(state_store=store, analysis_jobs=jobs, data_export_jobs=data_exports)
+    premium_service = PremiumService(store.directory, autostart=not app.testing)
+    app.extensions['premium_service'] = premium_service
+    replay_manager = ReplayManager(store.directory)
+    app.extensions['replay_manager'] = replay_manager
     live_manager, paper_service = configure_services(app, store, jobs)
     errors.register(app)
     workspace.register(app, csrf_token)
     data.register(app, data_exports)
     analysis.register(app, jobs, store, live_manager)
+    premiums.register(app, premium_service)
     backtesting.register(app, jobs)
+    replays.register(app, replay_manager)
+    strategies.register(app, replay_manager.strategies)
     paper_trading.register(app, paper_service)
     oms.register(app)
     collectors.register(app)

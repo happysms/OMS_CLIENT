@@ -11,6 +11,7 @@ import pandas as pd
 
 from . import parquet
 from .funding_archives import materialize_parquet
+from .timestamps import timestamp_delta_sql, unmeasurable_clock_reason
 from .validation import DataError, IDENTIFIER, iso_timestamp
 
 
@@ -136,14 +137,18 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
                          'THEN try_cast("nextFundingTime" AS DOUBLE) ELSE NULL END'
                          if "nextFundingTime" in columns else "NULL::DOUBLE")
             rate = "observation.funding_rate" if price_mode == "last" else "mean_rate"
+            delta = timestamp_delta_sql(columns, exchange, 'funding')
+            selected_delta = 'observation.timestamp_delta_ms' if price_mode == 'last' else 'mean_delta'
             query = f"""
                 WITH buckets AS (
                     SELECT CAST(floor(desktopTime / $step) AS BIGINT) * $step AS time,
                            avg(CAST(fundingRate AS DOUBLE)) AS mean_rate,
+                           avg({delta}) AS mean_delta,
                            arg_max(struct_pack(
                                funding_rate := CAST(fundingRate AS DOUBLE),
                                source_time := CAST(desktopTime AS BIGINT),
                                server_time := {server},
+                               timestamp_delta_ms := {delta},
                                next_funding_in_seconds := {remaining}
                            ), desktopTime) AS observation,
                            count(*) AS source_rows
@@ -156,6 +161,7 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
                 SELECT time, {rate} AS funding_rate, {rate} * 100.0 AS value,
                        source_rows, observation.source_time AS source_time,
                        observation.server_time AS server_time,
+                       {selected_delta} AS timestamp_delta_ms,
                        observation.next_funding_in_seconds AS next_funding_in_seconds
                 FROM buckets ORDER BY time
             """
@@ -169,4 +175,5 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
         con.close()
     if frame.empty:
         raise DataError(f"선택한 기간에 {exchange} {ticker}의 유효한 펀딩비율 관측값이 없습니다.")
+    frame.attrs['timestamp_delta_unavailable_reason'] = unmeasurable_clock_reason(exchange, 'funding')
     return frame.set_index("time"), int(frame["source_rows"].sum())

@@ -187,8 +187,30 @@ class FileBrowserTests(unittest.TestCase):
         self.assertEqual(limited["bytes"], path.stat().st_size)
         self.assertIn("용량 제한", limited["message"])
 
-    def test_unsupported_gzip_tick_fx_and_corrupt_metadata_degrade_to_stat_and_message(self):
-        for kind, suffix in (("ob", ".parquet.gz"), ("tick", ".parquet"), ("fx", ".parquet")):
+    def test_tick_files_offer_exact_hour_query_for_plain_and_compressed_sources(self):
+        for suffix, hour in ((".parquet", "07"), (".parquet.gz", "08")):
+            with self.subTest(suffix=suffix):
+                path = self.write("upbit", "tick", "BTC", suffix=suffix, hour=hour,
+                                  table=pa.table({"desktopTime": [1792911600010], "serverTime": [1792911600000],
+                                                  "price": [100.5], "qty": [-0.125]}))
+                result = browser.file_info(self.identifier(path))
+                self.assertEqual(result["rows"], 1)
+                self.assertEqual(result["query"], {"data_type": "tick", "exchange": "upbit", "ticker": "BTC",
+                                                    "start": f"2026-10-25T{hour}:00:00Z",
+                                                    "end": f"2026-10-25T{int(hour) + 1:02d}:00:00Z", "interval": "1s"})
+                self.assertEqual(result["data_kind"], "tick")
+                self.assertEqual(result["ticker"], "BTC")
+
+    def test_shadowed_compressed_tick_cannot_silently_query_a_different_file(self):
+        plain = self.write("binance", "tick")
+        compressed = self.write("binance", "tick", suffix=".parquet.gz")
+        result = browser.file_info(self.identifier(compressed))
+        self.assertIsNone(result["query"])
+        self.assertIn("일반 Parquet", result["message"])
+        self.assertEqual(browser.file_info(self.identifier(plain))["query"]["data_type"], "tick")
+
+    def test_unsupported_gzip_fx_and_corrupt_metadata_degrade_to_stat_and_message(self):
+        for kind, suffix in (("ob", ".parquet.gz"), ("fx", ".parquet")):
             with self.subTest(kind=kind):
                 result = browser.file_info(self.identifier(self.write(kind=kind, suffix=suffix)))
                 self.assertIsNone(result["query"])

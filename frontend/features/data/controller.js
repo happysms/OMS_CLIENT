@@ -4,10 +4,10 @@ import {createHistoryControls} from '../../shared/source-controls.js';
 import {createJobRunner} from '../../shared/jobs.js';
 
 export function initData({api,getCatalog}) {
-  const state={versions:{data:0},data:null,dataJob:null,selection:null};
+  const state={versions:{data:0},data:null,dataJob:null,selection:null,tick:null,tickController:null,tickPageVersion:0};
   const csv={version:0,busy:false,result:null,controller:null,selection:null,downloading:false};
   const intervalLabels={'1s':'1초','10s':'10초','1min':'1분','5min':'5분','1h':'1시간'};
-  const dataType=()=>['candle','funding'].includes($('data-type').value)?$('data-type').value:'price';
+  const dataType=()=>['candle','funding','tick'].includes($('data-type').value)?$('data-type').value:'price';
   const selection=()=>({...source('data'),...(dataType()!=='price'?{data_type:dataType()}:{})});
   const originalQuote=value=>Number.isFinite(value)?new Intl.NumberFormat('en-US',{maximumFractionDigits:20}).format(value):'—';
   const percent=value=>Number.isFinite(value)?number(value,10)+'%':'—';
@@ -24,22 +24,33 @@ export function initData({api,getCatalog}) {
     $('data-source-help').hidden=!show;
   }
   function describePriceMode(){
-    const last=$('data-price-mode').value==='last',candle=dataType()==='candle',funding=dataType()==='funding';
-    $('data-ticker').dataset.preserveCase=String(funding);
+    const last=$('data-price-mode').value==='last',candle=dataType()==='candle',funding=dataType()==='funding',tick=dataType()==='tick';
+    $('data-ticker').dataset.preserveCase=String(funding||tick);
     dataChart.format=funding?percent:price;
-    $('data-export-panel').hidden=candle||funding;$('data-candle-csv-help').hidden=!candle&&!funding;
+    $('data-export-panel').hidden=candle||funding||tick;$('data-candle-csv-help').hidden=!candle&&!funding&&!tick;
     $('data-candle-csv-help').textContent=funding
       ?'펀딩비율 CSV는 데이터 조회 후 차트 옆의 조회 결과 CSV에서 다운로드합니다. 전체 집계 구간의 펀딩비율(%)·원본 비율·관측 및 서버 시각·정산 잔여 시간을 함께 보존합니다.'
+      :tick?'체결 틱 CSV는 조회 후 차트 옆의 원본 체결 CSV에서 다운로드합니다. 선택 구간의 모든 원본 행과 컬럼을 보존하며 표의 페이지·차트 표본과 무관합니다. 최대 100만 행·256MiB이며 초과 시 기간을 줄여 주세요.'
       :'분봉 CSV는 데이터 조회 후 차트 옆의 조회 결과 CSV에서 다운로드합니다. 표시 종가와 마지막 원본 분봉의 OHLCV·시각을 함께 보존합니다.';
-    $('data-price-mode-label').textContent=funding?'펀딩비율 조회 방식':candle?'종가 조회 방식':'호가 조회 방식';
-    $('data-price-mode').querySelector('[value="last"]').textContent=funding?'구간 마지막 원본 펀딩비율':candle?'구간 마지막 완성 분봉 종가':'구간 마지막 원본 호가';
-    $('data-price-mode').querySelector('[value="mean"]').textContent=funding?'구간 평균 펀딩비율':candle?'구간 내 분봉 종가 평균':'구간 평균 호가';
-    $('data-rows-label').textContent=funding?'조회한 펀딩 스냅샷':candle?'조회한 1분봉':'조회한 호가';
+    $('data-csv').textContent=tick?'↓ 원본 체결 CSV':'↓ 조회 결과 CSV';
+    $('data-price-mode-label').textContent=funding?'펀딩비율 조회 방식':candle?'종가 조회 방식':tick?'체결 가격 차트':'호가 조회 방식';
+    $('data-price-mode').querySelector('[value="last"]').textContent=funding?'구간 마지막 원본 펀딩비율':candle?'구간 마지막 완성 분봉 종가':tick?'구간 마지막 체결가':'구간 마지막 원본 호가';
+    $('data-price-mode').querySelector('[value="mean"]').textContent=funding?'구간 평균 펀딩비율':candle?'구간 내 분봉 종가 평균':tick?'구간 평균 체결가':'구간 평균 호가';
+    $('data-rows-label').textContent=funding?'조회한 펀딩 스냅샷':candle?'조회한 1분봉':tick?'조회한 유효 체결':'조회한 호가';
     for(const option of $('data-interval').options)option.disabled=candle&&milliseconds[option.value]<60000;
     if(candle&&milliseconds[$('data-interval').value]<60000)$('data-interval').value='1min';
-    for(const header of document.querySelectorAll('[data-price-column]'))header.hidden=candle||funding;
+    for(const header of document.querySelectorAll('[data-price-column]'))header.hidden=candle||funding||tick;
     for(const header of document.querySelectorAll('[data-candle-column]'))header.hidden=!candle;
     for(const header of document.querySelectorAll('[data-funding-column]'))header.hidden=!funding;
+    for(const header of document.querySelectorAll('[data-tick-column]'))header.hidden=!tick;
+    if(tick){
+      $('data-mid-label').textContent='마지막 원본 체결가';$('data-bidask-label').textContent='조회 구간 체결 최저 / 최고가';
+      $('data-spread-label').textContent='조회 구간 전체 체결량';$('data-spread-help').textContent='유효 원본 체결의 절대 수량 합계';
+      $('data-price-help').textContent='체결 가격 차트와 개별 원본 체결 내역을 함께 표시합니다. 차트는 선택한 간격의 마지막 체결가 또는 산술평균이며, 아래 표는 집계하지 않은 원본 체결입니다. 거래가 없는 구간은 채우지 않습니다.';
+      $('data-chart-title').textContent=last?'구간 마지막 체결가':'구간 평균 체결가';$('data-chart-series').textContent=last?'마지막 체결 가격':'체결 가격의 산술평균';
+      $('data-chart').setAttribute('aria-label','저장된 체결 틱 가격 차트');
+      $('data-table-title').textContent='원본 체결 틱';$('data-table-help').textContent='최근 체결부터 100개씩 표시 · 기록·거래소 시각은 밀리초까지 표시 · 원본 전체 구간은 CSV';return;
+    }
     if(funding){
       $('data-mid-label').textContent=last?'마지막 원본 펀딩비율':'마지막 구간 평균 펀딩비율';
       $('data-bidask-label').textContent='조회 구간 최솟값 / 최댓값';
@@ -83,6 +94,9 @@ export function initData({api,getCatalog}) {
   }
   function clearData(message='종목과 기간을 선택한 뒤 데이터 조회를 누르세요.'){
     state.data=null;state.dataJob=null;
+    state.tickController?.abort();state.tickCsvController?.abort();state.tickController=null;state.tickCsvController=null;state.tick=null;state.tickPageVersion++;
+    $('data-tick-pagination').hidden=true;$('data-tick-page').textContent='';
+    $('data-tick-newer').disabled=true;$('data-tick-older').disabled=true;
     for(const id of ['data-mid','data-spread','data-rows'])$(id).textContent='—';
     $('data-currency').textContent=dataType()==='funding'?'조회 후 거래소·종목과 펀딩비율 단위를 표시합니다.':'조회 후 종목과 통화를 표시합니다.';
     $('data-bidask').textContent='— / —';$('data-bucket').textContent='조회 후 원본 기준 시각과 조회 방식을 표시합니다.';
@@ -92,7 +106,7 @@ export function initData({api,getCatalog}) {
     describePriceMode();
     dataChart.setData([],[]);dataChart.setZoom(null);dataChart.setCursor(null);
     $('data-placeholder').hidden=false;$('data-placeholder').querySelector('strong').textContent=message;
-    tableRows('data-table',[],dataType()==='funding'?6:dataType()==='candle'?10:5,'조회 결과가 없습니다. 조건을 확인한 뒤 데이터 조회를 누르세요.');
+    tableRows('data-table',[],['funding','tick'].includes(dataType())?6:dataType()==='candle'?10:5,'조회 결과가 없습니다. 조건을 확인한 뒤 데이터 조회를 누르세요.');
     $('data-csv').disabled=true;
   }
   function changed(){
@@ -112,8 +126,16 @@ export function initData({api,getCatalog}) {
   }
   async function runData(event) {
     event.preventDefault();const version=++state.versions.data,selected=selectionKey();state.selection=selected;
-    clearError('data');clearData(dataType()==='funding'?'서버에서 선택한 구간의 펀딩비율을 조회하고 있습니다.':dataType()==='candle'?'서버에서 선택한 구간의 완성 분봉을 조회하고 있습니다.':'서버에서 선택한 구간의 호가를 조회하고 있습니다.');$('data-run').disabled=true;$('data-run').textContent='조회 중…';
+    clearError('data');clearData(dataType()==='funding'?'서버에서 선택한 구간의 펀딩비율을 조회하고 있습니다.':dataType()==='candle'?'서버에서 선택한 구간의 완성 분봉을 조회하고 있습니다.':dataType()==='tick'?'서버에서 선택한 구간의 체결 틱을 조회하고 있습니다.':'서버에서 선택한 구간의 호가를 조회하고 있습니다.');$('data-run').disabled=true;$('data-run').textContent='조회 중…';
     try{
+      if(dataType()==='tick'){
+        const config={...selection(),...range('data'),price_mode:$('data-price-mode').value,row_limit:100,offset:0,max_points:6000};
+        const controller=new AbortController();state.tickController=controller;
+        const r=await api('/api/data/ticks',{method:'POST',body:config,signal:controller.signal});
+        if(!currentQuery(version,selected))return;
+        validateTicks(r,config);
+        state.data=r;state.tick={config:{...config,...r.config},result:r};renderTicks(r,config);return;
+      }
       const selectedSource=selection(),config={...range('data'),price_mode:$('data-price-mode').value,legs:[{id:'A',...selectedSource}],formula:'A',unit:dataType()==='funding'?'%':currency(selectedSource.exchange),ewm_span:1,max_points:6000};
       if(dataType()==='candle'&&milliseconds[config.interval]<60000)throw new Error('1분봉 종가는 1분 이상의 조회 간격을 선택해 주세요.');
       const response=await job('/api/analyses',config,version);if(!response||!currentQuery(version,selected))return;
@@ -150,8 +172,72 @@ export function initData({api,getCatalog}) {
       }
       tableRows('data-table',rows,hasSizes?7:5,'선택한 구간에 조회 가능한 호가가 없습니다.');
       $('data-message').textContent=`${identity} · ${description} 조회 완료 · ${basis}`+((r.meta.warnings||[]).length?' · '+r.meta.warnings.join(' '):hasSizes?' · 1초 수집 저장분을 조회했습니다.':' · 완료된 시간별 파일의 과거 호가입니다.');
-    }catch(error){if(currentQuery(version,selected)){clearData('조회하지 못했습니다. 조건을 확인한 뒤 다시 조회하세요.');errorAt('data',error);$('data-message').textContent='데이터를 조회하지 못했습니다.';}}
+    }catch(error){if(currentQuery(version,selected)&&error.name!=='AbortError'){clearData('조회하지 못했습니다. 조건을 확인한 뒤 다시 조회하세요.');errorAt('data',error);$('data-message').textContent='데이터를 조회하지 못했습니다.';}}
     finally{if(currentQuery(version,selected)){$('data-run').disabled=false;$('data-run').textContent='데이터 조회';}}
+  }
+  function validateTicks(r,config){
+    const leg=r?.legs?.[0];
+    if(leg?.data_type!=='tick'||leg.exchange!==config.exchange||String(leg.ticker).toUpperCase()!==config.ticker.toUpperCase())throw new Error('요청한 종목·데이터 종류와 체결 결과가 다릅니다. 다시 조회해 주세요.');
+    if(r.meta?.price_mode!==config.price_mode&&r.config?.price_mode!==config.price_mode)throw new Error('요청한 체결 가격 조회 방식과 결과가 다릅니다. 다시 조회해 주세요.');
+    if(!Array.isArray(r.times)||!Array.isArray(leg.values)||leg.values.length!==r.times.length||!Array.isArray(r.rows)||!r.meta||!r.stats)throw new Error('체결 데이터의 가격·시각·원본 내역을 확인하지 못했습니다.');
+  }
+  function tickTime(value){return Number.isFinite(value)?time(value)+'.'+String(Math.trunc(value)%1000).padStart(3,'0'):'—';}
+  function renderTickPage(r){
+    const leg=r.legs[0],unit=leg.quantity_unit;
+    $('data-table-tick-size-label').textContent=unit?`체결 수량 (${unit})`:'체결 수량 (원본 단위)';
+    const rows=r.rows.map(row=>[tickTime(row.source_time),tickTime(row.server_time),({buy:'매수 주도',sell:'매도 주도'}[row.side]||'미확인'),originalQuote(row.price),originalQuote(row.quantity),originalQuote(row.qty)]);
+    tableRows('data-table',rows,6,'선택한 구간에 조회 가능한 체결 틱이 없습니다.');
+    const offset=r.meta.table_offset||0,total=r.meta.rows_read||0,count=r.rows.length;
+    $('data-tick-pagination').hidden=!total;
+    $('data-tick-page').textContent=`${number(offset+(count?1:0),0)}–${number(offset+count,0)} / ${number(total,0)}개 체결 · 최근 순`;
+    $('data-tick-newer').disabled=offset<=0;
+    $('data-tick-older').disabled=!(r.meta.table_has_more??offset+count<total);
+  }
+  function renderTicks(r,config){
+    const leg=r.legs[0],unit=leg.quantity_unit,identity=`${exchanges[leg.exchange]||leg.exchange} · ${leg.ticker} · ${leg.currency||'가격 단위 미확인'}`;
+    const mode=config.price_mode==='last'?'구간 마지막 체결가':'구간 평균 체결가',interval=intervalLabels[config.interval]||config.interval;
+    $('data-mid').textContent=originalQuote(r.stats.latest_price);$('data-currency').textContent=identity;
+    $('data-bidask').textContent=originalQuote(r.stats.min)+' / '+originalQuote(r.stats.max);
+    $('data-bucket').textContent=`마지막 기록 ${tickTime(r.stats.latest_source_time)} KST`;
+    $('data-spread').textContent=originalQuote(r.stats.total_volume)+(unit?' '+unit:' (원본 단위)');
+    $('data-rows').textContent=number(r.meta.rows_read,0);
+    $('data-points').textContent=`${number(r.meta.aligned_points,0)}개 집계 구간 · 차트 ${number(r.times.length,0)}개`;
+    $('data-chart-label').textContent=`${identity} · ${config.start} ~ ${config.end} KST · ${interval} · ${mode}`;
+    dataChart.setZoom(null);dataChart.setData(r.times,[{label:mode,values:leg.values,color:'#78b4e8',width:1.8,isolatedPoints:true}],{gapMs:milliseconds[config.interval]*Math.max(1,Math.ceil((r.meta.aligned_points||r.times.length)/Math.max(1,r.times.length)))});
+    $('data-placeholder').hidden=leg.values.some(Number.isFinite);
+    if(!r.times.length)$('data-placeholder').querySelector('strong').textContent='선택한 구간에 유효한 체결 틱이 없습니다.';
+    $('data-csv').disabled=!(r.meta.raw_rows??r.meta.rows_read);
+    const directions=r.meta.direction_available?`매수 주도 ${originalQuote(r.stats.buy_volume)} / 매도 주도 ${originalQuote(r.stats.sell_volume)}${unit?' '+unit:''}`:'체결 방향을 확인하지 못한 데이터는 미확인으로 표시합니다.';
+    $('data-source-help').hidden=false;$('data-source-help').textContent=directions+(unit?'':' 수량 단위는 원본 수집 자료 기준입니다.');
+    renderTickPage(r);
+    $('data-message').textContent=`${identity} · 체결 틱 조회 완료 · ${number(r.meta.rows_read,0)}개 유효 체결`+((r.meta.warnings||[]).length?' · '+r.meta.warnings.join(' '):'');
+  }
+  async function tickPage(direction){
+    if(dataType()!=='tick'||!state.tick)return;
+    const tick=state.tick,version=state.versions.data,selected=state.selection,pageVersion=++state.tickPageVersion;
+    const previous=tick.result,limit=previous.meta.table_limit||100,offset=Math.max(0,(previous.meta.table_offset||0)+direction*limit);
+    if(offset===(previous.meta.table_offset||0))return;
+    state.tickController?.abort();const controller=new AbortController();state.tickController=controller;
+    clearError('data');$('data-tick-newer').disabled=true;$('data-tick-older').disabled=true;$('data-tick-page').textContent='체결 내역을 불러오고 있습니다…';
+    try{
+      const config={...tick.config,offset,row_limit:limit};
+      const r=await api('/api/data/ticks',{method:'POST',body:config,signal:controller.signal});
+      if(!currentQuery(version,selected)||pageVersion!==state.tickPageVersion||state.tick!==tick)return;
+      validateTicks(r,config);tick.result=r;renderTickPage(r);
+    }catch(error){if(currentQuery(version,selected)&&pageVersion===state.tickPageVersion&&state.tick===tick&&error.name!=='AbortError')errorAt('data',error);}
+    finally{if(currentQuery(version,selected)&&pageVersion===state.tickPageVersion&&state.tick===tick)renderTickPage(tick.result);}
+  }
+  async function exportTicks(){
+    const tick=state.tick;if(!tick)return;
+    const version=state.versions.data,selected=state.selection;
+    clearError('data');$('data-csv').disabled=true;
+    const controller=new AbortController();state.tickCsvController?.abort();state.tickCsvController=controller;
+    try{
+      const blob=await api('/api/data/ticks/csv',{method:'POST',body:{...tick.config,offset:0},responseType:'blob',signal:controller.signal});
+      if(!currentQuery(version,selected)||state.tick!==tick)return;
+      const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='oms-trade-ticks.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(error){if(currentQuery(version,selected)&&state.tick===tick&&error.name!=='AbortError')errorAt('data',error);}
+    finally{if(currentQuery(version,selected)&&state.tick===tick)$('data-csv').disabled=!(tick.result.meta.raw_rows??tick.result.meta.rows_read);}
   }
   function renderFunding(r,leg,config){
     const columns=['values','funding_rate','source_times','server_times','next_funding_in_seconds'];
@@ -187,6 +273,7 @@ export function initData({api,getCatalog}) {
     $('data-message').textContent=`${identity} · ${description} 조회 완료 · 매수·매도 호가를 재현하지 않습니다.`+((r.meta.warnings||[]).length?' '+r.meta.warnings.join(' '):'');
   }
   async function exportData() {
+    if(dataType()==='tick')return exportTicks();
     if(!state.dataJob)return;const id=state.dataJob,version=state.versions.data,selection=state.selection;clearError('data');$('data-csv').disabled=true;
     try{
       const response=await fetch('/api/analyses/'+encodeURIComponent(id)+'/csv',{credentials:'same-origin',headers:{Accept:'text/csv'}});
@@ -198,7 +285,7 @@ export function initData({api,getCatalog}) {
     }catch(error){if(currentQuery(version,selection)&&state.dataJob===id)errorAt('data',error);}finally{if(currentQuery(version,selection)&&state.dataJob===id)$('data-csv').disabled=!state.dataJob||!state.data?.times.length;}
   }
   function csvSelection() {
-    if(dataType()!=='price')throw new Error('분봉·펀딩비율은 데이터 조회 후 조회 결과 CSV로 내보내세요.');
+    if(dataType()!=='price')throw new Error('선택한 데이터는 조회 후 차트 옆의 CSV 버튼으로 내보내세요.');
     return {...source('data'),...range('data'),mode:$('data-export-mode').value};
   }
   function invalidateCsv(message='선택 조건이 바뀌었습니다. CSV를 다시 생성하세요.') {
@@ -281,6 +368,8 @@ export function initData({api,getCatalog}) {
   }
   $('data-form').addEventListener('submit',runData);
   $('data-csv').addEventListener('click',exportData);
+  $('data-tick-newer').addEventListener('click',()=>tickPage(-1));
+  $('data-tick-older').addEventListener('click',()=>tickPage(1));
   $('data-export-create').addEventListener('click',createCsv);
   $('data-export-download').addEventListener('click',downloadCsv);
   $('data-export-mode').addEventListener('change',()=>{invalidateCsv();csvDescription();});
@@ -289,14 +378,25 @@ export function initData({api,getCatalog}) {
   $('data-type').addEventListener('change',()=>{describePriceMode();changed();controls.refresh({setRange:true});});
   state.selection=selectionKey();
   describePriceMode();
-  return {ready:controls.ready,refresh:controls.refresh,onEnter(){dataChart.draw();},async openQuery(query){
-    if(!['price','candle','funding'].includes(query.data_type))throw new Error('이 파일은 데이터 조회 화면에서 열 수 없습니다.');
+  return {ready:controls.ready,refresh:controls.refresh,onEnter(){dataChart.draw();},async openQuery(query,{signal,isCurrent}={}){
+    const active=()=>!signal?.aborted&&isCurrent?.()!==false;
+    if(!active())return;
+    if(!['price','candle','funding','tick'].includes(query.data_type))throw new Error('이 파일은 데이터 조회 화면에서 열 수 없습니다.');
     $('data-type').value=query.data_type;
     describePriceMode();
     controls.applySelection(query);
     const selected=selectionKey();
     await controls.bounds({setRange:false});
-    if(selected!==selectionKey())return;
-    return runData({preventDefault(){}});
+    if(!active()||selected!==selectionKey())return;
+    const version=state.versions.data+1;
+    const cancel=()=>{
+      if(version!==state.versions.data)return;
+      state.versions.data++;clearData('새로 선택한 파일의 조회 조건을 확인하고 있습니다.');
+      $('data-run').disabled=false;$('data-run').textContent='데이터 조회';
+      $('data-message').textContent='파일 선택이 바뀌어 이전 조회를 중지했습니다.';
+    };
+    signal?.addEventListener('abort',cancel,{once:true});
+    try{return await runData({preventDefault(){}});}
+    finally{signal?.removeEventListener('abort',cancel);}
   }};
 }

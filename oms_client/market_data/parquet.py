@@ -13,6 +13,7 @@ import pandas as pd
 
 from ..paths import ROOT
 from .pricing import normalize_price_options
+from .timestamps import timestamp_delta_sql, unmeasurable_clock_reason
 from .validation import (DataError, QueryTimeout, IDENTIFIER, INTERVALS, KST,
                          array, integer, iso_timestamp, parse_date)
 
@@ -265,7 +266,7 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
     known_notional = exchange in {"bithumb", "upbit", "binance", "okx"}
     if vwap and not (has_sizes or known_notional):
         raise DataError(f"{exchange}의 저장 잔량 단위를 확인할 수 없어 VWAP을 계산할 수 없습니다.")
-    extra_outputs = ["bid_size", "ask_size"] if has_sizes else []
+    extra_outputs = ["timestamp_delta_ms"] + (["bid_size", "ask_size"] if has_sizes else [])
     if vwap:
         extra_outputs += ["liquidity_available_notional", "liquidity_filled_quantity", "liquidity_levels_used"]
     size_filter = """
@@ -296,6 +297,7 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
                 depth_limit = index
             extra_raw, selection = _selected_price_sql(columns, options, has_sizes)
             raw_columns = ["CAST(desktopTime AS BIGINT) AS quote_time", "CAST(b1_p AS DOUBLE) AS bid", "CAST(a1_p AS DOUBLE) AS ask", *extra_raw]
+            raw_columns.append(f"{timestamp_delta_sql(columns, exchange, 'ob')} AS timestamp_delta_ms")
             if has_sizes:
                 raw_columns += ["CAST(bid_size AS DOUBLE) AS bid_size", "CAST(ask_size AS DOUBLE) AS ask_size"]
             ctes = f"""
@@ -351,6 +353,7 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
         frame.attrs.update(source_kind="orderbook_1s", sample_interval_ms=1000,
                            quantity_unit="USDT", price_unit="KRW", quote_time_basis="sampled_at")
     frame.attrs.update(**options,
+                       timestamp_delta_unavailable_reason=unmeasurable_clock_reason(exchange, 'ob'),
                        liquidity_currency="KRW" if exchange in {"bithumb", "upbit", "ls"} else "USDT" if known_notional else None,
                        quantity_basis="native_base_quantity" if has_sizes else "base_reconstructed_from_quote_notional" if known_notional else "unknown",
                        depth_limit=depth_limit, pricing_valid_rows=int(frame["value_rows"].sum()),

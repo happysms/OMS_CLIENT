@@ -22,8 +22,8 @@ export function populateTickers(prefix,getCatalog,reset=false,{catalogKey='excha
 // Historical screens share instrument and time-range controls, not result state.
 export function createHistoryControls({prefix,api,getCatalog,onChanged,dataType='price'}) {
   const selectedType=()=>typeof dataType==='function'?dataType():dataType;
-  const catalogKey=()=>({funding:'funding_exchanges',candle:'candle_exchanges'}[selectedType()]||'exchanges');
-  const syncTickerCase=()=>{$(prefix+'-ticker').dataset.preserveCase=String(selectedType()==='funding');};
+  const catalogKey=()=>({funding:'funding_exchanges',candle:'candle_exchanges',tick:'tick_exchanges'}[selectedType()]||'exchanges');
+  const syncTickerCase=()=>{$(prefix+'-ticker').dataset.preserveCase=String(['funding','tick'].includes(selectedType()));};
   const selection=()=>{syncTickerCase();return {...source(prefix),...(selectedType()!=='price'?{data_type:selectedType()}:{})};};
   let boundsVersion=0;
   async function bounds({setRange=false}={}) {

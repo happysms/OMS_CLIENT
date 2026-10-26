@@ -7,7 +7,7 @@ const size=value=>Number.isFinite(value)?value<1024?number(value,0)+' B':value<1
 const name=item=>String(item?.label||item?.name||'이름 없음');
 
 export function initFiles({api,onOpenQuery}={}){
-  const state={generation:0,records:new Map(),focusId:null,selectedId:null,selectionVersion:0,info:null,infoLoading:false,infoError:null,infoController:null,opening:false,openError:null,search:'',searchPending:false,searchTimer:null,collapsed:false,destroyed:false};
+  const state={generation:0,records:new Map(),focusId:null,selectedId:null,selectionVersion:0,info:null,infoLoading:false,infoError:null,infoController:null,opening:false,openController:null,openError:null,search:'',searchPending:false,searchTimer:null,collapsed:false,destroyed:false};
   const panel=$('file-explorer'),layout=$('app-layout'),body=$('files-body'),tree=$('files-tree'),search=$('files-search');
   const media=window.matchMedia?.('(max-width: 760px)');
   const mobile=()=>media?media.matches:window.innerWidth<=760;
@@ -15,7 +15,7 @@ export function initFiles({api,onOpenQuery}={}){
   const recordName=record=>record.id===ROOT?'데이터 파일':name(record.item);
   function isCurrent(record,generation,request){return !state.destroyed&&generation===state.generation&&state.records.get(record.id)===record&&request===record.request;}
   function makeRecord(item,parent=null,level=0){return {id:item?.id??ROOT,item,parent,level,expanded:level===0,children:[],loaded:false,loading:false,error:null,request:0,controller:null,nextOffset:null,total:0};}
-  function abortRequests(){for(const record of state.records.values())record.controller?.abort();state.infoController?.abort();}
+  function abortRequests(){for(const record of state.records.values())record.controller?.abort();state.infoController?.abort();state.openController?.abort();}
   function setCollapsed(collapsed){
     state.collapsed=collapsed;layout.classList.toggle('files-collapsed',collapsed);panel.classList.toggle('collapsed',collapsed);body.hidden=collapsed;
     $('files-toggle').setAttribute('aria-expanded',String(!collapsed));$('files-toggle').setAttribute('aria-label',collapsed?'데이터 파일 펼치기':'데이터 파일 접기');
@@ -108,7 +108,7 @@ export function initFiles({api,onOpenQuery}={}){
     record.expanded=expanded;if(!expanded&&record.children.includes(state.focusId))state.focusId=record.id;renderTree();if(expanded&&!record.loaded&&!record.loading)loadChildren(record);
   }
   function clearInfo(){
-    state.selectionVersion++;state.infoController?.abort();state.selectedId=null;state.info=null;state.infoLoading=false;state.infoError=null;state.openError=null;state.opening=false;renderInfo();
+    state.selectionVersion++;state.infoController?.abort();state.openController?.abort();state.selectedId=null;state.info=null;state.infoLoading=false;state.infoError=null;state.openError=null;state.opening=false;renderInfo();
   }
   function renderInfo(){
     const target=$('files-info');target.replaceChildren();target.hidden=!state.selectedId;
@@ -129,7 +129,7 @@ export function initFiles({api,onOpenQuery}={}){
     for(const [label,value] of [['형식',info.format||'—'],['크기',size(info.bytes)],['행 수',Number.isFinite(info.rows)?number(info.rows,0):'—'],['수정 시각',info.modified_at?time(info.modified_at)+' KST':'—']]){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;details.append(dt,dd);}target.append(details);
     if(info.query){
       const range=document.createElement('p');range.className='files-info-message';range.textContent=`조회 구간 ${time(info.query.start)} ~ ${time(info.query.end)} KST`;target.append(range);
-      const open=document.createElement('button');open.type='button';open.id='files-open-query';open.className='primary-button';open.disabled=state.opening||typeof onOpenQuery!=='function';open.textContent=state.opening?'구간을 열고 있습니다…':'이 파일 구간 조회';open.addEventListener('click',openQuery);target.append(open);
+      const open=document.createElement('button');open.type='button';open.id='files-open-query';open.className='primary-button';open.disabled=state.opening||typeof onOpenQuery!=='function';open.textContent=state.opening?'구간을 열고 있습니다…':'이 파일 구간 다시 조회';open.addEventListener('click',openQuery);target.append(open);
     }else{const note=document.createElement('p');note.className='files-info-message';note.textContent=info.message||'파일 정보를 확인할 수 있습니다. 이 형식의 구간 조회는 아직 지원하지 않습니다.';target.append(note);}
     if(info.query&&info.message){const note=document.createElement('p');note.className='files-info-message';note.textContent=info.message;target.append(note);}
     if(state.openError){const error=document.createElement('p');error.className='files-info-message error';error.setAttribute('role','alert');error.textContent=state.openError;target.append(error);}
@@ -139,19 +139,22 @@ export function initFiles({api,onOpenQuery}={}){
     }
   }
   async function selectFile(record){
-    const version=++state.selectionVersion,generation=state.generation;state.infoController?.abort();state.infoController=new AbortController();state.selectedId=record.id;state.info=null;state.infoLoading=true;state.infoError=null;state.openError=null;state.opening=false;renderTree();renderInfo();
+    const version=++state.selectionVersion,generation=state.generation;state.infoController?.abort();state.openController?.abort();state.infoController=new AbortController();state.selectedId=record.id;state.info=null;state.infoLoading=true;state.infoError=null;state.openError=null;state.opening=false;renderTree();renderInfo();
     try{
       const result=await api('/api/data/files/info?'+new URLSearchParams({node:record.id}),{signal:state.infoController.signal});
       if(state.destroyed||version!==state.selectionVersion||generation!==state.generation||state.selectedId!==record.id)return;
       if(result?.id!==record.id)throw new Error('선택한 파일과 응답 정보가 다릅니다. 다시 선택해 주세요.');state.info=result;state.infoLoading=false;renderInfo();
+      if(result.query)await openQuery();
     }catch(error){if(!state.destroyed&&version===state.selectionVersion&&generation===state.generation&&error.name!=='AbortError'){state.infoLoading=false;state.infoError=error.message||'파일 정보를 읽지 못했습니다.';renderInfo();}}
   }
   async function openQuery(){
     if(!state.info?.query||state.opening||typeof onOpenQuery!=='function')return;
-    const version=state.selectionVersion;state.opening=true;state.openError=null;renderInfo();
-    try{await onOpenQuery({...state.info.query});if(version===state.selectionVersion&&mobile())setCollapsed(true);}
-    catch(error){if(version===state.selectionVersion)state.openError=error.message||'선택한 파일 구간을 열지 못했습니다. 다시 시도해 주세요.';}
-    finally{if(version===state.selectionVersion){state.opening=false;renderInfo();}}
+    const version=state.selectionVersion,generation=state.generation,selectedId=state.selectedId,controller=new AbortController();
+    state.openController=controller;state.opening=true;state.openError=null;renderInfo();
+    const isCurrent=()=>!state.destroyed&&!controller.signal.aborted&&version===state.selectionVersion&&generation===state.generation&&selectedId===state.selectedId;
+    try{await onOpenQuery({...state.info.query},{signal:controller.signal,isCurrent});if(isCurrent()&&mobile())setCollapsed(true);}
+    catch(error){if(isCurrent()&&error.name!=='AbortError')state.openError=error.message||'선택한 파일 구간을 열지 못했습니다. 다시 시도해 주세요.';}
+    finally{if(isCurrent()){state.opening=false;state.openController=null;renderInfo();}}
   }
   function refresh(){
     clearTimeout(state.searchTimer);state.searchPending=false;state.generation++;abortRequests();clearInfo();

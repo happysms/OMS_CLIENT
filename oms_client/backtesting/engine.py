@@ -7,6 +7,7 @@ import pandas as pd
 
 from ..analysis.history import analyze
 from ..analysis.sampling import select_points
+from ..paper_trading.reporting import evaluate_positions, valid_theories
 from ..market_data.validation import (DataError, IDENTIFIER, INTERVALS, MAX_RANGE_DAYS,
                                       MAX_BUCKETS, integer, number, parse_date)
 
@@ -105,7 +106,7 @@ def _source(result, config):
             {**leg, **{column: [float(leg[column][i]) for i in selected] for column in ("mid", "bid", "ask")}})
 
 
-def _simulate(times, leg, config, strategy, *, record=True):
+def _simulate(times, leg, config, strategy, *, record=True, theory_provider=None):
     cash, quantity, basis = config["initial_cash"], 0.0, 0.0
     fee_rate, slippage = config["fee_bps"] / 10_000, config["slippage_bps"] / 10_000
     mids = pd.Series(leg["mid"], dtype=float)
@@ -145,8 +146,25 @@ def _simulate(times, leg, config, strategy, *, record=True):
             raise DataError("가격과 자금 규모가 계산 범위를 초과합니다.")
         executions += 1
         if record:
+            pair = (config['exchange'], config['ticker'])
+            theory = theory_provider(timestamp, *pair) if theory_provider else {'price': None, 'reason': '과거 시점의 이론가 공급 모듈이 연결되지 않았습니다.'}
+            theories = valid_theories({pair: theory}, timestamp, INTERVALS[config['interval']])
+            positions = [dict(exchange=pair[0], ticker=pair[1], quantity=quantity, avg_price=basis / quantity)] if quantity else []
+            account, positions = evaluate_positions(
+                dict(initial_cash=config['initial_cash'], cash=cash, realized_pnl=realized, fees_paid=fees),
+                positions, {pair: {'bid': leg['bid'][index], 'ts': timestamp}}, theories)
             trades.append({"timestamp": timestamp, "side": side, "price": price, "quantity": size,
-                           "fee": fee, "cash": cash, "realized_pnl": pnl, "reason": reason})
+                           "fee": fee, "cash": cash, "realized_pnl": pnl, "reason": reason,
+                           'fill_id': f'BT{executions:08d}', 'realized_pnl_cumulative': realized,
+                           'unrealized_pnl': account['unrealized_pnl'],
+                           'theory_unrealized_pnl': account['theory_unrealized_pnl'],
+                           'total_pnl': account['total_pnl'], 'theory_total_pnl': account['theory_total_pnl'],
+                           'equity': account['equity'], 'position_quantity': quantity,
+                           'avg_price': basis / quantity if quantity else None,
+                           'mark_price': leg['bid'][index], 'theory_price': theories[pair].get('price'),
+                           'fees_paid': fees, 'valuation_as_of_ms': timestamp,
+                           'valuation': dict(account=account, positions=positions, theory=theories[pair],
+                                             mark_basis='completed_bucket_mean_bid')})
 
     for i in range(len(times)):
         desired = quantity > 0
@@ -178,13 +196,15 @@ def _simulate(times, leg, config, strategy, *, record=True):
                "return_pct": (equity[-1] / config["initial_cash"] - 1) * 100,
                "max_drawdown_pct": drawdown, "trades": executions, "closed_trades": closed,
                "win_rate_pct": wins / closed * 100 if closed else None,
-               "fees_paid": fees, "realized_pnl": realized}
+               "fees_paid": fees, "realized_pnl": realized,
+               'unrealized_pnl': quantity * leg['bid'][-1] - basis,
+               'total_pnl': equity[-1] - config['initial_cash']}
     if any(value is not None and not math.isfinite(value) for value in metrics.values()):
         raise DataError("손익 지표가 계산 범위를 초과합니다. 가격과 자금을 확인해 주세요.")
     return equity, trades, metrics
 
 
-def run_backtest(payload, data_provider=None):
+def run_backtest(payload, data_provider=None, theory_provider=None):
     """Run a funded long-only strategy; the provider accepts an analyze payload."""
     config = _config(payload)
     request = {key: config[key] for key in ("start", "end", "interval")}
@@ -192,7 +212,7 @@ def run_backtest(payload, data_provider=None):
                    formula="A", include_full_data=True, max_points=6000)
     source = (data_provider or analyze)(request)
     times, leg = _source(source, config)
-    values, trades, metrics = _simulate(times, leg, config, config["strategy"])
+    values, trades, metrics = _simulate(times, leg, config, config["strategy"], theory_provider=theory_provider)
     benchmark, _, _ = _simulate(times, leg, config, "buy_hold", record=False)
     series = pd.Series(values, dtype=float)
     selection = select_points(series, config["max_points"]).tolist()

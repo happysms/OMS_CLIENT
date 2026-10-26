@@ -5,6 +5,7 @@ This module has no account credentials, exchange order endpoints or live broker.
 from __future__ import annotations
 
 import math
+import json
 import secrets
 import threading
 import time
@@ -12,6 +13,7 @@ import time
 from ..market_data import parquet
 from ..market_data.validation import IDENTIFIER
 from ..market_data.quotes import PublicQuoteFeed
+from .reporting import evaluate_positions, valid_theories
 
 
 EXCHANGES = {"bithumb", "upbit"}
@@ -145,12 +147,17 @@ class PublicQuoteProvider:
 
 
 class PaperTradingService:
-    def __init__(self, store, quote_provider=None, clock=time.time, symbol_validator=None):
+    def __init__(self, store, quote_provider=None, clock=time.time, symbol_validator=None, theory_provider=None):
         self.store = store
         self.quote_provider = quote_provider if quote_provider is not None else PublicQuoteProvider()
         self.clock = clock
         self.symbol_validator = symbol_validator if symbol_validator is not None else parquet.validate_symbol
         self.lock = threading.RLock()
+        self.theory_provider = theory_provider
+        if theory_provider is None and quote_provider is None:
+            from .theory import PremiumTheoryProvider
+            # Reference subscriptions must not consume the execution feed's limit.
+            self.theory_provider = PremiumTheoryProvider(store.directory, PublicQuoteProvider(), _fresh_quote, clock)
         with store.connection() as connection:
             connection.executescript("""
                 CREATE TABLE IF NOT EXISTS paper_account (
@@ -170,12 +177,70 @@ class PaperTradingService:
                     status TEXT NOT NULL, client_order_id TEXT UNIQUE
                 );
                 INSERT OR IGNORE INTO paper_account VALUES (1,1000000,1000000,0,'KRW',5,2);
+                CREATE TABLE IF NOT EXISTS paper_fill_reports (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fill_id TEXT NOT NULL UNIQUE, report TEXT NOT NULL
+                );
             """)
+            # Old fills have no historical marks. Preserve their known execution
+            # fields explicitly, without inventing past valuations from today's book.
+            for row in connection.execute('SELECT o.* FROM paper_orders o LEFT JOIN paper_fill_reports r ON r.fill_id=o.id WHERE r.fill_id IS NULL ORDER BY o.timestamp,o.rowid').fetchall():
+                report = dict(schema_version=1, valuation_status='legacy_unavailable', fill=dict(row), account=None, positions=[])
+                connection.execute('INSERT OR IGNORE INTO paper_fill_reports(fill_id,report) VALUES (?,?)', (row['id'], json.dumps(report)))
 
     def _quote(self, exchange, ticker):
         provider = self.quote_provider
         quote = provider.get(exchange, ticker) if hasattr(provider, "get") else provider(exchange, ticker)
         return _fresh_quote(quote, exchange, ticker, int(self.clock() * 1000))
+
+    def _valuation_inputs(self, pairs, overrides=None):
+        marks = dict(overrides or {})
+        missing = [pair for pair in pairs if pair not in marks]
+        try:
+            if hasattr(self.quote_provider, 'get_many'):
+                marks.update(self.quote_provider.get_many(missing, timeout=3))
+            else:
+                for pair in missing:
+                    try:
+                        marks[pair] = self._quote(*pair)
+                    except (RuntimeError, ValueError):
+                        pass
+        except (RuntimeError, ValueError):
+            pass
+        theories = {}
+        if self.theory_provider:
+            try:
+                theories = self.theory_provider.get_many(pairs)
+            except (RuntimeError, ValueError) as exc:
+                theories = {pair: {'price': None, 'reason': str(exc)} for pair in pairs}
+        return marks, theories
+
+    @staticmethod
+    def _marks_at(marks, now):
+        valid = {}
+        for pair, value in marks.items():
+            try:
+                quote = _fresh_quote(value, *pair, now)
+                if quote['receivedAt'] <= now:
+                    valid[pair] = quote
+            except (ValueError, RuntimeError):
+                pass
+        return valid
+
+    def fills(self, *, before=None, limit=100):
+        if type(limit) is not int or not 1 <= limit <= 500 or (before is not None and (type(before) is not int or before < 1)):
+            raise ValueError('체결 조회 범위를 확인하세요.')
+        with self.store.connection() as connection:
+            rows = connection.execute('SELECT * FROM paper_fill_reports WHERE (? IS NULL OR sequence<?) ORDER BY sequence DESC LIMIT ?',
+                                      (before, before, limit + 1)).fetchall()
+            total = connection.execute('SELECT count(*) FROM paper_fill_reports').fetchone()[0]
+        items = [dict(sequence=row['sequence'], **json.loads(row['report'])) for row in rows[:limit]]
+        return dict(items=items, total=total, next_before=items[-1]['sequence'] if len(rows) > limit else None)
+
+    def _fill_report(self, fill_id):
+        with self.store.connection() as connection:
+            row = connection.execute('SELECT sequence,report FROM paper_fill_reports WHERE fill_id=?', (fill_id,)).fetchone()
+        return dict(sequence=row['sequence'], **json.loads(row['report'])) if row else None
 
     def snapshot(self, quotes_override=None):
         with self.lock, self.store.connection() as connection:
@@ -184,43 +249,16 @@ class PaperTradingService:
             positions = [dict(row) for row in connection.execute("SELECT * FROM paper_positions ORDER BY exchange,ticker")]
             orders = [dict(row) for row in connection.execute("SELECT * FROM paper_orders ORDER BY timestamp DESC,rowid DESC LIMIT 100")]
         pairs = [(position["exchange"], position["ticker"]) for position in positions]
-        marks = dict(quotes_override or {})
-        missing_pairs = [pair for pair in pairs if pair not in marks]
-        if missing_pairs:
-            try:
-                if hasattr(self.quote_provider, "get_many"):
-                    marks.update(self.quote_provider.get_many(missing_pairs, timeout=3))
-                else:
-                    for pair in missing_pairs:
-                        try:
-                            marks[pair] = self._quote(*pair)
-                        except (RuntimeError, ValueError):
-                            pass
-            except (RuntimeError, ValueError):
-                pass
-        valued, market_value, unrealized = 0, 0.0, 0.0
+        marks, theories = self._valuation_inputs(pairs, quotes_override)
         now = int(self.clock() * 1000)
-        for position in positions:
-            pair = (position["exchange"], position["ticker"])
-            try:
-                quote = _fresh_quote(marks.get(pair), *pair, now)
-            except (ValueError, RuntimeError):
-                quote = None
-            position["id"] = f"{pair[0]}:{pair[1]}"
-            position.update(mark_price=None, market_value=None, unrealized_pnl=None, quote_time=None)
-            if quote:
-                # Mark at the bid; an eventual exit fee is charged only on sale.
-                amount = position["quantity"] * quote["bid"]
-                pnl = amount - position["quantity"] * position["avg_price"]
-                position.update(mark_price=quote["bid"], market_value=amount, unrealized_pnl=pnl, quote_time=quote["ts"])
-                valued += 1
-                market_value += amount
-                unrealized += pnl
+        marks = self._marks_at(marks, now)
+        theories = valid_theories(theories, now, MAX_QUOTE_AGE_MS)
+        account, positions = evaluate_positions(account, positions, marks, theories)
+        valued = sum(position['mark_price'] is not None for position in positions)
         complete = valued == len(positions)
-        equity = account["cash"] + market_value if complete else None
-        account.update(equity=equity, unrealized_pnl=unrealized if complete else None,
-                       return_pct=(equity / account["initial_cash"] - 1) * 100 if equity is not None else None)
-        return {"account": account, "positions": positions, "orders": orders, "equity": equity,
+        equity = account['equity']
+        fills = self.fills()
+        return {"account": account, "positions": positions, "orders": orders, "equity": equity, "fills": fills["items"], "fill_count": fills["total"], "next_fill_before": fills["next_before"],
                 "quote_status": {"state": "fresh" if complete else "partial" if valued else "unavailable",
                                  "message": "보유 종목이 없습니다." if not positions else "실시간 호가로 평가했습니다." if complete else "일부 실시간 호가가 없어 전체 평가액을 표시하지 않습니다.",
                                  "updated_at": now},
@@ -245,8 +283,13 @@ class PaperTradingService:
         if existing:
             if (existing["exchange"], existing["ticker"], existing["side"], existing["quantity"]) != (exchange, ticker, side, quantity):
                 raise ValueError("같은 주문 식별자를 다른 주문에 사용할 수 없습니다.")
-            return {**self.snapshot(), "order": dict(existing), "duplicate": True}
+            return {**self.snapshot(), "order": dict(existing), "fill_report": self._fill_report(existing["id"]), "duplicate": True}
+        with self.lock, self.store.connection() as connection:
+            pairs = [(row['exchange'], row['ticker']) for row in connection.execute('SELECT exchange,ticker FROM paper_positions')]
+        pairs = list(dict.fromkeys([*pairs, (exchange, ticker)]))
+        marks, theories = self._valuation_inputs(pairs)
         quote = self._quote(exchange, ticker)
+        marks[(exchange, ticker)] = quote
         now = int(self.clock() * 1000)
         with self.lock, self.store.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -297,7 +340,21 @@ class PaperTradingService:
                          "side": side, "price": price, "quantity": quantity, "fee": fee, "cash": cash,
                          "realized_pnl": realized, "quote_time": quote["ts"], "status": "filled", "client_order_id": client_id}
                 connection.execute("INSERT INTO paper_orders VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", tuple(order.values()))
-        return {**self.snapshot({(exchange, ticker): quote}), "order": order}
+                after = dict(connection.execute('SELECT * FROM paper_account WHERE id=1').fetchone())
+                after.pop('id', None)
+                after['fees_paid'] = connection.execute('SELECT coalesce(sum(fee),0) FROM paper_orders').fetchone()[0]
+                positions = [dict(row) for row in connection.execute('SELECT * FROM paper_positions ORDER BY exchange,ticker')]
+                valuation, positions = evaluate_positions(after, positions, self._marks_at(marks, now),
+                                                          valid_theories(theories, now, MAX_QUOTE_AGE_MS))
+                report = dict(schema_version=1, valuation_status='recorded', as_of_ms=now,
+                              fill=order, account=valuation, positions=positions,
+                              before=dict(cash=account['cash'], quantity=old_quantity, avg_price=average),
+                              execution_quote=quote,
+                              execution_theory=valid_theories(theories, now, MAX_QUOTE_AGE_MS).get((exchange,ticker)),
+                              mark_basis='best_bid', cost_basis='weighted_average_including_buy_fees')
+                connection.execute('INSERT INTO paper_fill_reports(fill_id,report) VALUES (?,?)',
+                                   (order['id'], json.dumps(report, ensure_ascii=False, allow_nan=False)))
+        return {**self.snapshot({(exchange, ticker): quote}), "order": order, "fill_report": self._fill_report(order["id"])}
 
     def reset(self, payload=None):
         payload = {} if payload is None else payload
@@ -310,6 +367,7 @@ class PaperTradingService:
         slip = _finite(payload.get("slippage_bps", 2), "슬리피지", high=1000)
         with self.lock, self.store.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            connection.execute("DELETE FROM paper_fill_reports")
             connection.execute("DELETE FROM paper_orders")
             connection.execute("DELETE FROM paper_positions")
             connection.execute("UPDATE paper_account SET initial_cash=?,cash=?,realized_pnl=0,quote_currency='KRW',fee_bps=?,slippage_bps=? WHERE id=1", (cash, cash, fee, slip))
@@ -318,3 +376,5 @@ class PaperTradingService:
     def close(self):
         if hasattr(self.quote_provider, "close"):
             self.quote_provider.close()
+        if hasattr(self.theory_provider, 'close'):
+            self.theory_provider.close()

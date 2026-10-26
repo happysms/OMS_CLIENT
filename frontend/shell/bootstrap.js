@@ -1,5 +1,6 @@
 import {createApi} from '../shared/api.js';
 import {initAnalysis} from '../features/analysis/controller.js';
+import {initPremiums} from '../features/analysis/premiums.js';
 import {initWorkspace} from './workspace.js';
 import {$} from '../shared/dom.js';
 
@@ -10,6 +11,7 @@ export async function boot() {
     runtime.session=await api('/api/session');
     $('account-label').textContent=`${runtime.session.user||'admin'} · 개인 워크스페이스`;
     runtime.catalog=await api('/api/catalog');
+    initPremiums({api});
     const analysis=initAnalysis({api,session:runtime.session,catalog:runtime.catalog,onCatalog:catalog=>{runtime.catalog=catalog;}});
     await analysis.prepare();
     await initWorkspace({api,getCatalog:()=>runtime.catalog,stopLive:analysis.stopLive});

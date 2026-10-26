@@ -30,6 +30,8 @@ def configure_services(app, store, jobs):
             return app.extensions["paper_service"]
 
     def close_services():
+        app.extensions['premium_service'].close()
+        app.extensions['replay_manager'].close()
         manager = app.extensions.get("live_manager")
         if manager:
             manager.close()

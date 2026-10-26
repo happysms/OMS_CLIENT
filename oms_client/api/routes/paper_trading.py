@@ -1,10 +1,50 @@
 """Simulation-only account, order and reset endpoints."""
-from flask import jsonify, request
+import csv
+import io
+import json
+
+from flask import jsonify, request, Response, stream_with_context
 
 from ..validation import _json_object
 
 
 def register(app, paper_service):
+    @app.get('/api/paper/fills')
+    def paper_fills():
+        try:
+            before = request.args.get('before')
+            return jsonify(paper_service().fills(before=int(before) if before is not None else None,
+                                                 limit=int(request.args.get('limit', '100'))))
+        except ValueError as error:
+            return jsonify(error=str(error)), 400
+
+    @app.get('/api/paper/fills/csv')
+    def paper_fill_csv():
+        service = paper_service()
+        fields = ['sequence', 'fill_id', 'timestamp_ms', 'exchange', 'ticker', 'side', 'price', 'quantity', 'fee',
+                  'realized_pnl', 'realized_pnl_cumulative', 'unrealized_pnl', 'theory_unrealized_pnl',
+                  'total_pnl', 'theory_total_pnl', 'cash', 'equity', 'theory_equity', 'fees_paid',
+                  'valuation_status', 'valuation_json']
+
+        def generate():
+            output = io.StringIO(newline='')
+            writer = csv.writer(output)
+            writer.writerow(fields)
+            yield '\ufeff' + output.getvalue()
+            with service.store.connection() as connection:
+                for row in connection.execute('SELECT sequence,report FROM paper_fill_reports ORDER BY sequence'):
+                    report = json.loads(row['report'])
+                    fill, account = report['fill'], report.get('account') or {}
+                    output.seek(0); output.truncate(0)
+                    writer.writerow([row['sequence'], fill['id'], fill['timestamp'],
+                                     *[fill[key] for key in ('exchange','ticker','side','price','quantity','fee','realized_pnl')],
+                                     *[account.get(key) for key in ('realized_pnl','unrealized_pnl','theory_unrealized_pnl',
+                                                                   'total_pnl','theory_total_pnl','cash','equity','theory_equity','fees_paid')],
+                                     report['valuation_status'], row['report']])
+                    yield output.getvalue()
+        return Response(stream_with_context(generate()), mimetype='text/csv',
+                        headers={'Content-Disposition': 'attachment; filename=paper-fills.csv'})
+
     @app.get("/api/paper")
     def paper_snapshot():
         try:

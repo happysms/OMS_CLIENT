@@ -9,24 +9,15 @@ import pandas as pd
 
 from . import parquet
 from .funding_archives import materialize_parquet
+from .timestamps import MIN_TIMESTAMP_MS, MAX_TIMESTAMP_MS, unmeasurable_clock_reason
 from .validation import DataError, IDENTIFIER, INTERVALS, integer, parse_date
 
 KINDS = {"ob": "호가", "tick": "체결", "funding": "펀딩비율", "ob_1s": "1초 호가"}
-MIN_TIMESTAMP_MS = 946_684_800_000  # 2000-01-01 UTC, no unit guessing.
-MAX_TIMESTAMP_MS = 4_102_444_800_000  # 2100-01-01 UTC, exclusive.
 MAX_FILES = 1024
 MAX_RAW_ROWS = 5_000_000
 MAX_BUCKETS = 250_000
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_ARCHIVE_FILE_BYTES = 32 * 1024 * 1024
-
-
-def unmeasurable_clock_reason(exchange, data_kind):
-    if data_kind == "funding" and exchange in {"okx", "hyperliquid"}:
-        return "serverTime이 수집기에서 생성된 시각이므로 거래소와의 시간차를 측정할 수 없습니다."
-    if exchange == "ls" and data_kind in {"ob", "tick"}:
-        return "LS serverTime은 날짜 없는 시분초 또는 수집기 생성 시각이므로 거래소와의 시간차를 측정할 수 없습니다."
-    return None
 
 
 def _safe(path, root, *, file=False):

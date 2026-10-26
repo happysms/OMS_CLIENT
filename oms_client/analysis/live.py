@@ -11,6 +11,7 @@ import pandas as pd
 
 from ..market_data.quotes import ENDPOINTS, PublicQuoteFeed
 from ..market_data.pricing import normalize_price_options, select_quote_price
+from ..market_data.timestamps import timestamp_delta_ms
 from ..market_data.validation import (DataError, IDENTIFIER, array, integer,
                                       iso_timestamp, number)
 from .formulas import evaluate, formula_ids, parse_formula
@@ -127,6 +128,8 @@ class _LiveSession:
             legs.append({**leg, **{column: [sample["quotes"][leg["id"]][column] for sample in samples] for column in ("mid", "bid", "ask")},
                          'values': [sample['quotes'][leg['id']]['value'] for sample in samples],
                          'quote_times': [sample['quotes'][leg['id']]['ts'] for sample in samples],
+                         'timestamp_delta_ms': [timestamp_delta_ms(sample['quotes'][leg['id']].get('receivedAt'),
+                                                                   sample['quotes'][leg['id']].get('ts')) for sample in samples],
                          'liquidity_currency': leg['currency'], 'depth_limit': 5,
                          'quantity_basis': samples[-1]['quotes'][leg['id']].get('quantity_basis', 'native_base_quantity'),
                          **{column: [sample['quotes'][leg['id']].get(column) for sample in samples]

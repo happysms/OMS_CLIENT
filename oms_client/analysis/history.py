@@ -246,6 +246,8 @@ def analyze(payload: dict) -> dict:
                 return {**leg, 'unit': 'KRW', 'currency': 'KRW', 'price_unit': 'KRW',
                         'quantity_unit': 'USDT', 'source_kind': 'rest_1m', 'candle_interval_ms': candles.MINUTE_MS,
                         'values': array(source['value']),
+                        'timestamp_delta_ms': [None] * len(source),
+                        'timestamp_delta_unavailable_reason': '1분봉에는 기록·서버 시각 쌍이 없습니다.',
                         **{field: array(source[field]) for field in candles.FIELDS},
                         'candle_times': [int(value) for value in source['candle_time']],
                         'available_times': [int(value) for value in source['available_time']]}
@@ -257,6 +259,8 @@ def analyze(payload: dict) -> dict:
             def funding_leg(source):
                 return {**leg, "unit": "%", "values": array(source["value"]),
                         "funding_rate": array(source["funding_rate"]),
+                        "timestamp_delta_ms": array(source['timestamp_delta_ms']) if 'timestamp_delta_ms' in source else [None] * len(source),
+                        "timestamp_delta_unavailable_reason": source.attrs.get('timestamp_delta_unavailable_reason'),
                         "source_times": [int(value) for value in source["source_time"]],
                         "server_times": [int(value) if pd.notna(value) else None for value in source["server_time"]],
                         "next_funding_in_seconds": array(source["next_funding_in_seconds"])}
@@ -264,11 +268,12 @@ def analyze(payload: dict) -> dict:
             if include_full:
                 full_legs.append(funding_leg(frame))
             continue
-        info = {**leg, "currency": "KRW" if leg["exchange"] in {"bithumb", "upbit", "ls"} else "USDT"}
+        info = {**leg, "currency": "KRW" if leg["exchange"] in {"bithumb", "upbit", "ls"} else "USDT",
+                "timestamp_delta_unavailable_reason": frame.attrs.get('timestamp_delta_unavailable_reason')}
         columns = ["mid", "bid", "ask"]
         if 'value' in frame.columns:
             columns.append('value')
-        for name in ('liquidity_available_notional', 'liquidity_filled_quantity', 'liquidity_levels_used', 'value_rows', 'missing_value_rows'):
+        for name in ('timestamp_delta_ms', 'liquidity_available_notional', 'liquidity_filled_quantity', 'liquidity_levels_used', 'value_rows', 'missing_value_rows'):
             if name in frame.columns:
                 columns.append(name)
         for name in ('liquidity_currency', 'quantity_basis', 'depth_limit'):
