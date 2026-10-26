@@ -6,7 +6,7 @@ from typing import Mapping
 from ..market_data.validation import DataError
 from ..paper_trading.reporting import evaluate_positions
 from ..strategies.simple_mm import (
-    AccountView, MMConfig, QuoteView, SimpleMM, WorkingOrder, _amount,
+    AccountView, MMConfig, QuoteView, SimpleMM, _amount,
 )
 from .configuration import config_from  # Public import retained for API/test callers.
 from .ledger import FeeSchedule, SpotLedger
@@ -15,6 +15,7 @@ from .order_guard import FeedDelayGuard
 from .orders import OrderBook, ReplayOrder, ReplacementRequest
 from .queue_cancel import QueueCancellation
 from .scheduler import EventScheduler
+from .strategy_view import StrategyOrderViews
 
 D = Decimal
 ZERO = D(0)
@@ -41,6 +42,7 @@ class ReplayEngine:
         self.limit_planner = LimitOrderPlanner(D(config['quantity_step']))
         self.order_book = OrderBook()
         self.scheduler = EventScheduler()
+        self.strategy_orders = StrategyOrderViews()
         self.new_order_events = []
         self.order_event_count = 0
         self.end_orders = []
@@ -156,12 +158,13 @@ class ReplayEngine:
             previous = self.order_book.retry(client_order_id, fingerprint)
             if previous is not None:
                 return previous
-        if any((o.status == 'execution_unknown' for o in self.working())):
+        working = self.working()
+        if any((o.status == 'execution_unknown' for o in working)):
             raise ValueError('체결 판정 불가 잔량이 있어 신규 주문을 보류합니다.')
         if not self.guard.check(self.now, self.mm.config.max_quote_age_ms):
             self.guard.blocked_submissions += 1
             raise ValueError('시세 시간차 보호로 신규 주문을 차단했습니다: ' + self.guard.reason)
-        if len(self.working()) >= 100:
+        if len(working) >= 100:
             raise ValueError('미체결 주문은 최대 100개입니다.')
         if self.order_sequence >= 100000:
             raise DataError('주문 10만 건 한도입니다. 기간을 줄여 주세요.')
@@ -171,7 +174,7 @@ class ReplayEngine:
         price_step = D(self.config.get('price_step', '0'))
         if quantity % step or quantity * price < D(self.config['min_notional']) or (price_step and price % price_step):
             raise ValueError('모형의 최소 금액·수량 단위를 확인하세요.')
-        cash, coin = self.free()
+        cash, coin = self.account.available(working)
         reserve = self.fee_schedule.reserve_buy(price, quantity, tif) if side == 'buy' else ZERO
         if reserve > cash or (side == 'sell' and quantity > coin):
             raise ValueError('예약되지 않은 가상 잔고가 부족합니다.')
@@ -220,6 +223,10 @@ class ReplayEngine:
         result = order.snapshot()
         key = (order.side, order.price)
         result['queue_known'] = self.queue_known.get(key, False)
+        if not result['queue_known'] or order.active_at is None:
+            result.update(queue_ahead=None, queue_external_ahead=None,
+                          queue_external_behind=None, queue_front_cancel_probability=None)
+            return result
         ahead = ZERO
         for node in self.queues.get(key, []):
             if node['kind'] == 'own' and node['id'] == order.id:
@@ -365,7 +372,9 @@ class ReplayEngine:
         self.depletion = {key: value for key, value in self.depletion.items() if key in self.queues or key in visible}
 
     def advance(self, timestamp: int) -> None:
+        processed = False
         while (event := self.scheduler.pop_due(timestamp)):
+            processed = True
             self.now = event.at_ms
             kind, identifier = (event.kind, event.identifier)
             if kind == 'stale':
@@ -384,7 +393,10 @@ class ReplayEngine:
                 self._replacement(order)
             self.auto()
         self.now = timestamp
-        self._gc()
+        # Nothing can change queue membership between events without a terminal
+        # order or a dispatched timer. on_event still collects after every market event.
+        if processed or self.order_book.collection_pending:
+            self._gc()
 
     def on_event(self, event):
         self.advance(event['time'])
@@ -461,9 +473,10 @@ class ReplayEngine:
             expected = max(ZERO, D(str(before)) - self.depth.self_debt.get(key, ZERO) - traded)
             inferred = max(ZERO, expected - visible)
             added = max(ZERO, visible - expected)
-            positions = {n['id']: self.queue_cancel.position(nodes, n['id']) for n in nodes if n['kind'] == 'own'} if inferred else {}
+            identifiers = [n['id'] for n in nodes if n['kind'] == 'own'] if inferred else []
+            positions = self.queue_cancel.positions(nodes, identifiers) if inferred else {}
             applied = self.queue_cancel.cancel(nodes, inferred) if inferred else ZERO
-            after_cancel = {identifier: self.queue_cancel.position(nodes, identifier) for identifier in positions}
+            after_cancel = self.queue_cancel.positions(nodes, identifiers) if inferred else {}
             if added:
                 nodes.append(dict(kind='external', qty=added))
             # Own simulated fills displace historical external fills; reconcile the latter
@@ -511,12 +524,13 @@ class ReplayEngine:
             return
         if not self.config['auto_mm'] or self.initial_equity is None:
             return
-        if any((o.status == 'execution_unknown' for o in self.working())):
+        working = self.working()
+        if any((o.status == 'execution_unknown' for o in working)):
             return
         book = self.books.get('bithumb')
         if not book:
             return
-        cash, coin = self.free()
+        cash, coin = self.account.available(working)
         view = QuoteView(
             self.config['ticker'],
             str(self.event_sequence),
@@ -530,7 +544,7 @@ class ReplayEngine:
             cash if self.strategy_parameters['direction'] != 'sell' else ZERO,
             coin if self.strategy_parameters['direction'] != 'buy' else ZERO,
         )
-        orders = tuple((WorkingOrder(o.id, o.owner, o.side, o.price, o.remaining, o.status) for o in self.working()))
+        orders = self.strategy_orders.project(working)
         plan = self.mm.plan(view, account, orders, now_ms=self.now)
         for identifier in plan.cancel_order_ids:
             self.cancel(identifier)

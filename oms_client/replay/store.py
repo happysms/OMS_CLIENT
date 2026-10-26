@@ -57,6 +57,11 @@ class ReplayStore:
             con.close()
 
     def save(self, snapshot, fills=(), commands=(), order_events=()):
+        identifier = snapshot['id']
+        # Serialize immutable reports before taking SQLite's write transaction.
+        fill_rows = [(identifier, row['sequence'], json.dumps(row, allow_nan=False)) for row in fills]
+        command_rows = [(identifier, row['sequence'], json.dumps(row, allow_nan=False)) for row in commands]
+        order_rows = [(identifier, row['sequence'], json.dumps(row, allow_nan=False)) for row in order_events]
         with self.connect() as con:
             existing = con.execute('SELECT metadata FROM accounts WHERE run_id=?', (snapshot['id'],)).fetchone()
             metadata = snapshot.get('virtual_account') or (json.loads(existing[0]) if existing else account_metadata(
@@ -65,20 +70,23 @@ class ReplayStore:
                 raise ValueError('이미 생성한 계좌의 초기조건과 식별자는 변경할 수 없습니다.')
             con.execute('INSERT OR IGNORE INTO accounts(run_id,metadata) VALUES (?,?)', (snapshot['id'],json.dumps(metadata)))
             snapshot = dict(snapshot, virtual_account=metadata)
-            con.executemany('INSERT INTO fills VALUES (?,?,?)',
-                            [(snapshot['id'], row['sequence'], json.dumps(row, allow_nan=False)) for row in fills])
-            con.executemany('INSERT INTO commands VALUES (?,?,?)',
-                            [(snapshot['id'], row['sequence'], json.dumps(row, allow_nan=False)) for row in commands])
-            con.executemany('INSERT INTO order_events VALUES (?,?,?)',
-                            [(snapshot['id'], row['sequence'], json.dumps(row, allow_nan=False)) for row in order_events])
+            encoded = json.dumps(snapshot, allow_nan=False)
+            con.executemany('INSERT INTO fills VALUES (?,?,?)', fill_rows)
+            con.executemany('INSERT INTO commands VALUES (?,?,?)', command_rows)
+            con.executemany('INSERT INTO order_events VALUES (?,?,?)', order_rows)
             con.execute('INSERT INTO runs VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET updated=excluded.updated,snapshot=excluded.snapshot',
-                        (snapshot['id'], time.time(), json.dumps(snapshot, allow_nan=False)))
+                        (snapshot['id'], time.time(), encoded))
+        # Returned only after commit succeeds: the UI can reuse exactly the stored JSON.
+        return encoded
 
     def get(self, identifier):
+        return json.loads(self.get_encoded(identifier))
+
+    def get_encoded(self, identifier):
         with self.connect() as con:
             row = con.execute('SELECT snapshot FROM runs WHERE id=?', (identifier,)).fetchone()
         if not row: raise KeyError(identifier)
-        return json.loads(row[0])
+        return row[0]
 
     def order_events(self, identifier, before, limit=500):
         with self.connect() as con:
@@ -98,8 +106,9 @@ class ReplayStore:
                 for sequence,raw in rows for snapshot in [json.loads(raw)]]
 
     def fills(self, identifier, before=None, limit=100):
-        self.get(identifier)
         with self.connect() as con:
+            if con.execute('SELECT 1 FROM runs WHERE id=?', (identifier,)).fetchone() is None:
+                raise KeyError(identifier)
             rows = con.execute('SELECT report FROM fills WHERE run_id=? AND sequence<? ORDER BY sequence DESC LIMIT ?',
                                (identifier, before if before is not None else 2**63-1, limit)).fetchall()
         return [json.loads(row[0]) for row in rows]

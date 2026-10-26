@@ -36,7 +36,8 @@ def register(app, manager):
 
     @app.get('/api/replays/<identifier>')
     def replay_get(identifier):
-        return jsonify(invoke(manager.get, identifier))
+        # Checkpoints were already validated/serialized atomically by ReplayStore.
+        return Response(invoke(manager.get_encoded, identifier), mimetype='application/json')
 
     @app.post('/api/replays/<identifier>/control')
     def replay_control(identifier):

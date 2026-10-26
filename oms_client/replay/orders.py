@@ -151,6 +151,7 @@ class OrderBook:
         self.orders: Mapping[str, ReplayOrder] = MappingProxyType(self._orders)
         self._requests: dict[str, tuple[tuple, str]] = {}
         self._completed: set[str] = set()
+        self.collection_pending = False
         self._replacements: dict[str, ReplacementRequest] = {}
         self.sequence = 0
 
@@ -187,6 +188,7 @@ class OrderBook:
         if status == 'filled' or reason != 'requested':
             self._replacements.pop(order.id, None)
         self._completed.add(order.id)
+        self.collection_pending = True
         return True
 
     def has_replacement(self, identifier: str) -> bool:
@@ -203,4 +205,5 @@ class OrderBook:
         for identifier in list(self._orders):
             if identifier not in active:
                 del self._orders[identifier]
+        self.collection_pending = False
         return active

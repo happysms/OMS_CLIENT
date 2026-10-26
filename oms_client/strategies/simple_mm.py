@@ -258,13 +258,21 @@ class SimpleMM:
             fee_count = -(-fee_units.numerator // fee_units.denominator)
             return notional + fee_count * quantum
 
-        low, high = 0, Fraction(cash) // (unit_cost * (1 + rate))
-        while low < high:
-            middle = (low + high + 1) // 2
-            if cost(middle) <= Fraction(cash):
-                low = middle
-            else:
-                high = middle - 1
-        total = cost(low)
+        budget = Fraction(cash)
+        low, high = 0, budget // (unit_cost * (1 + rate))
+        # The unrounded fee gives an upper bound. In the usual case it already
+        # fits after rounding, so no binary search is needed. Keep the exact
+        # search for small lots / large fee quanta where the bound overspends.
+        total = cost(high)
+        if total <= budget:
+            low = high
+        else:
+            while low < high:
+                middle = (low + high + 1) // 2
+                if cost(middle) <= budget:
+                    low = middle
+                else:
+                    high = middle - 1
+            total = cost(low)
         reserve = Decimal(total.numerator) / Decimal(total.denominator)
         return low * self.config.quantity_step, reserve

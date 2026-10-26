@@ -48,12 +48,23 @@ class QueueCancellation:
         return result
 
     def position(self, nodes, identifier):
+        weighted = self.weights(nodes)
+        weights = {id(node): weight for node, weight in weighted}
+        total = sum((weight for _, weight in weighted), ZERO)
+        return self._position(nodes, identifier, weights, total)
+
+    def positions(self, nodes, identifiers):
+        """Reuse weights for one unchanged queue; preserve Decimal addition order."""
+        weighted = self.weights(nodes)
+        weights = {id(node): weight for node, weight in weighted}
+        total = sum((weight for _, weight in weighted), ZERO)
+        return {identifier: self._position(nodes, identifier, weights, total) for identifier in identifiers}
+
+    def _position(self, nodes, identifier, weights, total):
         ahead = ZERO
         behind = ZERO
         found = False
         front_weight = ZERO
-        weighted = self.weights(nodes)
-        weights = {id(node): weight for node, weight in weighted}
         for node in nodes:
             if node['kind'] == 'own':
                 if node['id'] == identifier:
@@ -63,7 +74,6 @@ class QueueCancellation:
             else:
                 ahead += node['qty']
                 front_weight += weights.get(id(node), ZERO)
-        total = sum((weight for _, weight in weighted), ZERO)
         return dict(queue_external_ahead=float(ahead), queue_external_behind=float(behind),
                     queue_front_cancel_probability=float(front_weight / total) if total and self.enabled else None)
 

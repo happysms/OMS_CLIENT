@@ -52,30 +52,37 @@ class ReplaySource:
         with parquet.query_deadline(con):
             con.execute(f'SELECT {selected},filename,file_row_number FROM read_parquet($paths,union_by_name=true,filename=true,file_row_number=true) WHERE {where} ORDER BY desktopTime,list_position($paths,filename),file_row_number', params)
         ranks={name:i for i,name in enumerate(paths)}
+        source_prefixes = {
+            path: f'{venue}:{kind}:{hashlib.sha256(originals[index].encode()).hexdigest()[:12]}:'
+            for path, index in ranks.items()
+        }
+        # Column layout is fixed by SELECT, even when a source column is missing.
+        # Resolve it once per stream instead of formatting names for every row.
+        side_columns = (
+            ('bids', tuple((2 + 4*i, 4 + 4*i) for i in range(5))),
+            ('asks', tuple((3 + 4*i, 5 + 4*i) for i in range(5))),
+        )
 
         def rows():
             while batch := con.fetchmany(2048):
                 for row in batch:
-                    data = dict(zip(fields, row))
-                    stamp = data['desktopTime']
+                    stamp = row[0]
                     if not _finite(stamp):
                         self.skipped += 1
                         continue
-                    event = dict(time=int(stamp), venue=venue, kind=kind, server_time=data['serverTime'] if _finite(data['serverTime']) else None,
-                                 source_id=f'{venue}:{kind}:{hashlib.sha256(originals[ranks[row[-2]]].encode()).hexdigest()[:12]}:{row[-1]}')
+                    event = dict(time=int(stamp), venue=venue, kind=kind, server_time=row[1] if _finite(row[1]) else None,
+                                 source_id=source_prefixes[row[-2]] + str(row[-1]))
                     if kind == 'tick':
-                        price, qty = data['price'], data['qty']
+                        price, qty = row[2], row[3]
                         if not _finite(price) or price <= 0 or not _finite(qty) or qty == 0:
                             self.skipped += 1
                             continue
                         event.update(price=price, qty=qty, direction_known=venue=='bithumb')
                     else:
-                        for side, prefix in [('bids','b'),('asks','a')]:
+                        for side, indices in side_columns:
                             levels = []
-                            for i in range(1,6):
-                                price = data[f'{prefix}{i}_p']
-                                key = (('bid_size' if prefix=='b' else 'ask_size') + (f'_{i}' if i>1 else '')) if native else f'{prefix}{i}_q'
-                                qty = data[key]
+                            for price_index, quantity_index in indices:
+                                price, qty = row[price_index], row[quantity_index]
                                 if not _finite(price) or price <= 0:
                                     break
                                 if levels and not (price < levels[-1]['price'] if side=='bids' else price > levels[-1]['price']):

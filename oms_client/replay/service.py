@@ -1,5 +1,6 @@
 """One bounded replay worker; virtual time is independent of rendering and pacing."""
 from copy import deepcopy
+import json
 import logging
 import threading
 import time
@@ -33,7 +34,7 @@ class ReplaySession:
         self.sequence = 0
         self.command_sequence = 0
         self.commands = []
-        self.snapshot = {}
+        self._snapshot_json = '{}'
         self._publish()
         self.thread = threading.Thread(target=self._run, name='historical-replay', daemon=True)
 
@@ -45,13 +46,22 @@ class ReplaySession:
                         manifest=self.source.manifest, **self.engine.snapshot())
         snapshot['lag_ms'] = max(0, int(min(self.config['end_ms'], self.clock.now())-self.engine.now)) if self.clock and not self.fast else 0
         # The UI and the database expose the same committed state. Failed commits never leak fills.
-        self.store.save(snapshot, self.engine.new_fills, self.commands, self.engine.new_order_events)
+        encoded = self.store.save(snapshot, self.engine.new_fills, self.commands, self.engine.new_order_events)
         self.engine.new_fills.clear(); self.commands.clear(); self.engine.new_order_events.clear()
-        self.snapshot = deepcopy(snapshot)
+        self._snapshot_json = encoded
+
+    @property
+    def snapshot(self):
+        """Detached diagnostic view; committed state has a single JSON owner."""
+        return self.get()
 
     def get(self):
+        return json.loads(self.get_encoded())
+
+    def get_encoded(self):
         with self.condition:
-            return deepcopy(self.snapshot)
+            # Immutable committed text is safe to read/decode outside the worker's lock.
+            return self._snapshot_json
 
     def control(self, payload):
         if not isinstance(payload,dict): raise ValueError('제어 설정을 확인하세요.')
@@ -108,7 +118,7 @@ class ReplaySession:
                 self.condition.notify_all()
                 raise
             self.condition.notify_all()
-            return deepcopy(self.snapshot)
+            return json.loads(self._snapshot_json)
 
     def _run(self):
         try:
@@ -173,7 +183,8 @@ class ReplaySession:
                     self._publish()
                 except Exception:
                     # Keep only the last committed account and mark it incomplete.
-                    self.snapshot = dict(self.snapshot, status='failed', error='저장에 실패했습니다. 마지막 저장 결과만 표시합니다.')
+                    failed = dict(self.get(), status='failed', error='저장에 실패했습니다. 마지막 저장 결과만 표시합니다.')
+                    self._snapshot_json = json.dumps(failed, allow_nan=False)
         finally:
             self.source.close()
 
@@ -211,6 +222,10 @@ class ReplayManager:
     def get(self, identifier):
         with self.lock: active = self.active
         return active.get() if active and active.id == identifier else self.store.get(identifier)
+
+    def get_encoded(self, identifier):
+        with self.lock: active = self.active
+        return active.get_encoded() if active and active.id == identifier else self.store.get_encoded(identifier)
 
     def control(self, identifier, payload):
         with self.lock: active = self.active

@@ -1,6 +1,16 @@
+// Reuse ICU formatters across the hundreds of cells in every replay update.
+const numbers = new Intl.NumberFormat('ko-KR', {maximumFractionDigits: 8});
+const timestamps = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit',
+  minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hour12: false,
+});
+export const formatNumber = value => value === null || value === undefined || !Number.isFinite(Number(value))
+  ? '—' : numbers.format(Number(value));
+export const formatTime = value => value === null || value === undefined
+  ? '—' : timestamps.format(new Date(value));
+const num = formatNumber, stamp = formatTime;
+
 const $=id=>document.getElementById('replay-'+id);
-const num=value=>value===null||value===undefined||!Number.isFinite(Number(value))?'—':Number(value).toLocaleString('ko-KR',{maximumFractionDigits:8});
-const stamp=value=>value===null||value===undefined?'—':new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:3,hour12:false}).format(new Date(value));
 const local=value=>new Date(value+9*3600000).toISOString().slice(0,19);
 const side=value=>value==='buy'?'매수':'매도';
 const states={execution_unknown:'체결 판정 불가',replace_failed:'교체 신규 주문 실패',in_flight:'접수 중',live:'대기',cancel_pending:'취소 중',filled:'체결 완료',cancelled:'취소 완료',rejected:'거절',loading:'원본 로딩',running:'재생 중',paused:'일시정지',finished:'완료',stopped:'중지',failed:'실패',interrupted:'서버 중단'};
@@ -30,6 +40,7 @@ export function bookView(book,orders=[]){
 export function initReplay({api,getCatalog}){
   let snapshot=null,id=null,visible=false,timer=null,polling=false,epoch=0,boundsEpoch=0,creating=false,controlTail=Promise.resolve();
   let historicalFills=null,nextBefore=null,historyCursor=null,historyEpoch=0;
+  let renderedFills=null;
   let strategyItems=[],strategyExtras=[],strategyEpoch=0;
   const limitSupported=()=>strategyItems.some(item=>item.limit_execution_supported);
   const queueSupported=()=>strategyItems.some(item=>item.queue_cancellation_supported);
@@ -96,7 +107,13 @@ export function initReplay({api,getCatalog}){
   }
   function renderFills(){
     const fills=historicalFills||snapshot.fills||[];
-    rows($('fills'),fills.map(f=>row([stamp(f.timestamp),f.order_id,side(f.side),num(f.price),num(f.quantity),num(f.fee),num(f.realized_pnl),num(f.account.realized_pnl),num(f.account.unrealized_pnl),num(f.account.theory_unrealized_pnl),num(f.account.total_pnl),num(f.account.equity),num(f.theory?.price??f.positions?.[0]?.theory_price),stamp(f.theory?.available_at_ms??f.positions?.[0]?.theory?.available_at_ms),f.liquidity??'maker'])),15,'아직 모의 체결이 없습니다.');
+    // Fill reports are immutable. Live ticks alone do not change this table;
+    // history navigation supplies a different page object even at the same count.
+    const source=historicalFills??snapshot.fill_count;
+    if(!renderedFills||renderedFills.id!==snapshot.id||renderedFills.source!==source){
+      rows($('fills'),fills.map(f=>row([stamp(f.timestamp),f.order_id,side(f.side),num(f.price),num(f.quantity),num(f.fee),num(f.realized_pnl),num(f.account.realized_pnl),num(f.account.unrealized_pnl),num(f.account.theory_unrealized_pnl),num(f.account.total_pnl),num(f.account.equity),num(f.theory?.price??f.positions?.[0]?.theory_price),stamp(f.theory?.available_at_ms??f.positions?.[0]?.theory?.available_at_ms),f.liquidity??'maker'])),15,'아직 모의 체결이 없습니다.');
+      renderedFills={id:snapshot.id,source};
+    }
     if(!historicalFills)nextBefore=fills.length===100?fills.at(-1).sequence:null;
     $('older').hidden=!nextBefore;$('newest').hidden=!historicalFills;
     $('fill-count').textContent=`${num(snapshot.fill_count)}건 · ${historicalFills?'과거 체결 페이지':'최근 체결'}`;
