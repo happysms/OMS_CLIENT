@@ -14,6 +14,7 @@ STATIC_FILES = {
     "features/analysis/controller.js", "features/data/controller.js",
     "features/analysis/premiums.js", "features/replay/controller.js", "features/strategies/controller.js",
     "features/funding/controller.js",
+    "features/manual_trading/controller.js",
     "features/files/controller.js",
     "features/quality/controller.js",
     "features/backtesting/controller.js", "features/paper_trading/controller.js",
@@ -26,6 +27,7 @@ MODULES = [
     {"id": "strategies", "label": "전략 관리", "status": "ready"},
     {"id": "replay", "label": "시뮬레이션", "status": "ready"},
     {"id": "paper", "label": "모의투자", "status": "ready"},
+    {"id": "manual", "label": "실시간 수동매매", "status": "ready"},
     {"id": "oms", "label": "OMS", "status": "planned"},
 ]
 
@@ -51,7 +53,7 @@ def register(app, csrf_token):
 
     @app.get("/api/session")
     def session_information():
-        return jsonify(authenticated=True, user="admin", csrf_token=csrf_token(), mode="server", capabilities={"server_analysis": True, "live": True, "saved_presets": True, "backtest": True, "paper": True, "funding": True, "funding_live": False, "candles": True, "candle_live": False, "live_orders": False})
+        return jsonify(authenticated=True, user="admin", csrf_token=csrf_token(), mode="server", capabilities={"server_analysis": True, "live": True, "saved_presets": True, "backtest": True, "paper": True, "funding": True, "funding_live": False, "candles": True, "candle_live": False, "live_orders": False, "manual_spot_orders": True})
 
     @app.get("/api/version")
     def version_information():

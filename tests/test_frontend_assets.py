@@ -16,7 +16,7 @@ class BrowserAssetTests(unittest.TestCase):
             if not name.endswith('.js'):
                 continue
             source = (Path(FRONTEND) / name).read_text()
-            for dependency in re.findall(r"(?:from\s*|import\s*)['\"]([^'\"]+)['\"]", source):
+            for dependency in re.findall(r"(?:from\s*|import\s*\(?\s*)['\"]([^'\"]+)['\"]", source):
                 if dependency.startswith('.'):
                     target = posixpath.normpath(posixpath.join(posixpath.dirname(name), dependency))
                     with self.subTest(module=name, dependency=dependency):

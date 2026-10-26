@@ -14,7 +14,7 @@ export async function boot() {
     initPremiums({api});
     const analysis=initAnalysis({api,session:runtime.session,catalog:runtime.catalog,onCatalog:catalog=>{runtime.catalog=catalog;}});
     await analysis.prepare();
-    await initWorkspace({api,getCatalog:()=>runtime.catalog,stopLive:analysis.stopLive});
+    await initWorkspace({api,getCatalog:()=>runtime.catalog,stopLive:analysis.stopLive,session:runtime.session});
     await analysis.runHistory();
   } catch(error) {
     $('error').textContent=error.message||String(error);$('error').hidden=false;

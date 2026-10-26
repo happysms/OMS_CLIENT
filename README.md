@@ -15,9 +15,10 @@
 | 전략 관리 | Point·minmaxma·단일 거래소 메이커 유형으로 전략 등록, 설정·버전·복사·보관, 모의계좌 적용 |
 | 시뮬레이션 | 빗썸 최우선 MM·복수 지정가, 독립 가상계좌, 빠른 일괄 실행·1~32배속·일시정지, 호가·틱·내 주문·체결별 손익, OKX 참조 |
 | 모의투자 | 빗썸·업비트 KRW 현금 계좌, 서버 호가 기반 모의 주문, 잔고·포지션·체결 기록 |
+| 실시간 수동매매 | 빗썸·OKX 현물 공개 5호가·틱, 암호화 API 키, 명시적 실제 지정가 주문·취소·상태 조회 |
 | OMS | 계좌·주문·전략 제어를 연결할 예정인 영역. 현재 상태 조회만 제공 |
 
-현재 서버에는 실주문 전송이나 실제 거래 계정 API 키가 없습니다. 모의투자는 별도 SQLite 장부에만 반영됩니다. 기존 운영 OMS의 주문·포지션은 변경하지 않습니다.
+**실시간 수동매매** 탭은 키를 등록하고 실제 계좌 주문을 명시적으로 선택하면 실제 거래소에 지정가 주문·취소를 전송합니다. 기본 상태는 시세 보기이며 기존 모의투자와 장부를 분리합니다. 개인 주문 체결은 상태 조회 버튼으로 확인합니다. [사용 순서·구조·기본값·후속 질문](oms_client/manual_trading/README.md)을 참고하세요. 실제 키를 이용한 거래소 통합 검증은 아직 수행하지 않았습니다.
 
 모든 탭 위의 **서버 PC 저장 공간 · 자동 정리**에서 남은 디스크 용량을 보고 시세 파일 보관 기간을 설정할 수 있습니다. 기본 7일·자동 삭제 꺼짐이며, 삭제 대상 미리보기와 저장소 선택을 제공합니다. 계좌·매매 결과는 보존합니다. [삭제 기준과 사용 방법](docs/storage_retention.ko.md)을 참고하세요.
 
@@ -35,6 +36,7 @@ oms_client/
   backtesting/                  전략·비용·체결 모형과 성과 계산
   replay/                       원본 이벤트 재생·가상 시계·MM 매칭·실행별 체결 장부
   paper_trading/                모의 주문·잔고·포지션·체결 장부
+  manual_trading/               실제 수동 현물 주문, 암호화 키, 공개 호가·틱, 중복 전송 방지
   oms/                          OMS 연결 상태와 향후 운영 연동
   api/                          로그인, HTTP 요청, 작업 큐, 결과 CSV
     routes/                     데이터·분석·백테스트·모의투자·OMS별 API
@@ -56,7 +58,7 @@ data/market/                    USDT 수집 Parquet; Git 제외
 
 각 기능 폴더의 `README.md`에 담당 로직과 수정 위치를 적었습니다. 계산 규칙은 `oms_client/`의 해당 기능에, 요청·응답은 `api/routes/`에, 화면은 `frontend/features/`의 같은 기능에 추가합니다.
 
-요청 흐름은 `frontend → api/routes → 기능 로직 → market_data 또는 storage`입니다. 시장 데이터 접근은 `market_data/`에 모아 분석·백테스트·모의투자가 공유합니다. 실시간 시세의 연결·파싱은 `market_data/quotes.py`, 수식 계산과 시계열 누적은 `analysis/live.py`가 담당합니다.
+요청 흐름은 `frontend → api/routes → 기능 로직 → market_data 또는 storage`입니다. 시장 데이터 접근은 `market_data/`에 모아 분석·백테스트·모의투자가 공유합니다. 분석용 실시간 시세의 연결·파싱은 `market_data/quotes.py`, 수식 계산과 시계열 누적은 `analysis/live.py`가 담당합니다. 수동 현물 매매의 공개 피드는 `manual_trading/market.py`에 분리하여 분석용 OKX 선물 수량과 섞이지 않도록 합니다.
 
 | 변경할 내용 | 수정 위치 |
 |---|---|
@@ -65,6 +67,7 @@ data/market/                    USDT 수집 Parquet; Git 제외
 | 새 분석 함수·통계 | `oms_client/analysis/` |
 | 전략·체결 가정·백테스트 지표 | `oms_client/backtesting/` |
 | 모의 계좌·가상 주문 규칙 | `oms_client/paper_trading/` |
+| 실제 수동 현물 매매·키·시세 | `oms_client/manual_trading/` |
 | OMS 계좌·주문·전략 운영 연결 | `oms_client/oms/` |
 | 로그인·API·실행 작업 관리 | `oms_client/api/` |
 | 각 탭 화면 | `frontend/features/` |

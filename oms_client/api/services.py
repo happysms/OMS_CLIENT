@@ -30,6 +30,9 @@ def configure_services(app, store, jobs):
             return app.extensions["paper_service"]
 
     def close_services():
+        manual = app.extensions.get('manual_trading')
+        if manual:
+            manual.close()
         app.extensions['retention_service'].close()
         app.extensions['premium_service'].close()
         app.extensions['replay_manager'].close()

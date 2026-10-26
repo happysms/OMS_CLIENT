@@ -15,7 +15,7 @@ from . import errors
 from .auth import TransportAwareSessionInterface, configure_auth
 from .data_exports import DataExportJobs
 from .jobs import AnalysisJobs
-from .routes import analysis, backtesting, collectors, data, files, oms, paper_trading, premiums, quality, replays, storage, strategies, workspace
+from .routes import analysis, backtesting, collectors, data, files, manual_trading, oms, paper_trading, premiums, quality, replays, storage, strategies, workspace
 from .services import configure_services
 
 
@@ -74,6 +74,7 @@ def create_app(config=None):
     replays.register(app, replay_manager)
     strategies.register(app, replay_manager.strategies)
     paper_trading.register(app, paper_service)
+    manual_trading.register(app, store.directory)
     oms.register(app)
     collectors.register(app)
     files.register(app)
