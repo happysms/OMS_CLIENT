@@ -31,12 +31,15 @@ export function initReplay({api,getCatalog}){
   let snapshot=null,id=null,visible=false,timer=null,polling=false,epoch=0,boundsEpoch=0,creating=false,controlTail=Promise.resolve();
   let historicalFills=null,nextBefore=null,historyCursor=null,historyEpoch=0;
   let strategyItems=[],strategyExtras=[],strategyEpoch=0;
+  const queueSupported=()=>strategyItems.some(item=>item.queue_cancellation_supported);
   const strategyKey=item=>item.id+'@'+item.revision;
   const selectedStrategy=()=>[...strategyItems,...strategyExtras].find(item=>strategyKey(item)===$('strategy').value);
   function updateRunButton(){const strategy=selectedStrategy();$('run').disabled=creating||Boolean(snapshot&&!terminal(snapshot.status))||!strategy||strategy.archived||!strategy.executable;}
   function strategyHelp(){const item=selectedStrategy();$('strategy-help').textContent=item?`${item.name} · v${item.revision} · ${item.archived?'보관한 전략입니다. 복원 후 사용하세요.':item.execution_note}${item.guard_configured===false?' · 이전 버전: 핑 보호 미설정, 새 버전 저장 시 적용':''}`:'전략 관리에서 실행 가능한 전략을 등록하세요.';updateRunButton();}
   function strategyOptions(items=strategyItems,preferred=$('strategy').value){
     strategyItems=items;
+    for(const field of ['queue-mode','queue-bias','queue-chunks','queue-seed'])$(field).disabled=!queueSupported();
+    $('queue-help').textContent=queueSupported()?'시드·가중치·분할 수는 계좌 초기조건에 저장됩니다. 같은 조건으로 결과를 재현하거나 다른 시드로 비교할 수 있습니다.':'현재 서버에는 확률 취소 모형이 적용되지 않았습니다. 서버 업데이트 전 새 실행은 기존 보수 모형을 사용합니다.';
     const choices=new Map(items.map(item=>[strategyKey(item),item]));
     strategyExtras=strategyExtras.map(item=>({...item,archived:items.find(latest=>latest.id===item.id)?.archived??item.archived}));
     for(const item of strategyExtras)if(!choices.has(strategyKey(item)))choices.set(strategyKey(item),item);
@@ -117,6 +120,9 @@ export function initReplay({api,getCatalog}){
     const guard=next.order_guard;
     $('guard-status').textContent=guard?`${guard.enabled?(guard.blocked?'신규 주문 차단':'신규 주문 허용'):'핑 보호 비활성'} · ${guardReasons[guard.reason]||guard.reason} · 시세 시간차 ${num(guard.delta_ms)}ms · 직전 대비 ${num(guard.jump_ms)}ms${guard.recovery_remaining_ms!==null?' · 안정 확인 잔여 '+num(guard.recovery_remaining_ms)+'ms':''} · 차단된 주문 시도 ${num(guard.blocked_submissions)}건`:'이전 실행 · 핑 보호 기록 없음';
     rows($('guard-events'),(next.guard_events||[]).map(event=>row([stamp(event.timestamp),event.blocked?'차단':'허용',guardReasons[event.reason]||event.reason,num(event.delta_ms),num(event.jump_ms)])),5,'아직 차단·재개 기록이 없습니다.');
+    const qm=next.queue_model;
+    $('queue-status').textContent=qm?`${qm.mode==='probabilistic'?'확률 취소 모형':'기존 보수 모형'} · 시드 ${qm.seed} · 앞쪽 가중치 ${qm.front_bias} · ${qm.chunks}분할 · 취소 추정 ${num(qm.cancellation_events)}건 / ${num(qm.cancelled_external_quantity)}개`:'이전 실행 · 대기열 취소 추정 기록 없음';
+    rows($('queue-events'),(next.queue_cancel_events||[]).map(event=>row([stamp(event.timestamp),side(event.side),num(event.price),num(event.trade_quantity),num(event.inferred_cancel_quantity),num(event.applied_cancel_quantity)])),6,'아직 취소로 추정한 잔량 감소가 없습니다.');
     const a=next.account||{};
     const metrics=[['평가액 · 원',a.equity],['주문 가능 원화',a.free_cash],['예약 원화',(a.cash??0)-(a.free_cash??0)],['보유 코인',a.coin],['주문 가능 코인',a.free_coin],['실현손익 · 원',a.realized_pnl],['미실현손익 · 원',a.unrealized_pnl],['이론가 미실현 · 원',a.theory_unrealized_pnl],['총손익 · 원',a.total_pnl]];
     $('stats').replaceChildren(...metrics.map(([title,value])=>{const article=document.createElement('article'),label=document.createElement('span'),strong=document.createElement('strong');label.textContent=title;strong.textContent=num(value);article.append(label,strong);return article;}));
@@ -126,9 +132,9 @@ export function initReplay({api,getCatalog}){
     rows($('ticks'),(next.ticks||[]).map(t=>row([stamp(t.time),t.venue==='bithumb'?'빗썸 · KRW':'OKX · USDT',t.direction_known?(t.qty>0?'매수 체결':'매도 체결'):'방향 미확인',num(t.price),num(Math.abs(t.qty))],t.direction_known?(t.qty>0?'replay-buy':'replay-sell'):'')),5);
     $('order-count').textContent=`${next.orders.length}개 미체결 주문`;
     rows($('orders'),next.orders.map(o=>{
-      const tr=row([o.id,o.owner==='manual'?'수동':'MM',side(o.side),num(o.price),num(o.remaining),states[o.status],o.queue_known?num(o.queue_ahead):'미확인']);
+      const tr=row([o.id,o.owner==='manual'?'수동':'MM',side(o.side),num(o.price),num(o.remaining),states[o.status],o.queue_known?num(o.queue_ahead):'미확인',num(o.queue_external_ahead),num(o.queue_external_behind),o.queue_front_cancel_probability==null?'—':num(o.queue_front_cancel_probability*100)+'%']);
       const td=document.createElement('td'),button=document.createElement('button');button.type='button';button.className='small-button';button.textContent='취소';button.dataset.cancel=o.id;button.disabled=!loaded||o.status==='cancel_pending';td.append(button);tr.append(td);return tr;
-    }),8,'미체결 주문이 없습니다.');
+    }),11,'미체결 주문이 없습니다.');
     const reasons={requested:'취소 요청',trade_tick:'시장 틱에 의한 체결',post_only_cross:'도착 시 반대 호가와 교차',self_cross:'내 반대 주문과 교차',stale_book:'호가 지연',end_of_run:'기간 종료',stopped:'실행 중지',failed:'실행 실패'};
     rows($('order-events'),(next.order_events||[]).map(o=>row([stamp(o.closed_at),o.id,states[o.status],o.reason?.startsWith('ping_guard:')?'시세 시간차 보호: '+(guardReasons[o.reason.slice(11)]||o.reason.slice(11)):reasons[o.reason]||o.reason])),4);
     renderFills();
@@ -169,7 +175,8 @@ export function initReplay({api,getCatalog}){
   }
   $('form').addEventListener('submit',async event=>{
     event.preventDefault();if(creating)return;const strategy=selectedStrategy();if(!strategy||strategy.archived||!strategy.executable){error('실행 가능한 등록 전략을 선택하세요.');return;}creating=true;$('run').disabled=true;error('');
-    const body={strategy_id:strategy.id,strategy_revision:strategy.revision,account_name:$('account-name').value.trim(),ticker:$('ticker').value.trim().toUpperCase(),start:$('start').value,end:$('end').value,initial_krw:$('cash').value,initial_coin:$('coin').value,fee_bps:$('fee').value,quantity_step:$('step').value,min_notional:$('minimum').value,latency_ms:Number($('latency').value),speed:Number($('speed').value),fast:$('fast').checked,include_okx:$('okx').checked,auto_mm:$('mm').checked};
+    const body={strategy_id:strategy.id,strategy_revision:strategy.revision,account_name:$('account-name').value.trim(),ticker:$('ticker').value.trim().toUpperCase(),start:$('start').value,end:$('end').value,initial_krw:$('cash').value,initial_coin:$('coin').value,fee_bps:$('fee').value,quantity_step:$('step').value,min_notional:$('minimum').value,latency_ms:Number($('latency').value),queue_cancel_mode:$('queue-mode').value,queue_cancel_bias:$('queue-bias').value,queue_cancel_chunks:Number($('queue-chunks').value),queue_cancel_seed:Number($('queue-seed').value),speed:Number($('speed').value),fast:$('fast').checked,include_okx:$('okx').checked,auto_mm:$('mm').checked};
+    if(!queueSupported())for(const key of ['queue_cancel_mode','queue_cancel_bias','queue_cancel_chunks','queue_cancel_seed'])delete body[key];
     try{const result=await api('/api/replays',{method:'POST',body});epoch++;id=result.id;snapshot=null;historicalFills=null;render(result);schedule();await history();}catch(e){error(e.message);}finally{creating=false;updateRunButton();}
   });
   $('speed').addEventListener('input',()=>{$('speed-label').textContent=$('speed').value+'×';});
@@ -187,6 +194,10 @@ export function initReplay({api,getCatalog}){
     if(original.strategy)useStrategy(original.strategy);
     else{try{const originalMaker=await api('/api/strategies/builtin_single_maker?revision=1');if(version!==epoch)return;useStrategy(originalMaker);}catch(e){if(version===epoch)error(e.message);return;}}
     boundsEpoch++;
+    $('queue-mode').value=original.queue_cancel_mode??'conservative';
+    $('queue-bias').value=original.queue_cancel_bias??'1';
+    $('queue-chunks').value=original.queue_cancel_chunks??32;
+    $('queue-seed').value=original.queue_cancel_seed??1;
     for(const [field,key] of Object.entries({ticker:'ticker',cash:'initial_krw',coin:'initial_coin',fee:'fee_bps',step:'quantity_step',minimum:'min_notional',latency:'latency_ms',speed:'speed'}))$(field).value=original[key]??'';
     $('start').value=local(original.start_ms);$('end').value=local(original.end_ms);
     $('okx').checked=original.venues.includes('okx');$('mm').checked=original.auto_mm;$('fast').checked=original.fast;

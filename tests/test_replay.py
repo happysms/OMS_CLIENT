@@ -21,7 +21,8 @@ from oms_client.market_data.validation import DataError
 
 def config(**kw):
     result=dict(ticker='XYZ',start='2026-10-26T12:00:00+09:00',end='2026-10-26T12:00:00.200+09:00',
-                initial_krw='1000',initial_coin='0',fee_bps='0',quantity_step='1',min_notional='1',latency_ms=0,auto_mm=False)
+                initial_krw='1000',initial_coin='0',fee_bps='0',quantity_step='1',min_notional='1',latency_ms=0,auto_mm=False,
+                queue_cancel_mode='conservative')  # Existing tests also cover the selectable legacy model.
     result.update(kw)
     return config_from(result)
 

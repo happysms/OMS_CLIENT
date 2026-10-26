@@ -8,6 +8,7 @@ from ..strategies.simple_mm import (SimpleMM, MMConfig, QuoteView, AccountView,
 from ..paper_trading.reporting import evaluate_positions
 from ..market_data.validation import DataError, parse_date
 from .order_guard import FeedDelayGuard
+from .queue_cancel import QueueCancellation
 
 D = Decimal
 ZERO = D(0)
@@ -15,7 +16,8 @@ ZERO = D(0)
 
 def config_from(payload):
     allowed = {'ticker','start','end','initial_krw','initial_coin','fee_bps','quantity_step','min_notional',
-               'latency_ms','speed','fast','include_okx','auto_mm','theory_price','account_name'}
+               'latency_ms','speed','fast','include_okx','auto_mm','theory_price','account_name',
+               'queue_cancel_mode','queue_cancel_bias','queue_cancel_chunks','queue_cancel_seed'}
     if not isinstance(payload,dict) or set(payload)-allowed:
         raise DataError('시뮬레이션 설정을 확인해 주세요.')
     try:
@@ -39,10 +41,19 @@ def config_from(payload):
         minimum = _amount(payload.get('min_notional','5000'),'min_notional',positive=True)
         theory = payload.get('theory_price')
         theory = str(_amount(theory,'theory_price',positive=True)) if theory not in (None,'') else None
+        queue_mode=payload.get('queue_cancel_mode','probabilistic')
+        if not isinstance(queue_mode,str) or queue_mode not in {'conservative','probabilistic'}:
+            raise ValueError('호가 취소 추정 모형을 확인하세요.')
+        bias=_amount(payload.get('queue_cancel_bias','1'),'queue_cancel_bias',positive=True)
+        if not D('0.01')<=bias<=100: raise ValueError('앞쪽 취소 가중치는 0.01~100입니다.')
+        chunks,random_seed=payload.get('queue_cancel_chunks',32),payload.get('queue_cancel_seed',1)
+        if type(chunks) is not int or not 1<=chunks<=256: raise ValueError('취소 분할 수는 1~256 정수입니다.')
+        if type(random_seed) is not int or not 0<=random_seed<=4294967295: raise ValueError('난수 시드는 0~4294967295 정수입니다.')
         return dict(account_name=name.strip(),ticker=seed.ticker,start_ms=int(start.value//1_000_000),end_ms=int(end.value//1_000_000),
                     initial_krw=str(seed.initial_krw),initial_coin=str(seed.initial_coin),fee_bps=str(fee),
                     quantity_step=str(step),min_notional=str(minimum),latency_ms=latency,speed=speed,
                     fast=payload.get('fast',False),auto_mm=payload.get('auto_mm',True),theory_price=theory,
+                    queue_cancel_mode=queue_mode,queue_cancel_bias=str(bias),queue_cancel_chunks=chunks,queue_cancel_seed=random_seed,
                     venues=['bithumb','okx'] if payload.get('include_okx',False) else ['bithumb'])
     except ValueError as exc:
         raise DataError(str(exc)) from exc
@@ -56,6 +67,8 @@ class ReplayEngine:
             raise ValueError('이 실행기에서 지원하지 않는 전략입니다.')
         self.strategy_parameters=strategy['parameters'] if strategy else {'direction':'both','max_quote_age_ms':1000}
         self.guard=FeedDelayGuard(self.strategy_parameters)
+        self.queue_cancel=QueueCancellation(config)
+        self.queue_tape={}; self.queue_consumed={}
         self.strategy_theory=None
         self.now=config['start_ms']
         self.cash=D(config['initial_krw']); self.coin=D(config['initial_coin'])
@@ -139,6 +152,8 @@ class ReplayEngine:
             if node['kind'] == 'own' and node['id'] == order['id']: break
             ahead += node['qty'] if node['kind'] == 'external' else self.orders.get(node['id'], {}).get('remaining', ZERO)
         result['queue_ahead'] = float(ahead) if result['queue_known'] and order['active_at'] is not None else None
+        position=self.queue_cancel.position(self.queues.get(key,[]),order['id'])
+        result.update({k:v if result['queue_known'] and order['active_at'] is not None else None for k,v in position.items()})
         return result
 
     def _activate(self, order):
@@ -157,7 +172,11 @@ class ReplayEngine:
         key=(order['side'],order['price']); nodes=self.queues.setdefault(key,[])
         visible=self._visible(*key)
         self.queue_known.setdefault(key,visible is not None)
-        if visible is not None:
+        if visible is not None and self.queue_cancel.enabled:
+            if not any(n['kind']=='own' for n in nodes):
+                extra=max(ZERO,visible-self.queue_tape.get(key,ZERO))
+                if extra: nodes.append(dict(kind='external',qty=extra))
+        elif visible is not None:
             represented=sum((node['qty'] for node in nodes if node['kind']=='external'),ZERO)
             extra=max(ZERO,visible-self.depletion.get(key,ZERO)-represented)
             if extra: nodes.append(dict(kind='external',qty=extra))
@@ -175,6 +194,7 @@ class ReplayEngine:
             if identifier not in active: del self.orders[identifier]
         for key in list(self.queues):
             nodes=[n for n in self.queues[key] if n['kind']=='external' or n['id'] in active]
+            if self.queue_cancel.enabled: self.queue_cancel.compact(nodes)
             if any(n['kind']=='own' for n in nodes): self.queues[key]=nodes
             else:
                 del self.queues[key]; self.queue_known.pop(key,None)
@@ -206,7 +226,9 @@ class ReplayEngine:
                 self.accept_theory(self.mm.theoretical_quote(
                     QuoteView(self.config['ticker'],str(self.event_sequence),str(event['bids'][0]['price']),
                               str(event['asks'][0]['price']),event['time']),now_ms=self.now))
-                if previous:
+                if self.queue_cancel.enabled:
+                    self._update_queue_book(previous,event)
+                elif previous:
                     for side,field in [('buy','bids'),('sell','asks')]:
                         old={D(str(x['price'])):x['quantity'] for x in previous[field]}
                         for level in event[field]:
@@ -221,16 +243,58 @@ class ReplayEngine:
                 if self.initial_equity is None and self.now>=self.config['start_ms']:
                     self.cost=self.coin*D(str(event['bids'][0]['price']))
                     self.initial_equity=self.cash+self.cost
-                for key,nodes in self.queues.items():
+                for key,nodes in self.queues.items() if not self.queue_cancel.enabled else []:
                     visible=self._visible(*key)
                     if visible is not None and not self.queue_known.get(key):
                         nodes.insert(0,dict(kind='external',qty=visible)); self.queue_known[key]=True
                 self._schedule(self.now+self.mm.config.max_quote_age_ms+1,'stale',self.now)
         else:
             self.last_ticks.append({k:v for k,v in event.items() if k!='_key'})
-            if self.now>=self.config['start_ms'] and event['venue']=='bithumb': self._match(event)
+            if self.now>=self.config['start_ms'] and event['venue']=='bithumb':
+                if self.queue_cancel.enabled:
+                    key=('sell' if event['qty']>0 else 'buy',D(str(event['price'])))
+                    if key in self.queues or self._visible(*key) is not None:
+                        self.queue_tape[key]=self.queue_tape.get(key,ZERO)+abs(D(str(event['qty'])))
+                self._match(event)
         if self.now>=self.config['start_ms']: self.auto()
         self._gc()
+
+    def _update_queue_book(self, previous, event):
+        old={(side,D(str(level['price']))):level['quantity'] for side,field in [('buy','bids'),('sell','asks')]
+             for level in (previous or {}).get(field,[])}
+        for key in sorted(self.queues):
+            nodes=self.queues[key]; visible=self._visible(*key); before=old.get(key)
+            if visible is None:
+                # Depth truncation / missing quantities are not cancellations.
+                self.queue_known[key]=False
+                continue
+            if before is None or not self.queue_known.get(key):
+                nodes[:]=[dict(kind='external',qty=visible)]+[n for n in nodes if n['kind']=='own']
+                self.queue_known[key]=True
+                self.queue_cancel.compact(nodes)
+                continue
+            # Exact-price tape and virtual price-priority consumption overlap: use max, not sum.
+            traded=max(self.queue_tape.get(key,ZERO),self.queue_consumed.get(key,ZERO))
+            expected=max(ZERO,D(str(before))-traded)
+            inferred=max(ZERO,expected-visible)
+            added=max(ZERO,visible-expected)
+            positions={n['id']:self.queue_cancel.position(nodes,n['id']) for n in nodes if n['kind']=='own'} if inferred else {}
+            applied=self.queue_cancel.cancel(nodes,inferred) if inferred else ZERO
+            after_cancel={identifier:self.queue_cancel.position(nodes,identifier) for identifier in positions}
+            if added: nodes.append(dict(kind='external',qty=added))
+            # Own simulated fills displace historical external fills; reconcile the latter
+            # without treating them as cancellations or spending a tick on another own fill.
+            external=sum((n['qty'] for n in nodes if n['kind']=='external'),ZERO)
+            reconciled=self.queue_cancel.consume_external(nodes,max(ZERO,external-visible))
+            self.queue_cancel.compact(nodes)
+            if inferred:
+                self.queue_cancel.count+=1;self.queue_cancel.cancelled+=applied
+                self.queue_cancel.events.append(dict(timestamp=self.now,side=key[0],price=float(key[1]),
+                    previous_quantity=str(before),visible_quantity=str(visible),trade_quantity=str(traded),
+                    inferred_cancel_quantity=str(inferred),applied_cancel_quantity=str(applied),
+                    added_quantity=str(added),trade_reconciled_quantity=str(reconciled),
+                    positions_before=positions,positions_after_cancel=after_cancel,random_draws=self.queue_cancel.draws))
+        self.queue_tape.clear();self.queue_consumed.clear();self.depletion.clear()
 
     def start(self):
         self.advance(self.config['start_ms'])
@@ -278,6 +342,7 @@ class ReplayEngine:
                 if node['kind']=='external':
                     used=min(budget,node['qty']); budget-=used; node['qty']-=used
                     self.depletion[key]=self.depletion.get(key,ZERO)+used
+                    if self.queue_cancel.enabled: self.queue_consumed[key]=self.queue_consumed.get(key,ZERO)+used
                     if node['qty']==0: nodes.pop(0)
                     continue
                 order=self.orders[node['id']]
@@ -290,10 +355,12 @@ class ReplayEngine:
                 if not size: return
                 self._fill(order,size,tick); budget-=size
                 self.depletion[key]=self.depletion.get(key,ZERO)+size
+                if self.queue_cancel.enabled: self.queue_consumed[key]=self.queue_consumed.get(key,ZERO)+size
                 if order['remaining']==0: nodes.pop(0)
 
     def _fill(self, order, size, tick):
         if self.fill_count>=100000: raise DataError('체결 10만 건 한도입니다. 기간을 줄여 주세요.')
+        queue_position=self._public_order(order)
         notional=order['price']*size
         fee=self._fee(order['price']*(order['filled']+size))-order['fees']; realized=ZERO
         if order['side']=='buy':
@@ -311,7 +378,8 @@ class ReplayEngine:
         valuation=self.valuation()
         report=dict(sequence=self.fill_count,fill_id=f'F{self.fill_count:08d}',order_id=order['id'],timestamp=self.now,
                     side=order['side'],price=float(order['price']),quantity=float(size),fee=float(fee),realized_pnl=float(realized),
-                    remaining=float(order['remaining']),source_tick=tick['source_id'],account=valuation['account'],positions=valuation['positions'],theory=valuation['theory'],order_guard=self.guard.snapshot(self.now))
+                    remaining=float(order['remaining']),source_tick=tick['source_id'],account=valuation['account'],positions=valuation['positions'],theory=valuation['theory'],order_guard=self.guard.snapshot(self.now),
+                    queue_position={key:value for key,value in queue_position.items() if key.startswith('queue_')},queue_model=self.queue_cancel.summary())
         self.last_fills.append(report); self.new_fills.append(report)
 
     def accept_theory(self, output):
@@ -346,6 +414,7 @@ class ReplayEngine:
 
     def snapshot(self):
         return dict(virtual_time_ms=self.now,order_guard=self.guard.snapshot(self.now),guard_events=list(reversed(self.guard.events)),
+                    queue_model=self.queue_cancel.summary(),queue_cancel_events=list(reversed(self.queue_cancel.events)),
                     hedge_timing=None,books=self.books,orders=[self._public_order(o) for o in self.working()],
                     order_events=list(reversed(self.order_log)),ticks=list(reversed(self.last_ticks)),
                     fills=list(reversed(self.last_fills)),fill_count=self.fill_count,event_count=self.event_sequence,**self.valuation())
