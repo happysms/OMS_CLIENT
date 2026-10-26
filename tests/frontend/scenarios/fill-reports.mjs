@@ -1,34 +1,131 @@
-import {JSDOM,ROOT,FRONTEND,loadStrategyCatalog} from '../support.mjs';
+import { JSDOM, ROOT, FRONTEND, loadStrategyCatalog } from '../support.mjs';
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
-const root=FRONTEND;
-const {window}=new JSDOM(await fs.readFile(root+'index.html','utf8'),{url:'http://localhost/'});
-for(const name of ['window','document','Option','Event'])globalThis[name]=window[name];
-const account={cash:797.798,initial_cash:1000,realized_pnl:0,unrealized_pnl:-4.202,theory_unrealized_pnl:7.798,total_pnl:-4.202,theory_total_pnl:7.798,equity:995.798,quote_currency:'KRW',fee_bps:10,slippage_bps:0};
-const position={exchange:'bithumb',ticker:'BTC',quantity:2,avg_price:101.101,mark_price:99,market_value:198,unrealized_pnl:-4.202,theory_price:105,theory_unrealized_pnl:7.798,quote_time:1792886400000};
-const fill={id:'fill1',timestamp:1792886400000,exchange:'bithumb',ticker:'BTC',side:'buy',quantity:2,price:101,fee:.202,cash:797.798,realized_pnl:0,quote_time:1792886400000};
-const report={sequence:2,fill,account,positions:[position],execution_theory:{price:105},valuation_status:'recorded'};
-let missing=false;const calls=[];
-async function api(path,options={}){
- calls.push([path,options]);
- if(path==='/api/paper')return {account:missing?{...account,theory_unrealized_pnl:null,theory_total_pnl:null}:account,positions:[position],orders:[fill],fills:[missing?{...report,account:{...account,theory_unrealized_pnl:null}}:report],fill_count:2,next_fill_before:2,equity:account.equity};
- if(path==='/api/paper/fills?before=2')return {items:[{sequence:1,fill:{...fill,id:'legacy'},account:null,valuation_status:'legacy_unavailable'}],next_before:null,total:2};
- throw Error(path);
+const root = FRONTEND;
+const { window } = new JSDOM(await fs.readFile(root + 'index.html', 'utf8'), {
+    url: 'http://localhost/',
+});
+for (const name of ['window', 'document', 'Option', 'Event']) globalThis[name] = window[name];
+const account = {
+    cash: 797.798,
+    initial_cash: 1000,
+    realized_pnl: 0,
+    unrealized_pnl: -4.202,
+    theory_unrealized_pnl: 7.798,
+    total_pnl: -4.202,
+    theory_total_pnl: 7.798,
+    equity: 995.798,
+    quote_currency: 'KRW',
+    fee_bps: 10,
+    slippage_bps: 0,
+};
+const position = {
+    exchange: 'bithumb',
+    ticker: 'BTC',
+    quantity: 2,
+    avg_price: 101.101,
+    mark_price: 99,
+    market_value: 198,
+    unrealized_pnl: -4.202,
+    theory_price: 105,
+    theory_unrealized_pnl: 7.798,
+    quote_time: 1792886400000,
+};
+const fill = {
+    id: 'fill1',
+    timestamp: 1792886400000,
+    exchange: 'bithumb',
+    ticker: 'BTC',
+    side: 'buy',
+    quantity: 2,
+    price: 101,
+    fee: 0.202,
+    cash: 797.798,
+    realized_pnl: 0,
+    quote_time: 1792886400000,
+};
+const report = {
+    sequence: 2,
+    fill,
+    account,
+    positions: [position],
+    execution_theory: { price: 105 },
+    valuation_status: 'recorded',
+};
+let missing = false;
+const calls = [];
+async function api(path, options = {}) {
+    calls.push([path, options]);
+    if (path === '/api/paper')
+        return {
+            account: missing
+                ? { ...account, theory_unrealized_pnl: null, theory_total_pnl: null }
+                : account,
+            positions: [position],
+            orders: [fill],
+            fills: [
+                missing
+                    ? { ...report, account: { ...account, theory_unrealized_pnl: null } }
+                    : report,
+            ],
+            fill_count: 2,
+            next_fill_before: 2,
+            equity: account.equity,
+        };
+    if (path === '/api/paper/fills?before=2')
+        return {
+            items: [
+                {
+                    sequence: 1,
+                    fill: { ...fill, id: 'legacy' },
+                    account: null,
+                    valuation_status: 'legacy_unavailable',
+                },
+            ],
+            next_before: null,
+            total: 2,
+        };
+    throw Error(path);
 }
-const {initPaperTrading}=await import(root+'features/paper_trading/controller.js');
-const module=initPaperTrading({api,getCatalog:()=>({exchanges:{bithumb:['BTC']},defaults:{legs:[{exchange:'bithumb',ticker:'BTC'}]}})});
-const $=id=>document.getElementById(id),settle=()=>new Promise(resolve=>setTimeout(resolve,20));
-module.onEnter();await settle();
-assert.equal($('paper-error').hidden,true,$('paper-error').textContent);
-assert.equal($('paper-orders').children[0].children.length,19);
-assert.equal(document.querySelector('#paper-orders').closest('table').querySelectorAll('thead th').length,19);
-assert.match(document.querySelector('#paper-orders').closest('table').textContent,/체결 환율.*이번 거래대금/s);
-assert.match($('paper-orders').textContent,/-4.202/);assert.match($('paper-orders').textContent,/7.798/);
-assert.equal($('paper-theory-unrealized').textContent,'7.8');
-assert.equal($('paper-position-count').textContent,'1 POSITIONS');
-assert.equal($('paper-positions').children[0].children.length,9);
-$('paper-fills-more').click();await settle();
-assert.equal($('paper-orders').children.length,2);assert.match($('paper-orders').textContent,/과거 평가 기록 없음/);assert.equal($('paper-fills-more').hidden,true);
-missing=true;$('paper-refresh').click();await settle();
-assert.equal($('paper-theory-unrealized').textContent,'—');assert.match($('paper-orders').textContent,/이론가 평가 불가/);
-module.onLeave();window.close();console.log('Fill report DOM checks passed: realized/unrealized/theory columns, holdings, cumulative metrics, legacy records, pagination, missing valuations.');
+const { initPaperTrading } = await import(root + 'features/paper_trading/controller.js');
+const module = initPaperTrading({
+    api,
+    getCatalog: () => ({
+        exchanges: { bithumb: ['BTC'] },
+        defaults: { legs: [{ exchange: 'bithumb', ticker: 'BTC' }] },
+    }),
+});
+const $ = (id) => document.getElementById(id),
+    settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+module.onEnter();
+await settle();
+assert.equal($('paper-error').hidden, true, $('paper-error').textContent);
+assert.equal($('paper-orders').children[0].children.length, 19);
+assert.equal(
+    document.querySelector('#paper-orders').closest('table').querySelectorAll('thead th').length,
+    19,
+);
+assert.match(
+    document.querySelector('#paper-orders').closest('table').textContent,
+    /체결 환율.*이번 거래대금/s,
+);
+assert.match($('paper-orders').textContent, /-4.202/);
+assert.match($('paper-orders').textContent, /7.798/);
+assert.equal($('paper-theory-unrealized').textContent, '7.8');
+assert.equal($('paper-position-count').textContent, '1 POSITIONS');
+assert.equal($('paper-positions').children[0].children.length, 9);
+$('paper-fills-more').click();
+await settle();
+assert.equal($('paper-orders').children.length, 2);
+assert.match($('paper-orders').textContent, /과거 평가 기록 없음/);
+assert.equal($('paper-fills-more').hidden, true);
+missing = true;
+$('paper-refresh').click();
+await settle();
+assert.equal($('paper-theory-unrealized').textContent, '—');
+assert.match($('paper-orders').textContent, /이론가 평가 불가/);
+module.onLeave();
+window.close();
+console.log(
+    'Fill report DOM checks passed: realized/unrealized/theory columns, holdings, cumulative metrics, legacy records, pagination, missing valuations.',
+);

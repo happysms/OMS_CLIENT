@@ -14,7 +14,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from oms_client.collectors.usdt_orderbook import UsdtOrderbookCollector, write_status_file
 from oms_client.market_data.quotes import parse_quotes
 from oms_client.storage.orderbook_samples import (
-    CollectorAlreadyRunning, OrderbookSampleStore, SpoolFull, default_state_dir, parquet_path,
+    CollectorAlreadyRunning,
+    OrderbookSampleStore,
+    SpoolFull,
+    default_state_dir,
+    parquet_path,
 )
 from oms_client.paths import ROOT
 
@@ -39,30 +43,52 @@ class CollectorTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.store = OrderbookSampleStore(self.root / "market", self.root / "state")
-        self.collector = UsdtOrderbookCollector(self.store, feed_factory=FakeFeed, clock=lambda: NOW / 1000)
+        self.collector = UsdtOrderbookCollector(
+            self.store, feed_factory=FakeFeed, clock=lambda: NOW / 1000
+        )
 
     def tearDown(self):
         self.store.close()
         self.temporary.cleanup()
 
     def quote(self, exchange="bithumb", stamp=NOW, received=None, **changes):
-        quote = {"exchange": exchange, "ticker": "USDT", "ts": stamp, "receivedAt": stamp if received is None else received,
-                 "bid": 1342, "ask": 1343, "bid_size": 925511.1407, "ask_size": 0}
+        quote = {
+            "exchange": exchange,
+            "ticker": "USDT",
+            "ts": stamp,
+            "receivedAt": stamp if received is None else received,
+            "bid": 1342,
+            "ask": 1343,
+            "bid_size": 925511.1407,
+            "ask_size": 0,
+        }
         quote.update(changes)
         self.collector.on_quote(quote)
         self.collector.on_status({"exchange": exchange, "state": "connected"})
 
     def test_default_state_dir_follows_dashboard_state_root(self):
         with patch.dict(os.environ, {"DASHBOARD_STATE_DIR": str(self.root / "dashboard-state")}):
-            self.assertEqual(default_state_dir(), self.root / "dashboard-state" / "collectors" / "usdt")
+            self.assertEqual(
+                default_state_dir(), self.root / "dashboard-state" / "collectors" / "usdt"
+            )
         with patch.dict(os.environ, {"DASHBOARD_STATE_DIR": ""}):
             self.assertEqual(default_state_dir(), ROOT / ".state" / "collectors" / "usdt")
 
     def test_optional_parser_sizes_preserve_price_only_consumers(self):
         for exchange, stamp in (("bithumb", NOW * 1000 + 123), ("upbit", NOW)):
-            message = {"type": "orderbook", "code": "KRW-USDT", "timestamp": stamp,
-                       "orderbook_units": [{"bid_price": 1342, "ask_price": 1343,
-                                            "bid_size": "925511.1407", "ask_size": "0"}]}
+            message = {
+                "type": "orderbook",
+                "code": "KRW-USDT",
+                "timestamp": stamp,
+                "orderbook_units": [
+                    {
+                        "bid_price": 1342,
+                        "ask_price": 1343,
+                        "bid_size": "925511.1407",
+                        "ask_size": "0",
+                    }
+                ],
+            }
             quote = parse_quotes(exchange, message)[0]
             self.assertEqual(quote["ts"], NOW)
             self.assertEqual(quote["bid_size"], 925511.1407)
@@ -86,7 +112,10 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(len(self.collector.sample_once(NOW + 5300)), 2)
         self.assertEqual(self.collector.missed_slots, 4)
         self.assertEqual(self.store.pending_rows, 4)
-        self.assertEqual({row["sampleTime"] for row in self.store.pending()}, {NOW // 1000 * 1000, (NOW + 5300) // 1000 * 1000})
+        self.assertEqual(
+            {row["sampleTime"] for row in self.store.pending()},
+            {NOW // 1000 * 1000, (NOW + 5300) // 1000 * 1000},
+        )
         # A backwards clock never rewrites prior samples or invents new rows.
         self.assertEqual(self.collector.sample_once(NOW - 1000), [])
 
@@ -94,31 +123,66 @@ class CollectorTests(unittest.TestCase):
         self.quote()
         self.quote(stamp=NOW + 1, bid=1341, ask=1344, bid_size=1.25, ask_size=2.5)
         rows = self.collector.sample_once(NOW + 2)
-        self.assertEqual((rows[0]["b1_p"], rows[0]["a1_p"], rows[0]["bid_size"], rows[0]["ask_size"]),
-                         (1341, 1344, 1.25, 2.5))
+        self.assertEqual(
+            (rows[0]["b1_p"], rows[0]["a1_p"], rows[0]["bid_size"], rows[0]["ask_size"]),
+            (1341, 1344, 1.25, 2.5),
+        )
         self.assertEqual(rows[0]["price_unit"], "KRW")
         self.assertEqual(rows[0]["quantity_unit"], "USDT")
         self.assertNotIn("b1_q", rows[0])
         self.assertEqual(rows[0]["quote_age_ms"], 1)
 
     def test_five_levels_keep_native_quantities_in_the_same_one_second_snapshot(self):
-        units = [{'bid_price': 1342 - level, 'ask_price': 1343 + level,
-                  'bid_size': .125 + level, 'ask_size': .25 + level} for level in range(5)]
-        parsed = parse_quotes('bithumb', {'type': 'orderbook', 'code': 'KRW-USDT', 'timestamp': NOW * 1000,
-                                           'orderbook_units': units})[0]
-        self.quote(**{key: value for key, value in parsed.items() if key not in {'exchange', 'ticker', 'ts'}}, stamp=NOW)
+        units = [
+            {
+                'bid_price': 1342 - level,
+                'ask_price': 1343 + level,
+                'bid_size': 0.125 + level,
+                'ask_size': 0.25 + level,
+            }
+            for level in range(5)
+        ]
+        parsed = parse_quotes(
+            'bithumb',
+            {
+                'type': 'orderbook',
+                'code': 'KRW-USDT',
+                'timestamp': NOW * 1000,
+                'orderbook_units': units,
+            },
+        )[0]
+        self.quote(
+            **{
+                key: value
+                for key, value in parsed.items()
+                if key not in {'exchange', 'ticker', 'ts'}
+            },
+            stamp=NOW,
+        )
         row = self.collector.sample_once(NOW)[0]
-        self.assertEqual((row['b5_p'], row['a5_p'], row['bid_size_5'], row['ask_size_5']), (1338, 1347, 4.125, 4.25))
+        self.assertEqual(
+            (row['b5_p'], row['a5_p'], row['bid_size_5'], row['ask_size_5']),
+            (1338, 1347, 4.125, 4.25),
+        )
         self.store.flush()
         stored = pq.read_table(parquet_path(self.store.data_root, 'bithumb', NOW)).to_pylist()[0]
         self.assertEqual(stored['bid_size_2'], 1.125)
         self.assertNotIn('b2_q', stored)
 
     def test_invalid_intermediate_level_does_not_shift_deeper_levels_forward(self):
-        quote = parse_quotes('upbit', {'type': 'orderbook', 'code': 'KRW-USDT', 'timestamp': NOW,
-                                      'orderbook_units': [{'bid_price': 1342, 'ask_price': 1343, 'bid_size': 1, 'ask_size': 2},
-                                                          None,
-                                                          {'bid_price': 1340, 'ask_price': 1345, 'bid_size': 3, 'ask_size': 4}]})[0]
+        quote = parse_quotes(
+            'upbit',
+            {
+                'type': 'orderbook',
+                'code': 'KRW-USDT',
+                'timestamp': NOW,
+                'orderbook_units': [
+                    {'bid_price': 1342, 'ask_price': 1343, 'bid_size': 1, 'ask_size': 2},
+                    None,
+                    {'bid_price': 1340, 'ask_price': 1345, 'bid_size': 3, 'ask_size': 4},
+                ],
+            },
+        )[0]
         self.assertEqual(len(quote['bids']), 1)
         self.quote(bids=quote['bids'], asks=quote['asks'])
         row = self.collector.sample_once(NOW)[0]
@@ -127,6 +191,7 @@ class CollectorTests(unittest.TestCase):
 
     def test_depth_upgrade_preserves_old_spool_and_old_hour_rows(self):
         from oms_client.storage.orderbook_samples import DEPTH_COLUMNS
+
         self.quote()
         row = self.collector.sample_once(NOW)[0]
         self.store.flush()
@@ -138,29 +203,46 @@ class CollectorTests(unittest.TestCase):
         connection = sqlite3.connect(self.root / 'state/samples.sqlite3')
         connection.execute('DROP TABLE samples')
         fields = ['exchange', *old_columns]
-        definitions = ', '.join(f'"{name}" {"TEXT" if isinstance(row[name], str) else "INTEGER" if isinstance(row[name], int) else "REAL"} NOT NULL' for name in fields)
-        connection.execute('CREATE TABLE samples (' + definitions + ', PRIMARY KEY(exchange,sampleTime))')
-        connection.execute('INSERT INTO samples VALUES (' + ','.join('?' for _ in fields) + ')', [row[name] for name in fields])
+        definitions = ', '.join(
+            f'"{name}" {"TEXT" if isinstance(row[name], str) else "INTEGER" if isinstance(row[name], int) else "REAL"} NOT NULL'
+            for name in fields
+        )
+        connection.execute(
+            'CREATE TABLE samples (' + definitions + ', PRIMARY KEY(exchange,sampleTime))'
+        )
+        connection.execute(
+            'INSERT INTO samples VALUES (' + ','.join('?' for _ in fields) + ')',
+            [row[name] for name in fields],
+        )
         connection.commit()
         connection.close()
         self.store = OrderbookSampleStore(self.root / 'market', self.root / 'state')
         self.assertEqual(self.store.pending_rows, 1)
         self.assertIsNone(self.store.pending()[0]['b2_p'])
         self.store.flush()
-        new_row = {**row, 'sampleTime': row['sampleTime'] + 1000, 'desktopTime': NOW + 1000,
-                   'b2_p': 1341, 'a2_p': 1344, 'bid_size_2': .125, 'ask_size_2': .25}
+        new_row = {
+            **row,
+            'sampleTime': row['sampleTime'] + 1000,
+            'desktopTime': NOW + 1000,
+            'b2_p': 1341,
+            'a2_p': 1344,
+            'bid_size_2': 0.125,
+            'ask_size_2': 0.25,
+        }
         self.store.append([new_row])
         self.store.flush()
         rows = pq.read_table(path).to_pylist()
         self.assertEqual(len(rows), 2)
         self.assertIsNone(rows[0]['bid_size_2'])
-        self.assertEqual(rows[1]['bid_size_2'], .125)
+        self.assertEqual(rows[1]['bid_size_2'], 0.125)
 
     def test_source_and_receive_freshness_are_both_required(self):
-        cases = [({"stamp": NOW - 10_001, "received": NOW}, "stale_quote"),
-                 ({"stamp": NOW, "received": NOW - 10_001}, "stale_quote"),
-                 ({"stamp": NOW + 5_001, "received": NOW}, "future_quote"),
-                 ({"stamp": NOW, "received": NOW + 1}, "future_quote")]
+        cases = [
+            ({"stamp": NOW - 10_001, "received": NOW}, "stale_quote"),
+            ({"stamp": NOW, "received": NOW - 10_001}, "stale_quote"),
+            ({"stamp": NOW + 5_001, "received": NOW}, "future_quote"),
+            ({"stamp": NOW, "received": NOW + 1}, "future_quote"),
+        ]
         for quote, reason in cases:
             with self.subTest(reason=reason, quote=quote):
                 self.collector.last_slot = None
@@ -170,7 +252,12 @@ class CollectorTests(unittest.TestCase):
                 self.assertGreater(self.collector.exchanges["bithumb"]["skip_reasons"][reason], 0)
 
     def test_missing_invalid_sizes_and_crossed_quotes_are_skipped(self):
-        for changes in ({"bid_size": None}, {"ask_size": float("inf")}, {"bid_size": -1}, {"bid": 1344}):
+        for changes in (
+            {"bid_size": None},
+            {"ask_size": float("inf")},
+            {"bid_size": -1},
+            {"bid": 1344},
+        ):
             with self.subTest(changes=changes):
                 self.collector.last_slot = None
                 self.quote(**changes)
@@ -179,7 +266,13 @@ class CollectorTests(unittest.TestCase):
 
     def test_disconnect_clears_cache_and_reconnect_requires_a_new_quote(self):
         self.quote()
-        self.collector.on_status({"exchange": "bithumb", "state": "reconnecting", "message": "https://user:secret@example.invalid"})
+        self.collector.on_status(
+            {
+                "exchange": "bithumb",
+                "state": "reconnecting",
+                "message": "https://user:secret@example.invalid",
+            }
+        )
         self.assertNotIn("bithumb", self.collector.latest)
         self.collector.on_status({"exchange": "bithumb", "state": "connected"})
         self.assertEqual(self.collector.sample_once(NOW), [])
@@ -199,7 +292,9 @@ class CollectorTests(unittest.TestCase):
         row = self.collector.sample_once(NOW)[0]
         path = parquet_path(self.store.data_root, "bithumb", NOW)
         stamp = datetime.fromtimestamp(NOW / 1000, timezone.utc)
-        self.assertTrue(str(path).endswith(stamp.strftime("bithumb/ob_1s/USDT/%Y/%m/%d/%H.parquet")))
+        self.assertTrue(
+            str(path).endswith(stamp.strftime("bithumb/ob_1s/USDT/%Y/%m/%d/%H.parquet"))
+        )
         self.assertEqual(self.store.flush(), 1)
         self.assertEqual(self.store.pending_rows, 0)
         stored = pq.read_table(path).to_pylist()
@@ -216,7 +311,10 @@ class CollectorTests(unittest.TestCase):
         self.collector.sample_once(NOW + 1000)
         path = parquet_path(self.store.data_root, "bithumb", NOW)
         before = path.read_bytes()
-        with patch("oms_client.storage.orderbook_samples.os.replace", side_effect=OSError("disk unavailable")):
+        with patch(
+            "oms_client.storage.orderbook_samples.os.replace",
+            side_effect=OSError("disk unavailable"),
+        ):
             with self.assertRaises(OSError):
                 self.store.flush()
         self.assertEqual(path.read_bytes(), before)
@@ -244,6 +342,7 @@ class CollectorTests(unittest.TestCase):
         self.collector.sample_once(NOW)
         path = parquet_path(self.store.data_root, "bithumb", NOW)
         from oms_client.storage import orderbook_samples
+
         real_sync = orderbook_samples.fsync_directory
 
         def fail_after_replace(directory):
@@ -285,16 +384,24 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(rows[0]["desktopTime"], NOW)
         self.assertGreaterEqual(rows[1]["desktopTime"], NOW + 5000)
         self.assertEqual(self.collector.missed_slots, 4)
-        self.assertTrue(all(row["receivedTime"] <= row["sampledAt"] == row["desktopTime"] for row in rows))
+        self.assertTrue(
+            all(row["receivedTime"] <= row["sampledAt"] == row["desktopTime"] for row in rows)
+        )
 
     def test_unique_grid_key_and_spool_limit_preserve_existing_data(self):
         self.quote()
         row = self.collector.sample_once(NOW)[0]
-        self.assertEqual(self.store.append([{**row, "desktopTime": NOW + 20, "sampledAt": NOW + 20}]), 0)
+        self.assertEqual(
+            self.store.append([{**row, "desktopTime": NOW + 20, "sampledAt": NOW + 20}]), 0
+        )
         self.store.max_pending = 2
-        self.store.append([{**row, "sampleTime": row["sampleTime"] + 1000, "desktopTime": NOW + 1000}])
+        self.store.append(
+            [{**row, "sampleTime": row["sampleTime"] + 1000, "desktopTime": NOW + 1000}]
+        )
         with self.assertRaises(SpoolFull):
-            self.store.append([{**row, "sampleTime": row["sampleTime"] + 2000, "desktopTime": NOW + 2000}])
+            self.store.append(
+                [{**row, "sampleTime": row["sampleTime"] + 2000, "desktopTime": NOW + 2000}]
+            )
         self.assertEqual(self.store.pending_rows, 2)
         self.assertEqual(self.store.counters()["samples_committed"], 2)
 
@@ -323,7 +430,10 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(status["pending_rows"], 1)
         self.assertEqual(status["exchanges"]["bithumb"]["last_quote"]["bid_size"], 925511.1407)
         before = path.read_bytes()
-        with patch("oms_client.collectors.usdt_orderbook.os.replace", side_effect=OSError("disk unavailable")):
+        with patch(
+            "oms_client.collectors.usdt_orderbook.os.replace",
+            side_effect=OSError("disk unavailable"),
+        ):
             with self.assertRaises(OSError):
                 write_status_file(path, {"broken": True})
         self.assertEqual(path.read_bytes(), before)

@@ -1,4 +1,5 @@
 """Final-quote buckets retain an actual bid/ask pair and its source time."""
+
 import json
 import os
 from pathlib import Path
@@ -19,7 +20,13 @@ class LastQuoteTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        environment = patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": self.temporary.name, "DASHBOARD_COLLECTOR_DATA_ROOT": str(Path(self.temporary.name) / "collector")})
+        environment = patch.dict(
+            os.environ,
+            {
+                "DASHBOARD_DATA_ROOT": self.temporary.name,
+                "DASHBOARD_COLLECTOR_DATA_ROOT": str(Path(self.temporary.name) / "collector"),
+            },
+        )
         environment.start()
         self.addCleanup(environment.stop)
         self.origin = int(pd.Timestamp("2026-10-25T00:00:00Z").timestamp() * 1000)
@@ -27,19 +34,27 @@ class LastQuoteTests(unittest.TestCase):
         self.path.parent.mkdir(parents=True)
         # Physical file order differs from timestamp order. Later invalid quotes
         # must not replace the final valid pair, and empty minutes stay empty.
-        self.frame = pd.DataFrame({
-            "desktopTime": [self.origin + value for value in [59_900, 1_000, 59_000, 60_000, 61_000, 119_999, 180_000, 181_000]],
-            "b1_p": [324, 323, 324, 326, 0, 327, 329, 330],
-            "a1_p": [325, 325, 326, 327, 328, 326, 331, 331],
-        })
+        self.frame = pd.DataFrame(
+            {
+                "desktopTime": [
+                    self.origin + value
+                    for value in [59_900, 1_000, 59_000, 60_000, 61_000, 119_999, 180_000, 181_000]
+                ],
+                "b1_p": [324, 323, 324, 326, 0, 327, 329, 330],
+                "a1_p": [325, 325, 326, 327, 328, 326, 331, 331],
+            }
+        )
         self.frame.to_parquet(self.path, index=False)
 
     def query(self, **changes):
         payload = {
             "legs": [{"id": "A", "exchange": "bithumb", "ticker": "AXIS"}],
-            "formula": "A", "start": "2026-10-25T09:00:00+09:00",
-            "end": "2026-10-25T09:04:00+09:00", "interval": "1min",
-            "ewm_span": 1, "price_mode": "last",
+            "formula": "A",
+            "start": "2026-10-25T09:00:00+09:00",
+            "end": "2026-10-25T09:04:00+09:00",
+            "interval": "1min",
+            "ewm_span": 1,
+            "price_mode": "last",
         }
         payload.update(changes)
         return analyze(payload)
@@ -59,8 +74,18 @@ class LastQuoteTests(unittest.TestCase):
     def test_timestamp_sort_gap_and_original_receipt_time_are_preserved(self):
         result = self.query()
         self.assertEqual(result["times"], [self.origin + value for value in [0, 60_000, 180_000]])
-        self.assertEqual(result["legs"][0]["quote_times"], [self.origin + value for value in [59_900, 60_000, 181_000]])
-        frame, count = parquet.read_buckets("bithumb", "AXIS", pd.Timestamp("2026-10-25T00:00:00Z"), pd.Timestamp("2026-10-25T00:04:00Z"), 60_000, price_mode="last")
+        self.assertEqual(
+            result["legs"][0]["quote_times"],
+            [self.origin + value for value in [59_900, 60_000, 181_000]],
+        )
+        frame, count = parquet.read_buckets(
+            "bithumb",
+            "AXIS",
+            pd.Timestamp("2026-10-25T00:00:00Z"),
+            pd.Timestamp("2026-10-25T00:04:00Z"),
+            60_000,
+            price_mode="last",
+        )
         self.assertEqual(count, 6)
         self.assertEqual(frame["source_rows"].tolist(), [3, 1, 2])
 
@@ -72,8 +97,9 @@ class LastQuoteTests(unittest.TestCase):
             self.query(start="2026-10-25T09:02:00+09:00", end="2026-10-25T09:03:00+09:00")
 
     def test_same_timestamp_never_constructs_a_pair_from_different_rows(self):
-        self.frame = pd.DataFrame({"desktopTime": [self.origin + 59_900] * 2,
-                                   "b1_p": [320, 324], "a1_p": [323, 330]})
+        self.frame = pd.DataFrame(
+            {"desktopTime": [self.origin + 59_900] * 2, "b1_p": [320, 324], "a1_p": [323, 330]}
+        )
         self.frame.to_parquet(self.path, index=False)
         result = self.query()
         leg = result["legs"][0]
@@ -88,8 +114,13 @@ class LastQuoteTests(unittest.TestCase):
         bids = [107_938_000] * 147 + [107_937_000] * 81
         asks = [107_979_000] * 29 + [107_978_000] * 198 + [107_974_000]
         timestamps = [self.origin + index * 250 for index in range(227)] + [self.origin + 59_890]
-        pd.DataFrame({"desktopTime": timestamps, "b1_p": bids, "a1_p": asks}).to_parquet(path, index=False)
-        config = {"legs": [{"id": "A", "exchange": "bithumb", "ticker": "BTC"}], "end": "2026-10-25T09:01:00+09:00"}
+        pd.DataFrame({"desktopTime": timestamps, "b1_p": bids, "a1_p": asks}).to_parquet(
+            path, index=False
+        )
+        config = {
+            "legs": [{"id": "A", "exchange": "bithumb", "ticker": "BTC"}],
+            "end": "2026-10-25T09:01:00+09:00",
+        }
         averaged = self.query(**config, price_mode="mean")["legs"][0]
         self.assertEqual(f"{averaged['bid'][0]:,.3f}", "107,937,644.737")
         self.assertEqual(f"{averaged['ask'][0]:,.3f}", "107,978,109.649")
@@ -103,9 +134,14 @@ class LastQuoteTests(unittest.TestCase):
         with patch.object(parquet, "read_buckets", wraps=parquet.read_buckets) as loader:
             explicit = self.query(price_mode="mean")
             self.assertEqual(loader.call_args.kwargs, {})
-        payload = {"legs": [{"id": "A", "exchange": "bithumb", "ticker": "AXIS"}],
-                   "formula": "A", "start": "2026-10-25T09:00:00+09:00",
-                   "end": "2026-10-25T09:04:00+09:00", "interval": "1min", "ewm_span": 1}
+        payload = {
+            "legs": [{"id": "A", "exchange": "bithumb", "ticker": "AXIS"}],
+            "formula": "A",
+            "start": "2026-10-25T09:00:00+09:00",
+            "end": "2026-10-25T09:04:00+09:00",
+            "interval": "1min",
+            "ewm_span": 1,
+        }
         default = analyze(payload)
         self.assertEqual(default, explicit)
         self.assertEqual(default["meta"]["price_mode"], "mean")
@@ -116,8 +152,13 @@ class LastQuoteTests(unittest.TestCase):
     def test_full_data_preserves_quote_times_when_chart_is_sampled(self):
         result = self.query(max_points=2, include_full_data=True)
         self.assertEqual(result["times"], [self.origin, self.origin + 180_000])
-        self.assertEqual(result["legs"][0]["quote_times"], [self.origin + 59_900, self.origin + 181_000])
-        self.assertEqual(result["full"]["legs"][0]["quote_times"], [self.origin + value for value in [59_900, 60_000, 181_000]])
+        self.assertEqual(
+            result["legs"][0]["quote_times"], [self.origin + 59_900, self.origin + 181_000]
+        )
+        self.assertEqual(
+            result["full"]["legs"][0]["quote_times"],
+            [self.origin + value for value in [59_900, 60_000, 181_000]],
+        )
         self.assertEqual(result["full"]["legs"][0]["bid"], [324, 326, 330])
 
     def test_utc_and_kst_queries_select_the_same_snapshot(self):

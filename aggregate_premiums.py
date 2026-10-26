@@ -12,7 +12,9 @@ from oms_client.paths import ROOT
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--state-dir', default=os.environ.get('DASHBOARD_STATE_DIR', str(ROOT / '.state')))
+    parser.add_argument(
+        '--state-dir', default=os.environ.get('DASHBOARD_STATE_DIR', str(ROOT / '.state'))
+    )
     parser.add_argument('--once', action='store_true')
     args = parser.parse_args()
     service = PremiumService(args.state_dir, autostart=False)

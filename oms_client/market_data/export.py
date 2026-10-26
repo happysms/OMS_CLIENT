@@ -9,6 +9,7 @@ Each symbol keeps its own latest available seven-day window. Missing source
 intervals are omitted; quotes are never forward-filled. The one-minute bid and
 ask values are arithmetic means of all valid quotes in that minute.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,7 +34,9 @@ def _atomic_json(path: Path, payload: dict):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=".export-", suffix=".tmp", delete=False) as stream:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent, prefix=".export-", suffix=".tmp", delete=False
+        ) as stream:
             temporary = Path(stream.name)
             json.dump(payload, stream, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
             stream.write("\n")
@@ -67,7 +70,13 @@ def export(output: Path, days: int = 7, tickers=None, exchanges=None) -> dict:
     available = parquet.list_symbols()
     output = output.resolve()
     generated_at = pd.Timestamp.now(tz="UTC").isoformat()
-    catalog = {"version": 1, "generated_at": generated_at, "interval": "1min", "exchanges": {}, "series": {}}
+    catalog = {
+        "version": 1,
+        "generated_at": generated_at,
+        "interval": "1min",
+        "exchanges": {},
+        "series": {},
+    }
     started = time.monotonic()
     for exchange in exchanges:
         for ticker in tickers:
@@ -79,25 +88,37 @@ def export(output: Path, days: int = 7, tickers=None, exchanges=None) -> dict:
                 limits = parquet.bounds(exchange, ticker)
                 end = pd.Timestamp(limits["end"]) + pd.Timedelta(milliseconds=1)
                 start = max(pd.Timestamp(limits["start"]), end - pd.Timedelta(days=days))
-                leg = parquet.export_leg(exchange, ticker, start.isoformat(), end.isoformat(), "1min")
+                leg = parquet.export_leg(
+                    exchange, ticker, start.isoformat(), end.isoformat(), "1min"
+                )
             except DataError as exc:
                 print(f"skip {exchange}:{ticker}: {exc}", flush=True)
                 continue
             filename = f"{exchange}-{ticker}.json"
             series = {
-                "exchange": exchange, "ticker": ticker, "interval": "1min",
-                "generated_at": generated_at, "source": "parquet",
-                "times": leg["times"], "bid": _prices(leg["bid"]), "ask": _prices(leg["ask"]),
+                "exchange": exchange,
+                "ticker": ticker,
+                "interval": "1min",
+                "generated_at": generated_at,
+                "source": "parquet",
+                "times": leg["times"],
+                "bid": _prices(leg["bid"]),
+                "ask": _prices(leg["ask"]),
             }
             _atomic_json(output / filename, series)
             catalog["exchanges"].setdefault(exchange, []).append(ticker)
             catalog["series"][f"{exchange}:{ticker}"] = {
-                "file": f"data/{filename}", "start": leg["times"][0], "end": leg["times"][-1],
+                "file": f"data/{filename}",
+                "start": leg["times"][0],
+                "end": leg["times"][-1],
                 "count": len(leg["times"]),
             }
-            print(f"{exchange}:{ticker}: {len(leg['times']):,} points, "
-                  f"{iso_timestamp(leg['times'][0])} .. {iso_timestamp(leg['times'][-1])}, "
-                  f"{time.monotonic() - timer:.2f}s", flush=True)
+            print(
+                f"{exchange}:{ticker}: {len(leg['times']):,} points, "
+                f"{iso_timestamp(leg['times'][0])} .. {iso_timestamp(leg['times'][-1])}, "
+                f"{time.monotonic() - timer:.2f}s",
+                flush=True,
+            )
     if not catalog["series"]:
         raise DataError("내보낼 수 있는 실제 호가 데이터가 없습니다.")
 
@@ -109,7 +130,10 @@ def export(output: Path, days: int = 7, tickers=None, exchanges=None) -> dict:
     ]
     if not all(f"{leg['exchange']}:{leg['ticker']}" in catalog["series"] for leg in legs):
         keys = list(catalog["series"])[:4]
-        legs = [{"id": chr(65 + i), "exchange": key.split(":")[0], "ticker": key.split(":")[1]} for i, key in enumerate(keys)]
+        legs = [
+            {"id": chr(65 + i), "exchange": key.split(":")[0], "ticker": key.split(":")[1]}
+            for i, key in enumerate(keys)
+        ]
     selected = [catalog["series"][f"{leg['exchange']}:{leg['ticker']}"] for leg in legs]
     common_end = min(item["end"] for item in selected)
     common_start = max(item["start"] for item in selected)
@@ -125,14 +149,21 @@ def export(output: Path, days: int = 7, tickers=None, exchanges=None) -> dict:
         "end": iso_timestamp(common_end),
     }
     _atomic_json(output / "catalog.json", catalog)
-    total_bytes = sum((output / Path(item["file"]).name).stat().st_size for item in catalog["series"].values())
+    total_bytes = sum(
+        (output / Path(item["file"]).name).stat().st_size for item in catalog["series"].values()
+    )
     total_bytes += (output / "catalog.json").stat().st_size
-    print(f"Exported {len(catalog['series'])} series, {total_bytes / 1024 / 1024:.2f} MiB, {time.monotonic() - started:.2f}s", flush=True)
+    print(
+        f"Exported {len(catalog['series'])} series, {total_bytes / 1024 / 1024:.2f} MiB, {time.monotonic() - started:.2f}s",
+        flush=True,
+    )
     return catalog
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--output", type=Path, default=ROOT / "exports")
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--tickers", nargs="+", default=DEFAULT_TICKERS)

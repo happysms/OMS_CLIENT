@@ -1,4 +1,5 @@
 """Domain boundaries: settlement invariants, state ownership and deterministic time."""
+
 from copy import deepcopy
 from dataclasses import FrozenInstanceError
 from decimal import Decimal as D
@@ -12,8 +13,9 @@ from oms_client.replay.scheduler import EventScheduler
 
 
 def order(side='buy', quantity='2', reserve='200', **kwargs):
-    return ReplayOrder('O1', 'manual', side, D('100'), D(quantity), D(quantity),
-                       D(reserve), 0, **kwargs)
+    return ReplayOrder(
+        'O1', 'manual', side, D('100'), D(quantity), D(quantity), D(reserve), 0, **kwargs
+    )
 
 
 class LedgerTests(unittest.TestCase):
@@ -24,7 +26,9 @@ class LedgerTests(unittest.TestCase):
         buy = order(reserve=str(fees.reserve_buy(D('100'), D('2'), 'gtc')), tif='gtc')
         ledger.settle(buy, D('1'), D('99'), 'taker')
         ledger.settle(buy, D('1'), D('100'), 'maker')
-        self.assertEqual((ledger.cash, ledger.coin, ledger.cost), (D('800.851'), D('2'), D('199.149')))
+        self.assertEqual(
+            (ledger.cash, ledger.coin, ledger.cost), (D('800.851'), D('2'), D('199.149'))
+        )
         self.assertEqual(buy.fees, D('0.149'))
         self.assertEqual(buy.reserve_cash, 0)
         sell = order('sell', reserve='0')
@@ -99,18 +103,29 @@ class OrderTests(unittest.TestCase):
         ledger = SpotLedger(D('1000'), D('0'), FeeSchedule(D('0'), D('0')))
         ledger.settle(pending, D('1'), D('100'), 'maker')
         pending.finish('cancelled', 'requested', 40)
-        self.assertEqual(pending.quantity_state(), dict(
-            filled=1, in_flight=0, live=0, cancelled=1, rejected=0, unknown=0))
+        self.assertEqual(
+            pending.quantity_state(),
+            dict(filled=1, in_flight=0, live=0, cancelled=1, rejected=0, unknown=0),
+        )
         self.assertEqual(pending.reserve_cash, 0)
         with self.assertRaises(ValueError):
             pending.arrive(50)
 
     def test_identity_and_completion_survive_completed_order_collection(self):
         book = OrderBook()
-        pending = book.submit(side='buy', price=D('100'), quantity=D('2'), owner='manual',
-                              tif='gtc', stp='cancel_taker', expires_at_ms=None,
-                              client_order_id='request-1', reserve_cash=D('200'), now=0,
-                              fingerprint=('buy', '100', '2'))
+        pending = book.submit(
+            side='buy',
+            price=D('100'),
+            quantity=D('2'),
+            owner='manual',
+            tif='gtc',
+            stp='cancel_taker',
+            expires_at_ms=None,
+            client_order_id='request-1',
+            reserve_cash=D('200'),
+            now=0,
+            fingerprint=('buy', '100', '2'),
+        )
         with self.assertRaises(TypeError):
             book.orders[pending.id] = pending
         self.assertTrue(book.finish(pending, 'cancelled', 'requested', 20))
@@ -125,9 +140,19 @@ class OrderTests(unittest.TestCase):
 
     def test_replacement_is_immutable_and_dropped_if_old_order_fills(self):
         book = OrderBook()
-        pending = book.submit(side='buy', price=D('100'), quantity=D('2'), owner='manual',
-                              tif='gtc', stp='cancel_taker', expires_at_ms=None,
-                              client_order_id=None, reserve_cash=D('200'), now=0, fingerprint=())
+        pending = book.submit(
+            side='buy',
+            price=D('100'),
+            quantity=D('2'),
+            owner='manual',
+            tif='gtc',
+            stp='cancel_taker',
+            expires_at_ms=None,
+            client_order_id=None,
+            reserve_cash=D('200'),
+            now=0,
+            fingerprint=(),
+        )
         request = ReplacementRequest(D('99'), D('3'), 'gtc')
         book.queue_replacement(pending.id, request)
         with self.assertRaises(FrozenInstanceError):
@@ -158,8 +183,7 @@ class SchedulingAndPlanningTests(unittest.TestCase):
         taker = order(quantity='3', tif='fok', stp='cancel_maker')
         maker = order('sell', reserve='0', status='live', active_at=0)
         maker.id = 'O2'
-        market = {'asks': [{'price': 100, 'quantity': 2}],
-                  'bids': [{'price': 99, 'quantity': 2}]}
+        market = {'asks': [{'price': 100, 'quantity': 2}], 'bids': [{'price': 99, 'quantity': 2}]}
         depth = ExecutionDepth()
         before = deepcopy((taker, maker, market, depth.self_debt, depth.public_debt))
         planner = LimitOrderPlanner(D('1'))

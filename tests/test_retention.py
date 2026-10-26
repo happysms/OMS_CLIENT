@@ -1,4 +1,5 @@
 """Retention boundaries: age, scope, links, active readers, persistence and HTTP auth."""
+
 from datetime import datetime, timezone
 import fcntl
 import json
@@ -27,15 +28,18 @@ class RetentionTests(unittest.TestCase):
         for root in self.roots.values():
             root.mkdir()
         self.gate = DataAccessGate()
-        self.service = RetentionService(self.base / 'state', self.roots, autostart=False,
-                                        gate=self.gate, clock=lambda: NOW)
+        self.service = RetentionService(
+            self.base / 'state', self.roots, autostart=False, gate=self.gate, clock=lambda: NOW
+        )
         self.addCleanup(self.service.close)
 
-    def file(self, scope='legacy', kind='ob', stamp='2026/10/01/00.parquet', age=30*86400, ticker='BTC'):
+    def file(
+        self, scope='legacy', kind='ob', stamp='2026/10/01/00.parquet', age=30 * 86400, ticker='BTC'
+    ):
         path = self.roots[scope] / 'bithumb' / kind / ticker / stamp
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b'fixture')
-        os.utime(path, (NOW-age, NOW-age))
+        os.utime(path, (NOW - age, NOW - age))
         return path
 
     def enable(self, **changes):
@@ -106,7 +110,7 @@ class RetentionTests(unittest.TestCase):
         old.write_bytes(b'recent replacement')
         self.assertFalse(self.service.scanner.delete(candidates[0]))
         self.assertTrue(old.exists())
-        os.utime(old, (NOW-30*86400, NOW-30*86400))
+        os.utime(old, (NOW - 30 * 86400, NOW - 30 * 86400))
         candidates, _ = self.service.scanner.scan(policy, NOW)
         parent = old.parent
         moved = parent.with_name('moved')
@@ -146,15 +150,26 @@ class RetentionTests(unittest.TestCase):
         candidates, report = scanner.scan(self.service.policy, NOW)
         self.assertEqual(len(candidates), 2)
         self.assertTrue(report['truncated'])
-        for changes in ({'days': True}, {'days': 0}, {'enabled': 'true'}, {'scopes': ['/tmp']},
-                        {'scopes': []}, {'scopes': ['legacy', 'legacy']}, {'path': '/'}):
+        for changes in (
+            {'days': True},
+            {'days': 0},
+            {'enabled': 'true'},
+            {'scopes': ['/tmp']},
+            {'scopes': []},
+            {'scopes': ['legacy', 'legacy']},
+            {'path': '/'},
+        ):
             with self.subTest(changes=changes), self.assertRaises(DataError):
-                RetentionPolicy.parse(dict({'enabled': False, 'days': 7, 'scopes': ['legacy']}, **changes))
+                RetentionPolicy.parse(
+                    dict({'enabled': False, 'days': 7, 'scopes': ['legacy']}, **changes)
+                )
 
     def test_bounded_scans_resume_past_recent_files_without_starving_old_data(self):
         expected = set()
         for hour in range(10):
-            path = self.file(stamp=f'2026/10/01/{hour:02d}.parquet', age=30 if hour < 5 else 30*86400)
+            path = self.file(
+                stamp=f'2026/10/01/{hour:02d}.parquet', age=30 if hour < 5 else 30 * 86400
+            )
             if hour >= 5:
                 expected.add(str(path.relative_to(self.roots['legacy'])))
         scanner = MarketFileRetention(self.roots, max_entries=2, max_candidates=1)
@@ -184,11 +199,13 @@ class RetentionTests(unittest.TestCase):
     def test_background_worker_applies_saved_enabled_policy(self):
         old = self.file()
         self.enable(scopes=['legacy'])
-        worker = RetentionService(self.service.directory, self.roots, gate=self.gate, clock=lambda: NOW)
+        worker = RetentionService(
+            self.service.directory, self.roots, gate=self.gate, clock=lambda: NOW
+        )
         try:
             deadline = time.monotonic() + 2
             while old.exists() and time.monotonic() < deadline:
-                time.sleep(.01)
+                time.sleep(0.01)
             self.assertFalse(old.exists())
         finally:
             worker.close()
@@ -207,10 +224,12 @@ class RetentionTests(unittest.TestCase):
         old = self.file()
         self.enable()
         original = self.service.scanner.scan
+
         def change_settings(*args, **kwargs):
             result = original(*args, **kwargs)
             self.service.save_policy(dict(enabled=False, days=7, scopes=['legacy']))
             return result
+
         with patch.object(self.service.scanner, 'scan', side_effect=change_settings):
             self.service.run_once()
         self.assertTrue(old.exists())
@@ -228,14 +247,16 @@ class RetentionTests(unittest.TestCase):
 
     def test_new_reader_waits_only_for_exclusive_maintenance(self):
         entered = threading.Event()
+
         def reader():
             with self.gate.read():
                 entered.set()
+
         with self.gate.maintenance() as acquired:
             self.assertTrue(acquired)
             thread = threading.Thread(target=reader)
             thread.start()
-            self.assertFalse(entered.wait(.02))
+            self.assertFalse(entered.wait(0.02))
         thread.join(1)
         self.assertTrue(entered.is_set())
 
@@ -243,9 +264,18 @@ class RetentionTests(unittest.TestCase):
 class RetentionApiTests(unittest.TestCase):
     def test_auth_csrf_configuration_and_preview(self):
         from oms_client.api import create_app
+
         with tempfile.TemporaryDirectory() as temp:
-            with patch.dict(os.environ, {'DASHBOARD_DATA_ROOT': temp+'/legacy', 'DASHBOARD_COLLECTOR_DATA_ROOT': temp+'/collector'}):
-                app = create_app(dict(TESTING=True, STATE_DIR=temp+'/state', PASSWORD='retention-test'))
+            with patch.dict(
+                os.environ,
+                {
+                    'DASHBOARD_DATA_ROOT': temp + '/legacy',
+                    'DASHBOARD_COLLECTOR_DATA_ROOT': temp + '/collector',
+                },
+            ):
+                app = create_app(
+                    dict(TESTING=True, STATE_DIR=temp + '/state', PASSWORD='retention-test')
+                )
                 try:
                     client = app.test_client()
                     self.assertEqual(client.get('/api/storage').status_code, 401)
@@ -257,11 +287,23 @@ class RetentionApiTests(unittest.TestCase):
                     self.assertEqual(initial.status_code, 200)
                     self.assertFalse(initial.json['policy']['enabled'])
                     policy = dict(enabled=False, days=14, scopes=['legacy'])
-                    self.assertEqual(client.post('/api/storage/policy', json=policy).status_code, 403)
-                    self.assertEqual(client.post('/api/storage/policy', json=dict(policy, path='/'), headers=headers).status_code, 400)
+                    self.assertEqual(
+                        client.post('/api/storage/policy', json=policy).status_code, 403
+                    )
+                    self.assertEqual(
+                        client.post(
+                            '/api/storage/policy', json=dict(policy, path='/'), headers=headers
+                        ).status_code,
+                        400,
+                    )
                     response = client.post('/api/storage/policy', json=policy, headers=headers)
                     self.assertEqual(response.json['policy'], policy)
-                    self.assertEqual(client.post('/api/storage/preview', json=policy, headers=headers).status_code, 202)
+                    self.assertEqual(
+                        client.post(
+                            '/api/storage/preview', json=policy, headers=headers
+                        ).status_code,
+                        202,
+                    )
                     self.assertEqual(client.get('/api/storage').json['busy'], True)
                     with client.get('/') as page:
                         self.assertIn('storage-details', page.get_data(as_text=True))

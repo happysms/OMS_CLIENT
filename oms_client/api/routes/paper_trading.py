@@ -1,4 +1,5 @@
 """Simulation-only account, order and reset endpoints."""
+
 import csv
 import io
 import json
@@ -15,18 +16,45 @@ def register(app, paper_service):
     def paper_fills():
         try:
             before = request.args.get('before')
-            return jsonify(paper_service().fills(before=int(before) if before is not None else None,
-                                                 limit=int(request.args.get('limit', '100'))))
+            return jsonify(
+                paper_service().fills(
+                    before=int(before) if before is not None else None,
+                    limit=int(request.args.get('limit', '100')),
+                )
+            )
         except ValueError as error:
             return jsonify(error=str(error)), 400
 
     @app.get('/api/paper/fills/csv')
     def paper_fill_csv():
         service = paper_service()
-        fields = ['sequence', 'fill_id', 'timestamp_ms', 'exchange', 'ticker', 'side', 'price', 'quantity', 'fee',
-                  'realized_pnl', 'realized_pnl_cumulative', 'unrealized_pnl', 'theory_unrealized_pnl',
-                  'total_pnl', 'theory_total_pnl', 'cash', 'equity', 'theory_equity', 'fees_paid',
-                  'valuation_status', 'valuation_json'] + USDT_CSV_FIELDS + ACTIVITY_CSV_FIELDS
+        fields = (
+            [
+                'sequence',
+                'fill_id',
+                'timestamp_ms',
+                'exchange',
+                'ticker',
+                'side',
+                'price',
+                'quantity',
+                'fee',
+                'realized_pnl',
+                'realized_pnl_cumulative',
+                'unrealized_pnl',
+                'theory_unrealized_pnl',
+                'total_pnl',
+                'theory_total_pnl',
+                'cash',
+                'equity',
+                'theory_equity',
+                'fees_paid',
+                'valuation_status',
+                'valuation_json',
+            ]
+            + USDT_CSV_FIELDS
+            + ACTIVITY_CSV_FIELDS
+        )
 
         def generate():
             output = io.StringIO(newline='')
@@ -34,18 +62,57 @@ def register(app, paper_service):
             writer.writerow(fields)
             yield '\ufeff' + output.getvalue()
             with service.store.connection() as connection:
-                for row in connection.execute('SELECT sequence,report FROM paper_fill_reports ORDER BY sequence'):
+                for row in connection.execute(
+                    'SELECT sequence,report FROM paper_fill_reports ORDER BY sequence'
+                ):
                     report = json.loads(row['report'])
                     fill, account = report['fill'], report.get('account') or {}
-                    output.seek(0); output.truncate(0)
-                    writer.writerow([row['sequence'], fill['id'], fill['timestamp'],
-                                     *[fill[key] for key in ('exchange','ticker','side','price','quantity','fee','realized_pnl')],
-                                     *[account.get(key) for key in ('realized_pnl','unrealized_pnl','theory_unrealized_pnl',
-                                                                   'total_pnl','theory_total_pnl','cash','equity','theory_equity','fees_paid')],
-                                     report['valuation_status'], row['report']] + usdt_csv_values(report) + activity_csv_values(report))
+                    output.seek(0)
+                    output.truncate(0)
+                    writer.writerow(
+                        [
+                            row['sequence'],
+                            fill['id'],
+                            fill['timestamp'],
+                            *[
+                                fill[key]
+                                for key in (
+                                    'exchange',
+                                    'ticker',
+                                    'side',
+                                    'price',
+                                    'quantity',
+                                    'fee',
+                                    'realized_pnl',
+                                )
+                            ],
+                            *[
+                                account.get(key)
+                                for key in (
+                                    'realized_pnl',
+                                    'unrealized_pnl',
+                                    'theory_unrealized_pnl',
+                                    'total_pnl',
+                                    'theory_total_pnl',
+                                    'cash',
+                                    'equity',
+                                    'theory_equity',
+                                    'fees_paid',
+                                )
+                            ],
+                            report['valuation_status'],
+                            row['report'],
+                        ]
+                        + usdt_csv_values(report)
+                        + activity_csv_values(report)
+                    )
                     yield output.getvalue()
-        return Response(stream_with_context(generate()), mimetype='text/csv',
-                        headers={'Content-Disposition': 'attachment; filename=paper-fills.csv'})
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=paper-fills.csv'},
+        )
 
     @app.get("/api/paper")
     def paper_snapshot():

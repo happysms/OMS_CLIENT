@@ -1,707 +1,689 @@
 [
-  {
-    "protocol": "oms.remote.v1",
-    "type": "strategy.deploy",
-    "message_id": "m-001",
-    "correlation_id": null,
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": "run-single_exchange_maker",
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": 1793062805000,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "expected_revision": 0,
-      "lease_id": "lease-1",
-      "fencing_token": 1,
-      "config": {
-        "strategy_id": "profile-single_exchange_maker",
-        "strategy_revision": 1,
-        "strategy_type": "single_exchange_maker",
-        "implementation_version": "example-implementation-1",
-        "parameters": {
-          "direction": "both",
-          "max_quote_age_ms": 1000,
-          "theory_mode": "midprice",
-          "ping_guard_mode": "enabled",
-          "max_feed_delay_ms": 500,
-          "feed_delay_spike_ms": 250,
-          "feed_delay_resume_ms": 200,
-          "feed_delay_stable_ms": 1000,
-          "ping_existing_orders": "cancel"
-        },
-        "bindings": [
-          {
-            "role": "execution",
-            "instrument": {
-              "venue": "bithumb",
-              "market_type": "spot",
-              "symbol": "KRW-BTC",
-              "base_currency": "BTC",
-              "quote_currency": "KRW",
-              "quantity_unit": "base",
-              "contract_value_base": null
-            },
-            "account_ref": "bithumb-main"
-          }
-        ],
-        "limits": {
-          "max_order_notional_krw": "10000",
-          "max_gross_exposure_krw": "1000000",
-          "max_open_orders": 4
-        },
-        "disconnect_policy": "pause_entries_cancel_keep_hedge",
-        "schema_version": 1
-      }
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "type": "strategy.deploy",
-    "message_id": "m-002",
-    "correlation_id": null,
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": "run-minmaxma",
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": 1793062805000,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "expected_revision": 0,
-      "lease_id": "lease-1",
-      "fencing_token": 1,
-      "config": {
-        "strategy_id": "profile-minmaxma",
-        "strategy_revision": 1,
-        "strategy_type": "minmaxma",
-        "implementation_version": "example-implementation-1",
-        "parameters": {
-          "direction": "both",
-          "reference_exchange": "binance",
-          "buffer_ratio": "1.001",
-          "ma_ms": 10000,
-          "max_quote_age_ms": 5000,
-          "max_position_krw": "0",
-          "order_notional_cap_krw": "0",
-          "buy_notional_cap_krw": "0",
-          "sell_notional_cap_krw": "0",
-          "min_quote_krw": "0",
-          "ping_guard_mode": "enabled",
-          "max_feed_delay_ms": 500,
-          "feed_delay_spike_ms": 250,
-          "feed_delay_resume_ms": 200,
-          "feed_delay_stable_ms": 1000,
-          "ping_existing_orders": "cancel"
-        },
-        "bindings": [
-          {
-            "role": "execution",
-            "instrument": {
-              "venue": "bithumb",
-              "market_type": "spot",
-              "symbol": "KRW-BTC",
-              "base_currency": "BTC",
-              "quote_currency": "KRW",
-              "quantity_unit": "base",
-              "contract_value_base": null
-            },
-            "account_ref": "bithumb-main"
-          },
-          {
-            "role": "reference",
-            "instrument": {
-              "venue": "binance",
-              "market_type": "linear_swap",
-              "symbol": "BTCUSDT",
-              "base_currency": "BTC",
-              "quote_currency": "USDT",
-              "quantity_unit": "base",
-              "contract_value_base": null
-            },
-            "account_ref": null
-          }
-        ],
-        "limits": {
-          "max_order_notional_krw": "10000",
-          "max_gross_exposure_krw": "1000000",
-          "max_open_orders": 4
-        },
-        "disconnect_policy": "pause_entries_cancel_keep_hedge",
-        "schema_version": 1
-      }
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "type": "strategy.deploy",
-    "message_id": "m-003",
-    "correlation_id": null,
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": "run-point2",
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": 1793062805000,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "expected_revision": 0,
-      "lease_id": "lease-1",
-      "fencing_token": 1,
-      "config": {
-        "strategy_id": "profile-point2",
-        "strategy_revision": 1,
-        "strategy_type": "point2",
-        "implementation_version": "example-implementation-1",
-        "parameters": {
-          "direction": "both",
-          "baseline_bps": "-100",
-          "buffer_bps": "10",
-          "pricing_fee_bps": "0",
-          "max_spot_krw": "20000000",
-          "reserve_krw": "5000000",
-          "max_hedge_qty": "86000",
-          "hedge_tolerance_krw": "50000",
-          "collateral_utilization": "0.8",
-          "quote_interval_ms": 500,
-          "hedge_execution": "post_only",
-          "ping_guard_mode": "enabled",
-          "max_feed_delay_ms": 500,
-          "feed_delay_spike_ms": 250,
-          "feed_delay_resume_ms": 200,
-          "feed_delay_stable_ms": 1000,
-          "ping_existing_orders": "cancel",
-          "hedge_timeout_ms": 1000
-        },
-        "bindings": [
-          {
-            "role": "execution",
-            "instrument": {
-              "venue": "bithumb",
-              "market_type": "spot",
-              "symbol": "KRW-BTC",
-              "base_currency": "BTC",
-              "quote_currency": "KRW",
-              "quantity_unit": "base",
-              "contract_value_base": null
-            },
-            "account_ref": "bithumb-main"
-          },
-          {
-            "role": "hedge",
-            "instrument": {
-              "venue": "okx",
-              "market_type": "linear_swap",
-              "symbol": "BTC-USDT-SWAP",
-              "base_currency": "BTC",
-              "quote_currency": "USDT",
-              "quantity_unit": "contracts",
-              "contract_value_base": "0.01"
-            },
-            "account_ref": "okx-main"
-          },
-          {
-            "role": "reference",
-            "instrument": {
-              "venue": "okx",
-              "market_type": "linear_swap",
-              "symbol": "BTC-USDT-SWAP",
-              "base_currency": "BTC",
-              "quote_currency": "USDT",
-              "quantity_unit": "contracts",
-              "contract_value_base": "0.01"
-            },
-            "account_ref": null
-          },
-          {
-            "role": "fx",
-            "instrument": {
-              "venue": "bithumb",
-              "market_type": "spot",
-              "symbol": "KRW-USDT",
-              "base_currency": "USDT",
-              "quote_currency": "KRW",
-              "quantity_unit": "base",
-              "contract_value_base": null
-            },
-            "account_ref": null
-          }
-        ],
-        "limits": {
-          "max_order_notional_krw": "10000",
-          "max_gross_exposure_krw": "1000000",
-          "max_open_orders": 4
-        },
-        "disconnect_policy": "pause_entries_cancel_keep_hedge",
-        "schema_version": 1
-      }
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "type": "params.validate",
-    "message_id": "m-004",
-    "correlation_id": null,
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": "run-point2",
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "expected_revision": 1,
-      "lease_id": "lease-1",
-      "fencing_token": 1,
-      "proposal_id": "proposal-1",
-      "next_parameters": {
-        "direction": "both",
-        "baseline_bps": "-100",
-        "buffer_bps": "15",
-        "pricing_fee_bps": "0",
-        "max_spot_krw": "20000000",
-        "reserve_krw": "5000000",
-        "max_hedge_qty": "86000",
-        "hedge_tolerance_krw": "50000",
-        "collateral_utilization": "0.8",
-        "quote_interval_ms": 500,
-        "hedge_execution": "post_only",
-        "ping_guard_mode": "enabled",
-        "max_feed_delay_ms": 500,
-        "feed_delay_spike_ms": 250,
-        "feed_delay_resume_ms": 200,
-        "feed_delay_stable_ms": 1000,
-        "ping_existing_orders": "cancel",
-        "hedge_timeout_ms": 1000
-      }
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "type": "params.apply",
-    "message_id": "m-005",
-    "correlation_id": null,
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": "run-point2",
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": 1793062805000,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "expected_revision": 1,
-      "lease_id": "lease-1",
-      "fencing_token": 1,
-      "proposal_id": "proposal-1",
-      "config_hash": "example-hash-replace-with-validator-result"
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "type": "command.ack",
-    "message_id": "m-006",
-    "correlation_id": "m-005",
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": "run-point2",
-    "stream": "critical",
-    "seq": 1,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "command_id": "m-005",
-      "status": "accepted",
-      "code": "OK",
-      "message": "durably queued",
-      "effective_revision": null,
-      "effective_seq": null
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "type": "command.ack",
-    "message_id": "m-007",
-    "correlation_id": "m-005",
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": "run-point2",
-    "stream": "critical",
-    "seq": 2,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "command_id": "m-005",
-      "status": "applied",
-      "code": "OK",
-      "message": "event boundary applied",
-      "effective_revision": 2,
-      "effective_seq": 2
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "type": "fills.append",
-    "message_id": "m-008",
-    "correlation_id": null,
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": "run-point2",
-    "stream": "critical",
-    "seq": 3,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "fill_id": "fill-1",
-      "exchange_trade_id": "trade-1",
-      "order_id": "order-1",
-      "account_ref": "bithumb-main",
-      "instrument": {
-        "venue": "bithumb",
-        "market_type": "spot",
-        "symbol": "KRW-BTC",
-        "base_currency": "BTC",
-        "quote_currency": "KRW",
-        "quantity_unit": "base",
-        "contract_value_base": null
-      },
-      "side": "buy",
-      "price": "100000000",
-      "quantity": "0.0001",
-      "fee": "5",
-      "fee_currency": "KRW",
-      "liquidity": "maker",
-      "exchange_at_ms": 1793062799980,
-      "executor_received_at_ms": 1793062800000,
-      "config_revision": 1,
-      "fx_at_fill": {
-        "rate_krw_per_usdt": "1400",
-        "observed_at_ms": 1793062799990,
-        "source": "bithumb:KRW-USDT:mid",
-        "quality": "valid"
-      },
-      "valuation_after_fill": {
-        "currency": "KRW",
-        "realized_pnl": "-5",
-        "unrealized_pnl": "0",
-        "theory_unrealized_pnl": "10",
-        "turnover": "10000",
-        "fees": "5",
-        "position_cost_method": "weighted_average",
-        "valued_at_ms": 1793062800000,
-        "fx": {
-          "rate_krw_per_usdt": "1400",
-          "observed_at_ms": 1793062799990,
-          "source": "bithumb:KRW-USDT:mid",
-          "quality": "valid"
-        },
-        "theory": {
-          "price": "100100000",
-          "currency": "KRW",
-          "observed_at_ms": 1793062799990,
-          "valid_until_ms": 1793062800990,
-          "basis": "strategy_output",
-          "formula_revision": "example-v1"
-        }
-      }
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "type": "hedge.trace",
-    "message_id": "m-009",
-    "correlation_id": null,
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": "run-point2",
-    "stream": "critical",
-    "seq": 4,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "hedge_id": "hedge-1",
-      "source_fill_ids": [
-        "fill-1"
-      ],
-      "target_base": "0.0001",
-      "filled_base": "0",
-      "outstanding_base": "0",
-      "state": "planned",
-      "milestones": [
-        {
-          "name": "spot_fill_received",
-          "clock_id": "executor-01:boot-001",
-          "utc_ms": 1793062800000,
-          "mono_ns": "9000000000",
-          "uncertainty_ms": 2,
-          "measured": true
-        }
-      ]
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "type": "events.resume",
-    "message_id": "m-010",
-    "correlation_id": null,
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": null,
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "dashboard-admin",
-    "payload": {
-      "epoch_id": "boot-001",
-      "after_seq": 2
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": null,
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "executor-01",
-    "correlation_id": null,
-    "type": "engine.hello",
-    "message_id": "hello-001",
-    "payload": {
-      "engine_version": "example-implementation-1",
-      "capabilities": [
-        {
-          "strategy_type": "single_exchange_maker",
-          "implementation_version": "example-implementation-1",
-          "ready": false,
-          "hot_fields": [],
-          "supported_commands": [
-            "strategy.deploy",
-            "params.validate"
-          ]
-        },
-        {
-          "strategy_type": "point2",
-          "implementation_version": "example-implementation-1",
-          "ready": false,
-          "hot_fields": [],
-          "supported_commands": [
-            "strategy.deploy",
-            "params.validate"
-          ]
-        },
-        {
-          "strategy_type": "minmaxma",
-          "implementation_version": "example-implementation-1",
-          "ready": false,
-          "hot_fields": [],
-          "supported_commands": [
-            "strategy.deploy",
-            "params.validate"
-          ]
-        }
-      ],
-      "earliest_seq": 1,
-      "latest_seq": 4,
-      "clock_uncertainty_ms": 2
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": null,
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "gateway",
-    "correlation_id": "hello-001",
-    "type": "session.welcome",
-    "message_id": "welcome-001",
-    "payload": {
-      "session_id": "session-1",
-      "heartbeat_ms": 5000,
-      "lease_ttl_ms": 15000,
-      "max_frame_bytes": 1048576,
-      "resume_status": "snapshot_required",
-      "replay_after_seq": 0
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": null,
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "dashboard-admin",
-    "correlation_id": null,
-    "type": "subscriptions.set",
-    "message_id": "subscribe-001",
-    "payload": {
-      "subscription_id": "view-1",
-      "run_ids": [
-        "run-point2"
-      ],
-      "instruments": [
-        {
-          "venue": "bithumb",
-          "market_type": "spot",
-          "symbol": "KRW-BTC",
-          "base_currency": "BTC",
-          "quote_currency": "KRW",
-          "quantity_unit": "base",
-          "contract_value_base": null
-        }
-      ],
-      "channels": [
-        "market.book",
-        "market.trades",
-        "strategy.metrics",
-        "account.valuation"
-      ],
-      "interval_ms": 100
-    }
-  },
-  {
-    "protocol": "oms.remote.v1",
-    "engine_id": "executor-01",
-    "epoch_id": "boot-001",
-    "run_id": null,
-    "stream": "control",
-    "seq": null,
-    "sent_at_ms": 1793062800000,
-    "expires_at_ms": null,
-    "actor_id": "executor-01",
-    "correlation_id": "snapshot-request-001",
-    "type": "snapshot.page",
-    "message_id": "snapshot-page-001",
-    "payload": {
-      "snapshot_id": "snapshot-1",
-      "watermark_seq": 4,
-      "page_index": 0,
-      "page_count": 1,
-      "runs": [
-        {
-          "run_id": "run-point2",
-          "strategy_type": "point2",
-          "state": "paused",
-          "config_revision": 2,
-          "config": {
-            "strategy_id": "profile-point2",
-            "strategy_revision": 1,
-            "strategy_type": "point2",
-            "implementation_version": "example-implementation-1",
-            "parameters": {
-              "direction": "both",
-              "baseline_bps": "-100",
-              "buffer_bps": "15",
-              "pricing_fee_bps": "0",
-              "max_spot_krw": "20000000",
-              "reserve_krw": "5000000",
-              "max_hedge_qty": "86000",
-              "hedge_tolerance_krw": "50000",
-              "collateral_utilization": "0.8",
-              "quote_interval_ms": 500,
-              "hedge_execution": "post_only",
-              "ping_guard_mode": "enabled",
-              "max_feed_delay_ms": 500,
-              "feed_delay_spike_ms": 250,
-              "feed_delay_resume_ms": 200,
-              "feed_delay_stable_ms": 1000,
-              "ping_existing_orders": "cancel",
-              "hedge_timeout_ms": 1000
-            },
-            "bindings": [
-              {
-                "role": "execution",
-                "instrument": {
-                  "venue": "bithumb",
-                  "market_type": "spot",
-                  "symbol": "KRW-BTC",
-                  "base_currency": "BTC",
-                  "quote_currency": "KRW",
-                  "quantity_unit": "base",
-                  "contract_value_base": null
+    {
+        "protocol": "oms.remote.v1",
+        "type": "strategy.deploy",
+        "message_id": "m-001",
+        "correlation_id": null,
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": "run-single_exchange_maker",
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": 1793062805000,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "expected_revision": 0,
+            "lease_id": "lease-1",
+            "fencing_token": 1,
+            "config": {
+                "strategy_id": "profile-single_exchange_maker",
+                "strategy_revision": 1,
+                "strategy_type": "single_exchange_maker",
+                "implementation_version": "example-implementation-1",
+                "parameters": {
+                    "direction": "both",
+                    "max_quote_age_ms": 1000,
+                    "theory_mode": "midprice",
+                    "ping_guard_mode": "enabled",
+                    "max_feed_delay_ms": 500,
+                    "feed_delay_spike_ms": 250,
+                    "feed_delay_resume_ms": 200,
+                    "feed_delay_stable_ms": 1000,
+                    "ping_existing_orders": "cancel"
                 },
-                "account_ref": "bithumb-main"
-              },
-              {
-                "role": "hedge",
-                "instrument": {
-                  "venue": "okx",
-                  "market_type": "linear_swap",
-                  "symbol": "BTC-USDT-SWAP",
-                  "base_currency": "BTC",
-                  "quote_currency": "USDT",
-                  "quantity_unit": "contracts",
-                  "contract_value_base": "0.01"
+                "bindings": [
+                    {
+                        "role": "execution",
+                        "instrument": {
+                            "venue": "bithumb",
+                            "market_type": "spot",
+                            "symbol": "KRW-BTC",
+                            "base_currency": "BTC",
+                            "quote_currency": "KRW",
+                            "quantity_unit": "base",
+                            "contract_value_base": null
+                        },
+                        "account_ref": "bithumb-main"
+                    }
+                ],
+                "limits": {
+                    "max_order_notional_krw": "10000",
+                    "max_gross_exposure_krw": "1000000",
+                    "max_open_orders": 4
                 },
-                "account_ref": "okx-main"
-              },
-              {
-                "role": "reference",
-                "instrument": {
-                  "venue": "okx",
-                  "market_type": "linear_swap",
-                  "symbol": "BTC-USDT-SWAP",
-                  "base_currency": "BTC",
-                  "quote_currency": "USDT",
-                  "quantity_unit": "contracts",
-                  "contract_value_base": "0.01"
+                "disconnect_policy": "pause_entries_cancel_keep_hedge",
+                "schema_version": 1
+            }
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "type": "strategy.deploy",
+        "message_id": "m-002",
+        "correlation_id": null,
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": "run-minmaxma",
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": 1793062805000,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "expected_revision": 0,
+            "lease_id": "lease-1",
+            "fencing_token": 1,
+            "config": {
+                "strategy_id": "profile-minmaxma",
+                "strategy_revision": 1,
+                "strategy_type": "minmaxma",
+                "implementation_version": "example-implementation-1",
+                "parameters": {
+                    "direction": "both",
+                    "reference_exchange": "binance",
+                    "buffer_ratio": "1.001",
+                    "ma_ms": 10000,
+                    "max_quote_age_ms": 5000,
+                    "max_position_krw": "0",
+                    "order_notional_cap_krw": "0",
+                    "buy_notional_cap_krw": "0",
+                    "sell_notional_cap_krw": "0",
+                    "min_quote_krw": "0",
+                    "ping_guard_mode": "enabled",
+                    "max_feed_delay_ms": 500,
+                    "feed_delay_spike_ms": 250,
+                    "feed_delay_resume_ms": 200,
+                    "feed_delay_stable_ms": 1000,
+                    "ping_existing_orders": "cancel"
                 },
-                "account_ref": null
-              },
-              {
-                "role": "fx",
-                "instrument": {
-                  "venue": "bithumb",
-                  "market_type": "spot",
-                  "symbol": "KRW-USDT",
-                  "base_currency": "USDT",
-                  "quote_currency": "KRW",
-                  "quantity_unit": "base",
-                  "contract_value_base": null
+                "bindings": [
+                    {
+                        "role": "execution",
+                        "instrument": {
+                            "venue": "bithumb",
+                            "market_type": "spot",
+                            "symbol": "KRW-BTC",
+                            "base_currency": "BTC",
+                            "quote_currency": "KRW",
+                            "quantity_unit": "base",
+                            "contract_value_base": null
+                        },
+                        "account_ref": "bithumb-main"
+                    },
+                    {
+                        "role": "reference",
+                        "instrument": {
+                            "venue": "binance",
+                            "market_type": "linear_swap",
+                            "symbol": "BTCUSDT",
+                            "base_currency": "BTC",
+                            "quote_currency": "USDT",
+                            "quantity_unit": "base",
+                            "contract_value_base": null
+                        },
+                        "account_ref": null
+                    }
+                ],
+                "limits": {
+                    "max_order_notional_krw": "10000",
+                    "max_gross_exposure_krw": "1000000",
+                    "max_open_orders": 4
                 },
-                "account_ref": null
-              }
+                "disconnect_policy": "pause_entries_cancel_keep_hedge",
+                "schema_version": 1
+            }
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "type": "strategy.deploy",
+        "message_id": "m-003",
+        "correlation_id": null,
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": "run-point2",
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": 1793062805000,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "expected_revision": 0,
+            "lease_id": "lease-1",
+            "fencing_token": 1,
+            "config": {
+                "strategy_id": "profile-point2",
+                "strategy_revision": 1,
+                "strategy_type": "point2",
+                "implementation_version": "example-implementation-1",
+                "parameters": {
+                    "direction": "both",
+                    "baseline_bps": "-100",
+                    "buffer_bps": "10",
+                    "pricing_fee_bps": "0",
+                    "max_spot_krw": "20000000",
+                    "reserve_krw": "5000000",
+                    "max_hedge_qty": "86000",
+                    "hedge_tolerance_krw": "50000",
+                    "collateral_utilization": "0.8",
+                    "quote_interval_ms": 500,
+                    "hedge_execution": "post_only",
+                    "ping_guard_mode": "enabled",
+                    "max_feed_delay_ms": 500,
+                    "feed_delay_spike_ms": 250,
+                    "feed_delay_resume_ms": 200,
+                    "feed_delay_stable_ms": 1000,
+                    "ping_existing_orders": "cancel",
+                    "hedge_timeout_ms": 1000
+                },
+                "bindings": [
+                    {
+                        "role": "execution",
+                        "instrument": {
+                            "venue": "bithumb",
+                            "market_type": "spot",
+                            "symbol": "KRW-BTC",
+                            "base_currency": "BTC",
+                            "quote_currency": "KRW",
+                            "quantity_unit": "base",
+                            "contract_value_base": null
+                        },
+                        "account_ref": "bithumb-main"
+                    },
+                    {
+                        "role": "hedge",
+                        "instrument": {
+                            "venue": "okx",
+                            "market_type": "linear_swap",
+                            "symbol": "BTC-USDT-SWAP",
+                            "base_currency": "BTC",
+                            "quote_currency": "USDT",
+                            "quantity_unit": "contracts",
+                            "contract_value_base": "0.01"
+                        },
+                        "account_ref": "okx-main"
+                    },
+                    {
+                        "role": "reference",
+                        "instrument": {
+                            "venue": "okx",
+                            "market_type": "linear_swap",
+                            "symbol": "BTC-USDT-SWAP",
+                            "base_currency": "BTC",
+                            "quote_currency": "USDT",
+                            "quantity_unit": "contracts",
+                            "contract_value_base": "0.01"
+                        },
+                        "account_ref": null
+                    },
+                    {
+                        "role": "fx",
+                        "instrument": {
+                            "venue": "bithumb",
+                            "market_type": "spot",
+                            "symbol": "KRW-USDT",
+                            "base_currency": "USDT",
+                            "quote_currency": "KRW",
+                            "quantity_unit": "base",
+                            "contract_value_base": null
+                        },
+                        "account_ref": null
+                    }
+                ],
+                "limits": {
+                    "max_order_notional_krw": "10000",
+                    "max_gross_exposure_krw": "1000000",
+                    "max_open_orders": 4
+                },
+                "disconnect_policy": "pause_entries_cancel_keep_hedge",
+                "schema_version": 1
+            }
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "type": "params.validate",
+        "message_id": "m-004",
+        "correlation_id": null,
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": "run-point2",
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "expected_revision": 1,
+            "lease_id": "lease-1",
+            "fencing_token": 1,
+            "proposal_id": "proposal-1",
+            "next_parameters": {
+                "direction": "both",
+                "baseline_bps": "-100",
+                "buffer_bps": "15",
+                "pricing_fee_bps": "0",
+                "max_spot_krw": "20000000",
+                "reserve_krw": "5000000",
+                "max_hedge_qty": "86000",
+                "hedge_tolerance_krw": "50000",
+                "collateral_utilization": "0.8",
+                "quote_interval_ms": 500,
+                "hedge_execution": "post_only",
+                "ping_guard_mode": "enabled",
+                "max_feed_delay_ms": 500,
+                "feed_delay_spike_ms": 250,
+                "feed_delay_resume_ms": 200,
+                "feed_delay_stable_ms": 1000,
+                "ping_existing_orders": "cancel",
+                "hedge_timeout_ms": 1000
+            }
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "type": "params.apply",
+        "message_id": "m-005",
+        "correlation_id": null,
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": "run-point2",
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": 1793062805000,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "expected_revision": 1,
+            "lease_id": "lease-1",
+            "fencing_token": 1,
+            "proposal_id": "proposal-1",
+            "config_hash": "example-hash-replace-with-validator-result"
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "type": "command.ack",
+        "message_id": "m-006",
+        "correlation_id": "m-005",
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": "run-point2",
+        "stream": "critical",
+        "seq": 1,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "command_id": "m-005",
+            "status": "accepted",
+            "code": "OK",
+            "message": "durably queued",
+            "effective_revision": null,
+            "effective_seq": null
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "type": "command.ack",
+        "message_id": "m-007",
+        "correlation_id": "m-005",
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": "run-point2",
+        "stream": "critical",
+        "seq": 2,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "command_id": "m-005",
+            "status": "applied",
+            "code": "OK",
+            "message": "event boundary applied",
+            "effective_revision": 2,
+            "effective_seq": 2
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "type": "fills.append",
+        "message_id": "m-008",
+        "correlation_id": null,
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": "run-point2",
+        "stream": "critical",
+        "seq": 3,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "fill_id": "fill-1",
+            "exchange_trade_id": "trade-1",
+            "order_id": "order-1",
+            "account_ref": "bithumb-main",
+            "instrument": {
+                "venue": "bithumb",
+                "market_type": "spot",
+                "symbol": "KRW-BTC",
+                "base_currency": "BTC",
+                "quote_currency": "KRW",
+                "quantity_unit": "base",
+                "contract_value_base": null
+            },
+            "side": "buy",
+            "price": "100000000",
+            "quantity": "0.0001",
+            "fee": "5",
+            "fee_currency": "KRW",
+            "liquidity": "maker",
+            "exchange_at_ms": 1793062799980,
+            "executor_received_at_ms": 1793062800000,
+            "config_revision": 1,
+            "fx_at_fill": {
+                "rate_krw_per_usdt": "1400",
+                "observed_at_ms": 1793062799990,
+                "source": "bithumb:KRW-USDT:mid",
+                "quality": "valid"
+            },
+            "valuation_after_fill": {
+                "currency": "KRW",
+                "realized_pnl": "-5",
+                "unrealized_pnl": "0",
+                "theory_unrealized_pnl": "10",
+                "turnover": "10000",
+                "fees": "5",
+                "position_cost_method": "weighted_average",
+                "valued_at_ms": 1793062800000,
+                "fx": {
+                    "rate_krw_per_usdt": "1400",
+                    "observed_at_ms": 1793062799990,
+                    "source": "bithumb:KRW-USDT:mid",
+                    "quality": "valid"
+                },
+                "theory": {
+                    "price": "100100000",
+                    "currency": "KRW",
+                    "observed_at_ms": 1793062799990,
+                    "valid_until_ms": 1793062800990,
+                    "basis": "strategy_output",
+                    "formula_revision": "example-v1"
+                }
+            }
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "type": "hedge.trace",
+        "message_id": "m-009",
+        "correlation_id": null,
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": "run-point2",
+        "stream": "critical",
+        "seq": 4,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "hedge_id": "hedge-1",
+            "source_fill_ids": ["fill-1"],
+            "target_base": "0.0001",
+            "filled_base": "0",
+            "outstanding_base": "0",
+            "state": "planned",
+            "milestones": [
+                {
+                    "name": "spot_fill_received",
+                    "clock_id": "executor-01:boot-001",
+                    "utc_ms": 1793062800000,
+                    "mono_ns": "9000000000",
+                    "uncertainty_ms": 2,
+                    "measured": true
+                }
+            ]
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "type": "events.resume",
+        "message_id": "m-010",
+        "correlation_id": null,
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": null,
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "dashboard-admin",
+        "payload": {
+            "epoch_id": "boot-001",
+            "after_seq": 2
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": null,
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "executor-01",
+        "correlation_id": null,
+        "type": "engine.hello",
+        "message_id": "hello-001",
+        "payload": {
+            "engine_version": "example-implementation-1",
+            "capabilities": [
+                {
+                    "strategy_type": "single_exchange_maker",
+                    "implementation_version": "example-implementation-1",
+                    "ready": false,
+                    "hot_fields": [],
+                    "supported_commands": ["strategy.deploy", "params.validate"]
+                },
+                {
+                    "strategy_type": "point2",
+                    "implementation_version": "example-implementation-1",
+                    "ready": false,
+                    "hot_fields": [],
+                    "supported_commands": ["strategy.deploy", "params.validate"]
+                },
+                {
+                    "strategy_type": "minmaxma",
+                    "implementation_version": "example-implementation-1",
+                    "ready": false,
+                    "hot_fields": [],
+                    "supported_commands": ["strategy.deploy", "params.validate"]
+                }
             ],
-            "limits": {
-              "max_order_notional_krw": "10000",
-              "max_gross_exposure_krw": "1000000",
-              "max_open_orders": 4
-            },
-            "disconnect_policy": "pause_entries_cancel_keep_hedge",
-            "schema_version": 1
-          }
+            "earliest_seq": 1,
+            "latest_seq": 4,
+            "clock_uncertainty_ms": 2
         }
-      ],
-      "orders": [],
-      "positions": [],
-      "balances": [
-        {
-          "account_ref": "bithumb-main",
-          "currency": "KRW",
-          "available": "1000000",
-          "reserved": "0"
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": null,
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "gateway",
+        "correlation_id": "hello-001",
+        "type": "session.welcome",
+        "message_id": "welcome-001",
+        "payload": {
+            "session_id": "session-1",
+            "heartbeat_ms": 5000,
+            "lease_ttl_ms": 15000,
+            "max_frame_bytes": 1048576,
+            "resume_status": "snapshot_required",
+            "replay_after_seq": 0
         }
-      ],
-      "pending_command_ids": []
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": null,
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "dashboard-admin",
+        "correlation_id": null,
+        "type": "subscriptions.set",
+        "message_id": "subscribe-001",
+        "payload": {
+            "subscription_id": "view-1",
+            "run_ids": ["run-point2"],
+            "instruments": [
+                {
+                    "venue": "bithumb",
+                    "market_type": "spot",
+                    "symbol": "KRW-BTC",
+                    "base_currency": "BTC",
+                    "quote_currency": "KRW",
+                    "quantity_unit": "base",
+                    "contract_value_base": null
+                }
+            ],
+            "channels": ["market.book", "market.trades", "strategy.metrics", "account.valuation"],
+            "interval_ms": 100
+        }
+    },
+    {
+        "protocol": "oms.remote.v1",
+        "engine_id": "executor-01",
+        "epoch_id": "boot-001",
+        "run_id": null,
+        "stream": "control",
+        "seq": null,
+        "sent_at_ms": 1793062800000,
+        "expires_at_ms": null,
+        "actor_id": "executor-01",
+        "correlation_id": "snapshot-request-001",
+        "type": "snapshot.page",
+        "message_id": "snapshot-page-001",
+        "payload": {
+            "snapshot_id": "snapshot-1",
+            "watermark_seq": 4,
+            "page_index": 0,
+            "page_count": 1,
+            "runs": [
+                {
+                    "run_id": "run-point2",
+                    "strategy_type": "point2",
+                    "state": "paused",
+                    "config_revision": 2,
+                    "config": {
+                        "strategy_id": "profile-point2",
+                        "strategy_revision": 1,
+                        "strategy_type": "point2",
+                        "implementation_version": "example-implementation-1",
+                        "parameters": {
+                            "direction": "both",
+                            "baseline_bps": "-100",
+                            "buffer_bps": "15",
+                            "pricing_fee_bps": "0",
+                            "max_spot_krw": "20000000",
+                            "reserve_krw": "5000000",
+                            "max_hedge_qty": "86000",
+                            "hedge_tolerance_krw": "50000",
+                            "collateral_utilization": "0.8",
+                            "quote_interval_ms": 500,
+                            "hedge_execution": "post_only",
+                            "ping_guard_mode": "enabled",
+                            "max_feed_delay_ms": 500,
+                            "feed_delay_spike_ms": 250,
+                            "feed_delay_resume_ms": 200,
+                            "feed_delay_stable_ms": 1000,
+                            "ping_existing_orders": "cancel",
+                            "hedge_timeout_ms": 1000
+                        },
+                        "bindings": [
+                            {
+                                "role": "execution",
+                                "instrument": {
+                                    "venue": "bithumb",
+                                    "market_type": "spot",
+                                    "symbol": "KRW-BTC",
+                                    "base_currency": "BTC",
+                                    "quote_currency": "KRW",
+                                    "quantity_unit": "base",
+                                    "contract_value_base": null
+                                },
+                                "account_ref": "bithumb-main"
+                            },
+                            {
+                                "role": "hedge",
+                                "instrument": {
+                                    "venue": "okx",
+                                    "market_type": "linear_swap",
+                                    "symbol": "BTC-USDT-SWAP",
+                                    "base_currency": "BTC",
+                                    "quote_currency": "USDT",
+                                    "quantity_unit": "contracts",
+                                    "contract_value_base": "0.01"
+                                },
+                                "account_ref": "okx-main"
+                            },
+                            {
+                                "role": "reference",
+                                "instrument": {
+                                    "venue": "okx",
+                                    "market_type": "linear_swap",
+                                    "symbol": "BTC-USDT-SWAP",
+                                    "base_currency": "BTC",
+                                    "quote_currency": "USDT",
+                                    "quantity_unit": "contracts",
+                                    "contract_value_base": "0.01"
+                                },
+                                "account_ref": null
+                            },
+                            {
+                                "role": "fx",
+                                "instrument": {
+                                    "venue": "bithumb",
+                                    "market_type": "spot",
+                                    "symbol": "KRW-USDT",
+                                    "base_currency": "USDT",
+                                    "quote_currency": "KRW",
+                                    "quantity_unit": "base",
+                                    "contract_value_base": null
+                                },
+                                "account_ref": null
+                            }
+                        ],
+                        "limits": {
+                            "max_order_notional_krw": "10000",
+                            "max_gross_exposure_krw": "1000000",
+                            "max_open_orders": 4
+                        },
+                        "disconnect_policy": "pause_entries_cancel_keep_hedge",
+                        "schema_version": 1
+                    }
+                }
+            ],
+            "orders": [],
+            "positions": [],
+            "balances": [
+                {
+                    "account_ref": "bithumb-main",
+                    "currency": "KRW",
+                    "available": "1000000",
+                    "reserved": "0"
+                }
+            ],
+            "pending_command_ids": []
+        }
     }
-  }
 ]

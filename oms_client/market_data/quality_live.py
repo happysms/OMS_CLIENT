@@ -1,4 +1,5 @@
 """Read existing latest records for clock-offset monitoring without new feeds."""
+
 from __future__ import annotations
 
 import math
@@ -24,7 +25,11 @@ def _timestamp(value):
         return None
     try:
         parsed = float(value)
-        return parsed if math.isfinite(parsed) and MIN_TIMESTAMP_MS <= parsed < MAX_TIMESTAMP_MS else None
+        return (
+            parsed
+            if math.isfinite(parsed) and MIN_TIMESTAMP_MS <= parsed < MAX_TIMESTAMP_MS
+            else None
+        )
     except (TypeError, ValueError, OverflowError):
         return None
 
@@ -39,13 +44,23 @@ def _selection(payload):
     exchanges = payload.get('exchanges')
     if exchanges is None:
         exchanges = list(available)[:8]
-    if (not isinstance(exchanges, list) or not 1 <= len(exchanges) <= 8
-            or any(not isinstance(exchange, str) or not IDENTIFIER.fullmatch(exchange) for exchange in exchanges)
-            or len(set(exchanges)) != len(exchanges)):
+    if (
+        not isinstance(exchanges, list)
+        or not 1 <= len(exchanges) <= 8
+        or any(
+            not isinstance(exchange, str) or not IDENTIFIER.fullmatch(exchange)
+            for exchange in exchanges
+        )
+        or len(set(exchanges)) != len(exchanges)
+    ):
         raise DataError('거래소는 중복 없이 1~8개 선택해 주세요.')
     ticker = payload.get('ticker', '')
     ticker = '' if ticker is None else ticker
-    if not isinstance(ticker, str) or len(ticker) > 80 or (ticker.strip() and not IDENTIFIER.fullmatch(ticker.strip())):
+    if (
+        not isinstance(ticker, str)
+        or len(ticker) > 80
+        or (ticker.strip() and not IDENTIFIER.fullmatch(ticker.strip()))
+    ):
         raise DataError('조회할 종목 이름을 확인해 주세요.')
     raw_threshold = payload.get('threshold_ms', 1000)
     if isinstance(raw_threshold, bool):
@@ -60,7 +75,11 @@ def _selection(payload):
     for exchange in exchanges:
         symbols = available.get(exchange, [])
         lookup = {symbol.upper(): symbol for symbol in symbols}
-        selected_ticker = lookup.get(ticker.strip().upper()) if ticker.strip() else lookup.get('BTC', symbols[0] if symbols else None)
+        selected_ticker = (
+            lookup.get(ticker.strip().upper())
+            if ticker.strip()
+            else lookup.get('BTC', symbols[0] if symbols else None)
+        )
         selected.append((exchange, selected_ticker or ticker.strip() or 'BTC'))
     return kind, threshold, available, selected
 
@@ -69,11 +88,23 @@ def _redis_client():
     url = os.environ.get('DASHBOARD_REDIS_URL', 'redis://127.0.0.1:6379/0')
     try:
         parsed = urlsplit(url)
-        if parsed.scheme not in {'redis', 'rediss'} or not parsed.hostname or parsed.query or parsed.fragment:
+        if (
+            parsed.scheme not in {'redis', 'rediss'}
+            or not parsed.hostname
+            or parsed.query
+            or parsed.fragment
+        ):
             raise ValueError('Redis URL')
-        return redis.Redis.from_url(url, decode_responses=True, protocol=2, socket_connect_timeout=1,
-                                    socket_timeout=1, retry=Retry(NoBackoff(), 0), max_connections=2,
-                                    health_check_interval=0)
+        return redis.Redis.from_url(
+            url,
+            decode_responses=True,
+            protocol=2,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+            retry=Retry(NoBackoff(), 0),
+            max_connections=2,
+            health_check_interval=0,
+        )
     except Exception:
         raise DataError('현재 캐시 연결 설정을 확인하지 못했습니다.') from None
 
@@ -83,16 +114,30 @@ def _latest_parquet(exchange, ticker):
     if source['source_kind'] != 'orderbook_1s':
         raise DataError('선택한 1초 호가 저장소가 없습니다.')
     directory = source['directory']
-    paths = sorted(path for path in directory.glob('*/*/*/*.parquet') if path.is_file() and parquet.within_root(path, directory))
+    paths = sorted(
+        path
+        for path in directory.glob('*/*/*/*.parquet')
+        if path.is_file() and parquet.within_root(path, directory)
+    )
     if not paths:
         return None
     connection = parquet.connection()
     try:
         with parquet.query_deadline(connection):
-            columns = {row[0] for row in connection.execute('DESCRIBE SELECT * FROM read_parquet(?)', [str(paths[-1])]).fetchall()}
-            received = 'try_cast(receivedTime AS DOUBLE)' if 'receivedTime' in columns else 'NULL::DOUBLE'
-            row = connection.execute(f'SELECT try_cast(desktopTime AS DOUBLE), try_cast(serverTime AS DOUBLE), {received} '
-                                     'FROM read_parquet(?) ORDER BY desktopTime DESC LIMIT 1', [str(paths[-1])]).fetchone()
+            columns = {
+                row[0]
+                for row in connection.execute(
+                    'DESCRIBE SELECT * FROM read_parquet(?)', [str(paths[-1])]
+                ).fetchall()
+            }
+            received = (
+                'try_cast(receivedTime AS DOUBLE)' if 'receivedTime' in columns else 'NULL::DOUBLE'
+            )
+            row = connection.execute(
+                f'SELECT try_cast(desktopTime AS DOUBLE), try_cast(serverTime AS DOUBLE), {received} '
+                'FROM read_parquet(?) ORDER BY desktopTime DESC LIMIT 1',
+                [str(paths[-1])],
+            ).fetchone()
             return row
     except duckdb.Error:
         raise DataError('최근 1초 호가의 시각을 읽지 못했습니다.') from None
@@ -106,9 +151,18 @@ def query_live(payload, *, redis_factory=None, clock=time.time):
     try:
         for exchange, ticker in selected:
             source = 'parquet' if kind == 'ob_1s' else 'redis'
-            item = {'exchange': exchange, 'ticker': ticker, 'status': 'no_data', 'source': source,
-                    'desktop_ms': None, 'server_ms': None, 'latency_ms': None, 'age_ms': None,
-                    'above_threshold': False, 'negative': False}
+            item = {
+                'exchange': exchange,
+                'ticker': ticker,
+                'status': 'no_data',
+                'source': source,
+                'desktop_ms': None,
+                'server_ms': None,
+                'latency_ms': None,
+                'age_ms': None,
+                'above_threshold': False,
+                'negative': False,
+            }
             series.append(item)
             unsupported = quality.unmeasurable_clock_reason(exchange, kind)
             if unsupported:
@@ -144,11 +198,20 @@ def query_live(payload, *, redis_factory=None, clock=time.time):
                     continue
                 desktop, server = _timestamp(row[0]), _timestamp(row[1])
                 if desktop is None or server is None:
-                    item.update(status='error', error='시각이 없거나 UTC epoch 밀리초 형식이 올바르지 않습니다.')
+                    item.update(
+                        status='error',
+                        error='시각이 없거나 UTC epoch 밀리초 형식이 올바르지 않습니다.',
+                    )
                     continue
                 latency = desktop - server
-                item.update(status='ok', desktop_ms=desktop, server_ms=server, latency_ms=latency,
-                            above_threshold=latency > threshold, negative=latency < 0)
+                item.update(
+                    status='ok',
+                    desktop_ms=desktop,
+                    server_ms=server,
+                    latency_ms=latency,
+                    above_threshold=latency > threshold,
+                    negative=latency < 0,
+                )
                 received = _timestamp(row[2])
                 if received is not None:
                     item['received_latency_ms'] = received - server
@@ -170,9 +233,21 @@ def query_live(payload, *, redis_factory=None, clock=time.time):
     observed = int(clock() * 1000)
     for item in series:
         if item['status'] == 'ok':
-            item.update(age_ms=observed - item['desktop_ms'], future_desktop=item['desktop_ms'] > observed)
-    warnings = ['desktopTime은 상위 수집 PC의 기록 시각입니다. 차이에는 시계 오차·수집 처리 시간이 포함되며 네트워크 왕복 RTT가 아닙니다.']
+            item.update(
+                age_ms=observed - item['desktop_ms'], future_desktop=item['desktop_ms'] > observed
+            )
+    warnings = [
+        'desktopTime은 상위 수집 PC의 기록 시각입니다. 차이에는 시계 오차·수집 처리 시간이 포함되며 네트워크 왕복 RTT가 아닙니다.'
+    ]
     if kind == 'ob_1s':
-        warnings.append('1초 호가는 약 5초마다 반영되는 최근 저장 스냅샷입니다. 채택 시각 차이에는 호가 나이가 포함되며 수신 시각 기준 차이를 함께 제공합니다. 10초보다 오래된 호가는 저장하지 않으므로 누락 구간도 확인하세요.')
-    return {'mode': 'live', 'observed_at_ms': observed, 'data_kind': kind, 'threshold_ms': threshold,
-            'series': series, 'meta': {'definition': 'desktopTime - serverTime', 'unit': 'ms', 'warnings': warnings}}
+        warnings.append(
+            '1초 호가는 약 5초마다 반영되는 최근 저장 스냅샷입니다. 채택 시각 차이에는 호가 나이가 포함되며 수신 시각 기준 차이를 함께 제공합니다. 10초보다 오래된 호가는 저장하지 않으므로 누락 구간도 확인하세요.'
+        )
+    return {
+        'mode': 'live',
+        'observed_at_ms': observed,
+        'data_kind': kind,
+        'threshold_ms': threshold,
+        'series': series,
+        'meta': {'definition': 'desktopTime - serverTime', 'unit': 'ms', 'warnings': warnings},
+    }

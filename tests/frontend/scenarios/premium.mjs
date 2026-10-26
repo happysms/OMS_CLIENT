@@ -1,40 +1,92 @@
-import {JSDOM,ROOT,FRONTEND,loadStrategyCatalog} from '../support.mjs';
+import { JSDOM, ROOT, FRONTEND, loadStrategyCatalog } from '../support.mjs';
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
-const root=FRONTEND;
-const {window}=new JSDOM(await fs.readFile(root+'index.html','utf8'),{url:'http://localhost/',pretendToBeVisual:true});
-for(const name of ['window','document','Event'])globalThis[name]=window[name];
-globalThis.ResizeObserver=class{observe(){}disconnect(){}};
-window.HTMLCanvasElement.prototype.getContext=()=>new Proxy({},{get:(t,k)=>t[k]||(()=>{}),set:(t,k,v)=>(t[k]=v,true)});
-window.HTMLCanvasElement.prototype.getBoundingClientRect=()=>({width:700,height:230,left:0,top:0});
-window.HTMLCanvasElement.prototype.setPointerCapture=()=>{};
-const calls=[],now=1792886400000;let enabled=true;
-const summary=()=>({end_ms:now,next_update_ms:now+3600000,enabled,job:{state:'complete'},items:['BTC','ETH'].map((ticker,i)=>({ticker,windows:{'3':{mean_pct:i?null:-.5,coverage_pct:25},'7':{mean_pct:i?null:1.25,coverage_pct:12}},latest_hour_ms:now-3600000,error_hours:0}))});
-const hourly=ticker=>({ticker,items:[{hour_ms:now-7200000,mean_pct:-.5,samples:1800,status:'partial'},{hour_ms:now-3600000,mean_pct:null,samples:0,status:'empty'}]});
-async function api(path,options={}){
- calls.push([path,options]);
- if(path==='/api/premiums')return summary();
- if(path.startsWith('/api/premiums/hourly?'))return hourly(new URL(path,'http://localhost').searchParams.get('ticker'));
- if(path==='/api/premiums/settings'){enabled=options.body.enabled;return {enabled};}
- if(path==='/api/premiums/refresh')return {status:'queued'};
- throw Error(path);
+const root = FRONTEND;
+const { window } = new JSDOM(await fs.readFile(root + 'index.html', 'utf8'), {
+    url: 'http://localhost/',
+    pretendToBeVisual: true,
+});
+for (const name of ['window', 'document', 'Event']) globalThis[name] = window[name];
+globalThis.ResizeObserver = class {
+    observe() {}
+    disconnect() {}
+};
+window.HTMLCanvasElement.prototype.getContext = () =>
+    new Proxy({}, { get: (t, k) => t[k] || (() => {}), set: (t, k, v) => ((t[k] = v), true) });
+window.HTMLCanvasElement.prototype.getBoundingClientRect = () => ({
+    width: 700,
+    height: 230,
+    left: 0,
+    top: 0,
+});
+window.HTMLCanvasElement.prototype.setPointerCapture = () => {};
+const calls = [],
+    now = 1792886400000;
+let enabled = true;
+const summary = () => ({
+    end_ms: now,
+    next_update_ms: now + 3600000,
+    enabled,
+    job: { state: 'complete' },
+    items: ['BTC', 'ETH'].map((ticker, i) => ({
+        ticker,
+        windows: {
+            3: { mean_pct: i ? null : -0.5, coverage_pct: 25 },
+            7: { mean_pct: i ? null : 1.25, coverage_pct: 12 },
+        },
+        latest_hour_ms: now - 3600000,
+        error_hours: 0,
+    })),
+});
+const hourly = (ticker) => ({
+    ticker,
+    items: [
+        { hour_ms: now - 7200000, mean_pct: -0.5, samples: 1800, status: 'partial' },
+        { hour_ms: now - 3600000, mean_pct: null, samples: 0, status: 'empty' },
+    ],
+});
+async function api(path, options = {}) {
+    calls.push([path, options]);
+    if (path === '/api/premiums') return summary();
+    if (path.startsWith('/api/premiums/hourly?'))
+        return hourly(new URL(path, 'http://localhost').searchParams.get('ticker'));
+    if (path === '/api/premiums/settings') {
+        enabled = options.body.enabled;
+        return { enabled };
+    }
+    if (path === '/api/premiums/refresh') return { status: 'queued' };
+    throw Error(path);
 }
-const {initPremiums}=await import(root+'features/analysis/premiums.js');
-initPremiums({api});
-const $=id=>document.getElementById(id),settle=()=>new Promise(resolve=>setTimeout(resolve,20));
-assert.equal(calls.length,0,'collapsed panel performs no requests');
-$('premium-details').open=true;await settle();
-assert.match($('premium-status').textContent,/공통 2종목/);
-assert.equal($('premium-error').hidden,true);
-assert.equal($('premium-rows').children.length,2);
-assert.match($('premium-rows').textContent,/-0.5/);
-assert.match($('premium-hourly-title').textContent,/BTC/);
-assert.match($('premium-hourly-rows').textContent,/일부 관측/);
-$('premium-search').value='eth';$('premium-search').dispatchEvent(new Event('input'));
-assert.equal($('premium-rows').children.length,1);assert.match($('premium-rows').textContent,/ETH/);
-$('premium-rows').querySelector('button').click();await settle();assert.match($('premium-hourly-title').textContent,/ETH/);
-$('premium-enabled').checked=false;$('premium-enabled').dispatchEvent(new Event('change'));await settle();
-assert.equal(enabled,false);assert.match($('premium-status').textContent,/자동 누적 꺼짐/);
-$('premium-refresh').click();await settle();assert.ok(calls.some(([path])=>path==='/api/premiums/refresh'));
-window.dispatchEvent(new Event('pagehide'));window.close();
-console.log('Premium panel DOM checks passed: lazy load, missing/negative means, coverage, filtering, hourly selection, persisted toggle, refresh.');
+const { initPremiums } = await import(root + 'features/analysis/premiums.js');
+initPremiums({ api });
+const $ = (id) => document.getElementById(id),
+    settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+assert.equal(calls.length, 0, 'collapsed panel performs no requests');
+$('premium-details').open = true;
+await settle();
+assert.match($('premium-status').textContent, /공통 2종목/);
+assert.equal($('premium-error').hidden, true);
+assert.equal($('premium-rows').children.length, 2);
+assert.match($('premium-rows').textContent, /-0.5/);
+assert.match($('premium-hourly-title').textContent, /BTC/);
+assert.match($('premium-hourly-rows').textContent, /일부 관측/);
+$('premium-search').value = 'eth';
+$('premium-search').dispatchEvent(new Event('input'));
+assert.equal($('premium-rows').children.length, 1);
+assert.match($('premium-rows').textContent, /ETH/);
+$('premium-rows').querySelector('button').click();
+await settle();
+assert.match($('premium-hourly-title').textContent, /ETH/);
+$('premium-enabled').checked = false;
+$('premium-enabled').dispatchEvent(new Event('change'));
+await settle();
+assert.equal(enabled, false);
+assert.match($('premium-status').textContent, /자동 누적 꺼짐/);
+$('premium-refresh').click();
+await settle();
+assert.ok(calls.some(([path]) => path === '/api/premiums/refresh'));
+window.dispatchEvent(new Event('pagehide'));
+window.close();
+console.log(
+    'Premium panel DOM checks passed: lazy load, missing/negative means, coverage, filtering, hourly selection, persisted toggle, refresh.',
+);

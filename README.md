@@ -334,6 +334,17 @@ systemctl --user stop oms-client-route.service oms-client.service
 
 ## 검증
 
+코드 들여쓰기는 **공백 4칸**으로 통일합니다. 편집기에서는 `.editorconfig`를 적용하고, Python은 고정 버전 Black, JavaScript·HTML·CSS·JSON은 고정 버전 Prettier로 정리합니다. 셸 스크립트도 공백 4칸을 사용하며 변경 후 `bash -n`으로 구문을 확인합니다. 문자열·SQL·데이터 값의 공백은 코드 들여쓰기와 구분해 보존합니다.
+
+```bash
+python -m pip install -r requirements-dev.txt
+npm --prefix frontend install
+python tools/format_code.py
+python tools/format_code.py --check
+```
+
+포맷 명령은 Git에서 관리하거나 새로 추가할 소스 파일만 대상으로 하며, 무시된 실행 데이터·가상환경·의존성 폴더를 순회하지 않습니다. 문서 본문과 생성된 SVG·Mermaid는 제외합니다.
+
 ```bash
 cd /home/minsung1/dev/OMS_CLIENT
 /home/minsung1/dev/.venv/bin/python -W ignore::DeprecationWarning -m unittest discover -s tests -p 'test_*.py'

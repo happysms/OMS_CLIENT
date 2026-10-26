@@ -1,4 +1,5 @@
 """Signed differences between recorded and exchange clocks, in milliseconds."""
+
 import math
 
 MIN_TIMESTAMP_MS = 946_684_800_000  # 2000-01-01 UTC; do not guess units.
@@ -14,18 +15,26 @@ def unmeasurable_clock_reason(exchange, data_kind):
 
 
 def timestamp_delta_ms(desktop, server):
-    if any(isinstance(value, bool) or not isinstance(value, (int, float))
-           or not math.isfinite(value) or not MIN_TIMESTAMP_MS <= value < MAX_TIMESTAMP_MS
-           for value in (desktop, server)):
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or not MIN_TIMESTAMP_MS <= value < MAX_TIMESTAMP_MS
+        for value in (desktop, server)
+    ):
         return None
     return desktop - server
 
 
 def timestamp_delta_sql(columns, exchange, data_kind):
     """Fixed-schema expression; only genuine paired epoch-ms clocks qualify."""
-    if not {"desktopTime", "serverTime"}.issubset(columns) or unmeasurable_clock_reason(exchange, data_kind):
+    if not {"desktopTime", "serverTime"}.issubset(columns) or unmeasurable_clock_reason(
+        exchange, data_kind
+    ):
         return "NULL::DOUBLE"
     desktop, server = 'try_cast("desktopTime" AS DOUBLE)', 'try_cast("serverTime" AS DOUBLE)'
-    valid = " AND ".join(f"{field} >= {MIN_TIMESTAMP_MS} AND {field} < {MAX_TIMESTAMP_MS}"
-                         for field in (desktop, server))
+    valid = " AND ".join(
+        f"{field} >= {MIN_TIMESTAMP_MS} AND {field} < {MAX_TIMESTAMP_MS}"
+        for field in (desktop, server)
+    )
     return f"CASE WHEN {valid} THEN {desktop} - {server} ELSE NULL END"

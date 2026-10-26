@@ -1,4 +1,5 @@
 """OMS integration status endpoints."""
+
 from flask import jsonify
 
 from ...oms.status import connection_status

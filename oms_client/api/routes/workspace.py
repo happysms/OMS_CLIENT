@@ -1,4 +1,5 @@
 """Workspace shell, public health, session metadata and allowed assets."""
+
 import os
 
 from flask import abort, jsonify, send_from_directory
@@ -7,17 +8,27 @@ from ...paths import FRONTEND as STATIC
 
 # Only browser assets are served. Source, docs and runtime files stay private.
 STATIC_FILES = {
-    "app.js", "styles.css",
-    "shell/bootstrap.js", "shell/tabs.js", "shell/workspace.js",
-    "shared/api.js", "shared/charts.js", "shared/dom.js", "shared/jobs.js",
+    "app.js",
+    "styles.css",
+    "shell/bootstrap.js",
+    "shell/tabs.js",
+    "shell/workspace.js",
+    "shared/api.js",
+    "shared/charts.js",
+    "shared/dom.js",
+    "shared/jobs.js",
     "shared/source-controls.js",
-    "features/analysis/controller.js", "features/data/controller.js",
-    "features/analysis/premiums.js", "features/replay/controller.js", "features/strategies/controller.js",
+    "features/analysis/controller.js",
+    "features/data/controller.js",
+    "features/analysis/premiums.js",
+    "features/replay/controller.js",
+    "features/strategies/controller.js",
     "features/funding/controller.js",
     "features/manual_trading/controller.js",
     "features/files/controller.js",
     "features/quality/controller.js",
-    "features/backtesting/controller.js", "features/paper_trading/controller.js",
+    "features/backtesting/controller.js",
+    "features/paper_trading/controller.js",
 }
 MODULES = [
     {"id": "data", "label": "데이터 확인", "status": "ready"},
@@ -28,7 +39,6 @@ MODULES = [
     {"id": "paper", "label": "모의투자", "status": "ready"},
     {"id": "oms", "label": "OMS", "status": "planned"},
 ]
-
 
 
 def register(app, csrf_token):
@@ -51,11 +61,39 @@ def register(app, csrf_token):
 
     @app.get("/api/session")
     def session_information():
-        return jsonify(authenticated=True, user="admin", csrf_token=csrf_token(), mode="server", capabilities={"server_analysis": True, "live": True, "saved_presets": True, "backtest": True, "paper": True, "funding": True, "funding_live": False, "candles": True, "candle_live": False, "live_orders": False, "manual_market_view": True, "manual_spot_orders": bool(app.config.get("MANUAL_DIRECT_TRADING_ENABLED", False)), "execution_mode": "remote" if not app.config.get("MANUAL_DIRECT_TRADING_ENABLED", False) else "direct"})
+        return jsonify(
+            authenticated=True,
+            user="admin",
+            csrf_token=csrf_token(),
+            mode="server",
+            capabilities={
+                "server_analysis": True,
+                "live": True,
+                "saved_presets": True,
+                "backtest": True,
+                "paper": True,
+                "funding": True,
+                "funding_live": False,
+                "candles": True,
+                "candle_live": False,
+                "live_orders": False,
+                "manual_market_view": True,
+                "manual_spot_orders": bool(app.config.get("MANUAL_DIRECT_TRADING_ENABLED", False)),
+                "execution_mode": (
+                    "remote"
+                    if not app.config.get("MANUAL_DIRECT_TRADING_ENABLED", False)
+                    else "direct"
+                ),
+            },
+        )
 
     @app.get("/api/version")
     def version_information():
-        return jsonify(application="OMS_CLIENT", revision=os.environ.get("OMS_CLIENT_REVISION") or "development", modules=MODULES)
+        return jsonify(
+            application="OMS_CLIENT",
+            revision=os.environ.get("OMS_CLIENT_REVISION") or "development",
+            modules=MODULES,
+        )
 
     @app.get("/api/modules")
     def modules():

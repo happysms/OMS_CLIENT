@@ -1,4 +1,5 @@
 """Consistent JSON errors at the HTTP boundary."""
+
 from flask import jsonify, request
 
 from ..analysis import history as data_service

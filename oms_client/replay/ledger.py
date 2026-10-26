@@ -1,4 +1,5 @@
 """Spot settlement owns cash/cost/fees, without market data, time, UI or storage."""
+
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_CEILING
 from typing import Iterable
@@ -22,8 +23,10 @@ class FeeSchedule:
 
     @classmethod
     def from_config(cls, config: dict) -> 'FeeSchedule':
-        return cls(Decimal(config.get('maker_fee_bps', config['fee_bps'])),
-                   Decimal(config.get('taker_fee_bps', config['fee_bps'])))
+        return cls(
+            Decimal(config.get('maker_fee_bps', config['fee_bps'])),
+            Decimal(config.get('taker_fee_bps', config['fee_bps'])),
+        )
 
     @property
     def reserve_bps(self) -> Decimal:
@@ -35,7 +38,9 @@ class FeeSchedule:
 
     def reserve_buy(self, price: Decimal, quantity: Decimal, tif: str) -> Decimal:
         # Independent role ceilings can exceed one aggregate ceiling by one quantum.
-        mixed_roles = quantity and tif in {'gtc', 'gtd'} and self.maker_bps > 0 and self.taker_bps > 0
+        mixed_roles = (
+            quantity and tif in {'gtc', 'gtd'} and self.maker_bps > 0 and self.taker_bps > 0
+        )
         extra = FEE_QUANTUM if mixed_roles else ZERO
         return price * quantity + self.cumulative_fee(price * quantity) + extra
 
@@ -70,13 +75,21 @@ class SpotLedger:
         coin = self.coin - sum((order.remaining for order in orders if order.side == 'sell'), ZERO)
         return cash, coin
 
-    def settle(self, order: ReplayOrder, quantity: Decimal, price: Decimal, role: str) -> FillSettlement:
+    def settle(
+        self, order: ReplayOrder, quantity: Decimal, price: Decimal, role: str
+    ) -> FillSettlement:
         """Validate first, then commit the account and order delta together."""
-        if (quantity <= 0 or quantity > order.remaining or price <= 0
-                or order.status not in {'in_flight', 'live', 'cancel_pending'}
-                or order.side not in {'buy', 'sell'}):
+        if (
+            quantity <= 0
+            or quantity > order.remaining
+            or price <= 0
+            or order.status not in {'in_flight', 'live', 'cancel_pending'}
+            or order.side not in {'buy', 'sell'}
+        ):
             raise DataError('체결 수량·가격·주문 상태를 확인하세요.')
-        if (order.side == 'buy' and price > order.price) or (order.side == 'sell' and price < order.price):
+        if (order.side == 'buy' and price > order.price) or (
+            order.side == 'sell' and price < order.price
+        ):
             raise DataError('지정가 한도를 벗어난 체결입니다.')
         previous_notional, previous_fee = order.role_totals(role)
         notional = price * quantity

@@ -1,4 +1,5 @@
 """Browse only declared market-data layouts and read bounded Parquet footers."""
+
 from __future__ import annotations
 
 import base64
@@ -20,19 +21,43 @@ from .validation import DataError, IDENTIFIER, integer
 LEGACY_KINDS = {"ob", "tick", "funding", "fx"}
 COLLECTOR_KINDS = {"ob_1s", "candles_1m"}
 KINDS = LEGACY_KINDS | COLLECTOR_KINDS
-KIND_LABELS = {"ob": "호가", "tick": "체결", "funding": "펀딩비율", "fx": "환율",
-               "ob_1s": "1초 호가", "candles_1m": "과거 1분봉"}
-EXCHANGE_LABELS = {"bithumb": "빗썸", "upbit": "업비트", "binance": "바이낸스", "okx": "OKX",
-                   "hyperliquid": "Hyperliquid", "ls": "LS증권", "fx": "환율"}
+KIND_LABELS = {
+    "ob": "호가",
+    "tick": "체결",
+    "funding": "펀딩비율",
+    "fx": "환율",
+    "ob_1s": "1초 호가",
+    "candles_1m": "과거 1분봉",
+}
+EXCHANGE_LABELS = {
+    "bithumb": "빗썸",
+    "upbit": "업비트",
+    "binance": "바이낸스",
+    "okx": "OKX",
+    "hyperliquid": "Hyperliquid",
+    "ls": "LS증권",
+    "fx": "환율",
+}
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,1024}$")
 _FILE = re.compile(r"^(\d{2})\.parquet(\.gz)?$")
 _GZIP_METADATA_BYTES = 32 * 1024 * 1024
 _FOOTER_STRING_BYTES = 8 * 1024 * 1024
-_TIME_FIELDS = {"desktopTime", "serverTime", "sampledAt", "receivedTime", "candleTime", "availableTime"}
+_TIME_FIELDS = {
+    "desktopTime",
+    "serverTime",
+    "sampledAt",
+    "receivedTime",
+    "candleTime",
+    "availableTime",
+}
 
 
 def _encode(parts) -> str:
-    return base64.urlsafe_b64encode(json.dumps([1, *parts], separators=(",", ":")).encode()).decode().rstrip("=")
+    return (
+        base64.urlsafe_b64encode(json.dumps([1, *parts], separators=(",", ":")).encode())
+        .decode()
+        .rstrip("=")
+    )
 
 
 def _decode(identifier) -> tuple[str, ...]:
@@ -41,8 +66,17 @@ def _decode(identifier) -> tuple[str, ...]:
     if not isinstance(identifier, str) or not _ID.fullmatch(identifier):
         raise DataError("데이터 파일 식별자가 올바르지 않습니다.")
     try:
-        decoded = json.loads(base64.b64decode(identifier + "=" * (-len(identifier) % 4), altchars=b"-_", validate=True))
-        if not isinstance(decoded, list) or not decoded or decoded[0] != 1 or isinstance(decoded[0], bool):
+        decoded = json.loads(
+            base64.b64decode(
+                identifier + "=" * (-len(identifier) % 4), altchars=b"-_", validate=True
+            )
+        )
+        if (
+            not isinstance(decoded, list)
+            or not decoded
+            or decoded[0] != 1
+            or isinstance(decoded[0], bool)
+        ):
             raise ValueError("version")
         parts = tuple(decoded[1:])
         if not all(isinstance(part, str) for part in parts) or _encode(parts) != identifier:
@@ -129,7 +163,11 @@ def _label(parts):
 
 
 def _source(parts):
-    return "collector" if len(parts) > 1 and parts[1] in COLLECTOR_KINDS else "legacy" if len(parts) > 1 else None
+    return (
+        "collector"
+        if len(parts) > 1 and parts[1] in COLLECTOR_KINDS
+        else "legacy" if len(parts) > 1 else None
+    )
 
 
 def _node(parts):
@@ -139,17 +177,27 @@ def _node(parts):
 def _children(parts):
     if not parts:
         exchanges = set()
-        for root, kinds in ((parquet.data_root(), LEGACY_KINDS), (parquet.collector_data_root(), COLLECTOR_KINDS)):
+        for root, kinds in (
+            (parquet.data_root(), LEGACY_KINDS),
+            (parquet.collector_data_root(), COLLECTOR_KINDS),
+        ):
             try:
                 for path in root.iterdir():
-                    if (IDENTIFIER.fullmatch(path.name) and _safe_path(path, root)
-                            and any(_safe_path(path / kind, root) for kind in kinds)):
+                    if (
+                        IDENTIFIER.fullmatch(path.name)
+                        and _safe_path(path, root)
+                        and any(_safe_path(path / kind, root) for kind in kinds)
+                    ):
                         exchanges.add(path.name)
             except OSError:
                 continue
         return [(exchange,) for exchange in sorted(exchanges)]
     if len(parts) == 1:
-        result = [(parts[0], kind) for kind in sorted(KINDS) if _safe_path(_root(kind) / parts[0] / kind, _root(kind))]
+        result = [
+            (parts[0], kind)
+            for kind in sorted(KINDS)
+            if _safe_path(_root(kind) / parts[0] / kind, _root(kind))
+        ]
         if not result:
             raise DataError("선택한 거래소의 데이터 폴더가 없습니다.")
         return result
@@ -172,21 +220,33 @@ def _children(parts):
 
 
 def _modified(stat_result):
-    return datetime.fromtimestamp(stat_result.st_mtime, timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return (
+        datetime.fromtimestamp(stat_result.st_mtime, timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def _entry(parts):
     is_file = _is_file(parts)
-    item = {**_node(parts), "kind": "file" if is_file else "directory", "expandable": not is_file,
-            "exchange": parts[0], "data_kind": parts[1] if len(parts) > 1 else None}
+    item = {
+        **_node(parts),
+        "kind": "file" if is_file else "directory",
+        "expandable": not is_file,
+        "exchange": parts[0],
+        "data_kind": parts[1] if len(parts) > 1 else None,
+    }
     if len(parts) > 1:
         item["source"] = _source(parts)
     if len(parts) > 2:
         item["ticker"] = parts[2]
     if is_file:
         info = _resolve(parts).stat()
-        item.update(format="parquet.gz" if parts[-1].endswith(".gz") else "parquet",
-                    bytes=info.st_size, modified_at=_modified(info))
+        item.update(
+            format="parquet.gz" if parts[-1].endswith(".gz") else "parquet",
+            bytes=info.st_size,
+            modified_at=_modified(info),
+        )
     return item
 
 
@@ -202,14 +262,20 @@ def list_files(node=None, *, offset=0, limit=100, q=None):
         children = [child for child in children if search in child[-1].casefold()]
     total = len(children)
     items = []
-    for child in children[offset:offset + limit]:
+    for child in children[offset : offset + limit]:
         try:
             items.append(_entry(child))
         except (DataError, OSError):
             continue  # A concurrently replaced/removed file must not fail a directory.
     has_more = offset + limit < total
-    return {"node": _node(parts), "items": items, "offset": offset, "total": total,
-            "has_more": has_more, "next_offset": offset + limit if has_more else None}
+    return {
+        "node": _node(parts),
+        "items": items,
+        "offset": offset,
+        "total": total,
+        "has_more": has_more,
+        "next_offset": offset + limit if has_more else None,
+    }
 
 
 @contextmanager
@@ -220,9 +286,13 @@ def _open_source(parts):
         descriptor = os.open(_root(parts[1]), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         descriptors.append(descriptor)
         for part in parts[:-1]:
-            descriptor = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            descriptor = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor
+            )
             descriptors.append(descriptor)
-        descriptor = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+        descriptor = os.open(
+            parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor
+        )
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             os.close(descriptor)
             raise OSError("Not a regular file")
@@ -236,7 +306,11 @@ def _open_source(parts):
 def _read_footer(parts):
     with _open_source(parts) as stream:
         if not parts[-1].endswith(".gz"):
-            reader = pq.ParquetFile(stream, thrift_string_size_limit=_FOOTER_STRING_BYTES, thrift_container_size_limit=100_000)
+            reader = pq.ParquetFile(
+                stream,
+                thrift_string_size_limit=_FOOTER_STRING_BYTES,
+                thrift_container_size_limit=100_000,
+            )
             return reader.metadata, reader.schema_arrow
         # Keep the already-open source stable during bounded extraction. The
         # existing helper requires a named .gz source, so copy compressed bytes
@@ -255,9 +329,17 @@ def _read_footer(parts):
                         raise DataError("압축 파일의 메타데이터 읽기 용량 제한을 초과했습니다.")
                     target.write(chunk)
                     copied += len(chunk)
-            with materialize_parquet([compressed], max_total_bytes=_GZIP_METADATA_BYTES,
-                                     max_file_bytes=_GZIP_METADATA_BYTES, max_files=1) as paths:
-                reader = pq.ParquetFile(paths[0], thrift_string_size_limit=_FOOTER_STRING_BYTES, thrift_container_size_limit=100_000)
+            with materialize_parquet(
+                [compressed],
+                max_total_bytes=_GZIP_METADATA_BYTES,
+                max_file_bytes=_GZIP_METADATA_BYTES,
+                max_files=1,
+            ) as paths:
+                reader = pq.ParquetFile(
+                    paths[0],
+                    thrift_string_size_limit=_FOOTER_STRING_BYTES,
+                    thrift_container_size_limit=100_000,
+                )
                 return reader.metadata, reader.schema_arrow
 
 
@@ -273,11 +355,19 @@ def _query(parts):
         except DataError:
             return None, "이 호가 파일의 소스는 현재 분석 조회에서 지원하지 않습니다."
         if selected["directory"].resolve() != _root(kind).joinpath(*parts[:3]).resolve():
-            return None, "같은 종목의 1초 수집 데이터가 우선 선택되므로 이 기존 파일은 바로 조회할 수 없습니다."
+            return (
+                None,
+                "같은 종목의 1초 수집 데이터가 우선 선택되므로 이 기존 파일은 바로 조회할 수 없습니다.",
+            )
         data_type = "price"
     elif kind == "tick":
-        if parts[-1].endswith(".gz") and _safe_path(_root(kind).joinpath(*parts).with_suffix(""), _root(kind), is_file=True):
-            return None, "같은 시간의 일반 Parquet 체결 파일이 우선 선택됩니다. 압축 파일 대신 해당 일반 파일을 선택해 주세요."
+        if parts[-1].endswith(".gz") and _safe_path(
+            _root(kind).joinpath(*parts).with_suffix(""), _root(kind), is_file=True
+        ):
+            return (
+                None,
+                "같은 시간의 일반 Parquet 체결 파일이 우선 선택됩니다. 압축 파일 대신 해당 일반 파일을 선택해 주세요.",
+            )
         data_type = "tick"
     elif kind == "candles_1m":
         if exchange not in {"bithumb", "upbit"} or ticker != "USDT":
@@ -287,14 +377,23 @@ def _query(parts):
         data_type = "funding"
     match = _FILE.fullmatch(parts[-1])
     if kind == "candles_1m":
-        start = datetime(int(parts[3]), int(parts[4]), int(match[1]), tzinfo=timezone.utc) + timedelta(minutes=1)
+        start = datetime(
+            int(parts[3]), int(parts[4]), int(match[1]), tzinfo=timezone.utc
+        ) + timedelta(minutes=1)
         end = start + timedelta(days=1)
     else:
-        start = datetime(int(parts[3]), int(parts[4]), int(parts[5]), int(match[1]), tzinfo=timezone.utc)
+        start = datetime(
+            int(parts[3]), int(parts[4]), int(parts[5]), int(match[1]), tzinfo=timezone.utc
+        )
         end = start + timedelta(hours=1)
-    return {"data_type": data_type, "exchange": exchange, "ticker": ticker,
-            "start": start.isoformat().replace("+00:00", "Z"), "end": end.isoformat().replace("+00:00", "Z"),
-            "interval": "1s" if kind == "tick" else "1min"}, None
+    return {
+        "data_type": data_type,
+        "exchange": exchange,
+        "ticker": ticker,
+        "start": start.isoformat().replace("+00:00", "Z"),
+        "end": end.isoformat().replace("+00:00", "Z"),
+        "interval": "1s" if kind == "tick" else "1min",
+    }, None
 
 
 def _time_stats(metadata):
@@ -312,7 +411,9 @@ def _time_stats(metadata):
             if isinstance(low, bool) or not isinstance(low, int) or not isinstance(high, int):
                 continue
             current = found.setdefault(column.path_in_schema, {"min_ms": low, "max_ms": high})
-            current["min_ms"], current["max_ms"] = min(current["min_ms"], low), max(current["max_ms"], high)
+            current["min_ms"], current["max_ms"] = min(current["min_ms"], low), max(
+                current["max_ms"], high
+            )
     # Partial footer ranges must not be presented as complete bounds.
     return found if metadata.num_row_groups <= 1000 else {}
 
@@ -324,20 +425,35 @@ def file_info(node):
     path = _resolve(parts)
     info = path.stat()
     query, unsupported = _query(parts)
-    result = {**_node(parts), "exchange": parts[0], "data_kind": parts[1], "ticker": parts[2],
-              "source": _source(parts), "relative_path": "/".join(parts),
-              "format": "parquet.gz" if parts[-1].endswith(".gz") else "parquet",
-              "bytes": info.st_size, "modified_at": _modified(info), "rows": None, "columns": [], "query": query}
+    result = {
+        **_node(parts),
+        "exchange": parts[0],
+        "data_kind": parts[1],
+        "ticker": parts[2],
+        "source": _source(parts),
+        "relative_path": "/".join(parts),
+        "format": "parquet.gz" if parts[-1].endswith(".gz") else "parquet",
+        "bytes": info.st_size,
+        "modified_at": _modified(info),
+        "rows": None,
+        "columns": [],
+        "query": query,
+    }
     messages = [unsupported] if unsupported else []
     try:
         metadata, schema = _read_footer(parts)
-        result.update(rows=metadata.num_rows, columns=[{"name": field.name, "type": str(field.type)} for field in schema],
-                      time_stats=_time_stats(metadata))
+        result.update(
+            rows=metadata.num_rows,
+            columns=[{"name": field.name, "type": str(field.type)} for field in schema],
+            time_stats=_time_stats(metadata),
+        )
         if metadata.num_rows == 0:
             result["query"] = None
             messages.append("파일에 저장된 데이터 행이 없습니다.")
     except Exception:
-        messages.append("파일 메타데이터를 읽을 수 없거나 읽기 용량 제한을 초과했습니다. 파일 크기와 수정 시각만 표시합니다.")
+        messages.append(
+            "파일 메타데이터를 읽을 수 없거나 읽기 용량 제한을 초과했습니다. 파일 크기와 수정 시각만 표시합니다."
+        )
     if messages:
         result["message"] = " ".join(messages)
     return result

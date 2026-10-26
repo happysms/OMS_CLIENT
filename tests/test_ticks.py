@@ -1,4 +1,5 @@
 """Trade archive browsing preserves signed rows, bounded output, and auth."""
+
 import csv
 import gzip
 import io
@@ -23,26 +24,56 @@ class TickFixture(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        environment = patch.dict(os.environ, {
-            "DASHBOARD_DATA_ROOT": str(self.root),
-            "DASHBOARD_COLLECTOR_DATA_ROOT": str(self.root / "collector"),
-        })
+        environment = patch.dict(
+            os.environ,
+            {
+                "DASHBOARD_DATA_ROOT": str(self.root),
+                "DASHBOARD_COLLECTOR_DATA_ROOT": str(self.root / "collector"),
+            },
+        )
         environment.start()
         self.addCleanup(environment.stop)
         self.origin = int(pd.Timestamp("2026-10-25T00:00:00Z").timestamp() * 1000)
-        self.path = self.write([0, 200, 1000, 1000, 2000], [100, 102, 101, 101, 103], [1, -2, 3, 3, -4])
+        self.path = self.write(
+            [0, 200, 1000, 1000, 2000], [100, 102, 101, 101, 103], [1, -2, 3, 3, -4]
+        )
 
-    def write(self, offsets, prices, quantities, *, exchange="bithumb", ticker="BTC", day="25", hour="00", **extra):
+    def write(
+        self,
+        offsets,
+        prices,
+        quantities,
+        *,
+        exchange="bithumb",
+        ticker="BTC",
+        day="25",
+        hour="00",
+        **extra,
+    ):
         path = self.root / exchange / "tick" / ticker / f"2026/10/{day}/{hour}.parquet"
         path.parent.mkdir(parents=True, exist_ok=True)
         times = [self.origin + offset for offset in offsets]
-        pd.DataFrame({"desktopTime": times, "serverTime": [value - 10 for value in times],
-                      "price": prices, "qty": quantities, **extra}).to_parquet(path, index=False)
+        pd.DataFrame(
+            {
+                "desktopTime": times,
+                "serverTime": [value - 10 for value in times],
+                "price": prices,
+                "qty": quantities,
+                **extra,
+            }
+        ).to_parquet(path, index=False)
         return path
 
     def config(self, **overrides):
-        return {"exchange": "bithumb", "ticker": "BTC", "start": "2026-10-25T09:00:00+09:00",
-                "end": "2026-10-25T09:01:00+09:00", "interval": "1s", "price_mode": "last", **overrides}
+        return {
+            "exchange": "bithumb",
+            "ticker": "BTC",
+            "start": "2026-10-25T09:00:00+09:00",
+            "end": "2026-10-25T09:01:00+09:00",
+            "interval": "1s",
+            "price_mode": "last",
+            **overrides,
+        }
 
 
 class TickTests(TickFixture):
@@ -58,7 +89,9 @@ class TickTests(TickFixture):
         self.assertEqual(result["stats"]["total_volume"], 13)
         self.assertEqual(result["stats"]["count"], 5)
         self.assertEqual(result["stats"]["latest_price"], 103)
-        self.assertEqual([row["side"] for row in result["rows"]], ["sell", "buy", "buy", "sell", "buy"])
+        self.assertEqual(
+            [row["side"] for row in result["rows"]], ["sell", "buy", "buy", "sell", "buy"]
+        )
         self.assertEqual([row["qty"] for row in result["rows"]], [-4, 3, 3, -2, 1])
         self.assertEqual(ticks.query(self.config(price_mode="mean"))["values"], [101, 101, 103])
         self.assertEqual(leg["quantity_unit"], "BTC")
@@ -66,7 +99,9 @@ class TickTests(TickFixture):
         json.dumps(result, allow_nan=False)
 
     def test_range_excludes_end_and_does_not_fill_empty_buckets(self):
-        result = ticks.query(self.config(start="2026-10-25T09:00:00.200+09:00", end="2026-10-25T09:00:02+09:00"))
+        result = ticks.query(
+            self.config(start="2026-10-25T09:00:00.200+09:00", end="2026-10-25T09:00:02+09:00")
+        )
         self.assertEqual(result["values"], [102, 101])
         self.assertEqual(result["stats"]["count"], 3)
         self.write([0, 4000], [100, 104], [1, -1])
@@ -83,8 +118,10 @@ class TickTests(TickFixture):
         page3 = ticks.query({**result["config"], "offset": 4})
         self.assertFalse(page3["meta"]["table_has_more"])
         self.assertEqual(len(result["rows"] + page2["rows"] + page3["rows"]), 5)
-        self.assertEqual([row["source_time"] for row in result["rows"] + page2["rows"] + page3["rows"]],
-                         [self.origin + offset for offset in [2000, 1000, 1000, 200, 0]])
+        self.assertEqual(
+            [row["source_time"] for row in result["rows"] + page2["rows"] + page3["rows"]],
+            [self.origin + offset for offset in [2000, 1000, 1000, 200, 0]],
+        )
         self.assertEqual(ticks.query(self.config(offset=100))["rows"], [])
 
     def test_unverified_collector_keeps_raw_quantity_without_guessed_unit_or_side(self):
@@ -98,13 +135,19 @@ class TickTests(TickFixture):
         self.assertEqual([row["qty"] for row in result["rows"]], [-4, 2])
 
     def test_invalid_numeric_rows_reported_but_csv_retains_all_columns_and_rows(self):
-        self.write([0, 1000, 2000, 3000, 4000, 5000], [100, float("nan"), -1, 101, 102, 103],
-                   [1, 2, 3, 0, float("inf"), -2], note=["a", "=SUM(1,2)", "c", "d", "e", "f"])
+        self.write(
+            [0, 1000, 2000, 3000, 4000, 5000],
+            [100, float("nan"), -1, 101, 102, 103],
+            [1, 2, 3, 0, float("inf"), -2],
+            note=["a", "=SUM(1,2)", "c", "d", "e", "f"],
+        )
         result = ticks.query(self.config())
         self.assertEqual(result["meta"]["raw_rows"], 6)
         self.assertEqual(result["meta"]["invalid_rows"], 4)
         self.assertEqual(result["stats"]["count"], 2)
-        stream, name, size = ticks.csv_file({**result["config"], "offset": 1, "row_limit": 1, "max_points": 2})
+        stream, name, size = ticks.csv_file(
+            {**result["config"], "offset": 1, "row_limit": 1, "max_points": 2}
+        )
         with stream:
             content = stream.read()
         self.assertEqual(len(content), size)
@@ -119,7 +162,9 @@ class TickTests(TickFixture):
 
     def test_optional_server_time_and_case_preserving_symbol_lookup(self):
         path = self.write([0], [10], [-1], ticker="xyz:ABC")
-        pd.DataFrame({"desktopTime": [self.origin], "price": [10], "qty": [-1]}).to_parquet(path, index=False)
+        pd.DataFrame({"desktopTime": [self.origin], "price": [10], "qty": [-1]}).to_parquet(
+            path, index=False
+        )
         result = ticks.query(self.config(ticker="XYZ:abc"))
         self.assertEqual(result["config"]["ticker"], "xyz:ABC")
         self.assertEqual(result["rows"][0]["server_time"], None)
@@ -127,7 +172,9 @@ class TickTests(TickFixture):
 
     def test_unverified_or_non_epoch_server_time_is_not_displayed_as_exchange_date(self):
         self.write([0, 1000], [100, 101], [1, -1], serverTime=[123456, 9999999999999999])
-        self.assertEqual([row["server_time"] for row in ticks.query(self.config())["rows"]], [None, None])
+        self.assertEqual(
+            [row["server_time"] for row in ticks.query(self.config())["rows"]], [None, None]
+        )
         self.write([0], [10], [1], exchange="ls", ticker="005930")
         result = ticks.query(self.config(exchange="ls", ticker="005930"))
         self.assertIsNone(result["rows"][0]["server_time"])
@@ -157,18 +204,35 @@ class TickTests(TickFixture):
             target = Path(outside) / "01.parquet"
             target.write_bytes(self.path.read_bytes())
             leaked.symlink_to(target)
-            selected = ticks.files_for_range("bithumb", "BTC", pd.Timestamp("2026-10-25T00:00:00Z"), pd.Timestamp("2026-10-25T02:00:00Z"))
+            selected = ticks.files_for_range(
+                "bithumb",
+                "BTC",
+                pd.Timestamp("2026-10-25T00:00:00Z"),
+                pd.Timestamp("2026-10-25T02:00:00Z"),
+            )
             self.assertEqual(selected, [str(self.path)])
-        for override in [{"ticker": "../BTC"}, {"exchange": "../private"}, {"path": "/etc/passwd"},
-                         {"data_type": "price"}, {"max_points": 6001}, {"offset": -1}, {"row_limit": True},
-                         {"interval": "5ms"}, {"price_mode": "raw"}, {"end": "2026-10-25T08:59:00+09:00"},
-                         {"end": "2026-11-26T09:00:00+09:00"}, {"end": "2026-10-29T09:00:00+09:00"}]:
+        for override in [
+            {"ticker": "../BTC"},
+            {"exchange": "../private"},
+            {"path": "/etc/passwd"},
+            {"data_type": "price"},
+            {"max_points": 6001},
+            {"offset": -1},
+            {"row_limit": True},
+            {"interval": "5ms"},
+            {"price_mode": "raw"},
+            {"end": "2026-10-25T08:59:00+09:00"},
+            {"end": "2026-11-26T09:00:00+09:00"},
+            {"end": "2026-10-29T09:00:00+09:00"},
+        ]:
             with self.subTest(override=override), self.assertRaises(DataError):
                 ticks.query(self.config(**override))
 
     def test_missing_invalid_schema_corrupt_archive_and_row_limits_are_friendly_errors(self):
         with self.assertRaisesRegex(DataError, "파일이 없습니다"):
-            ticks.query(self.config(start="2026-10-26T09:00:00+09:00", end="2026-10-26T10:00:00+09:00"))
+            ticks.query(
+                self.config(start="2026-10-26T09:00:00+09:00", end="2026-10-26T10:00:00+09:00")
+            )
         with patch.object(ticks, "MAX_READ_ROWS", 4), self.assertRaisesRegex(DataError, "최대 4행"):
             ticks.query(self.config())
         with self.assertRaisesRegex(DataError, "최대 4행"):
@@ -188,7 +252,9 @@ class TickTests(TickFixture):
 class TickApiTests(TickFixture):
     def make_client(self):
         state = self.root / "state"
-        self.app = create_app({"TESTING": True, "STATE_DIR": str(state), "PASSWORD": "valid-password"})
+        self.app = create_app(
+            {"TESTING": True, "STATE_DIR": str(state), "PASSWORD": "valid-password"}
+        )
         self.addCleanup(self.app.extensions["close_services"])
         self.client = self.app.test_client()
         login = self.client.get("/login").get_data(as_text=True)
@@ -200,22 +266,37 @@ class TickApiTests(TickFixture):
         self.make_client()
         anonymous = self.app.test_client()
         for suffix in ["", "/csv"]:
-            self.assertEqual(anonymous.post("/api/data/ticks" + suffix, json=self.config()).status_code, 401)
-            self.assertEqual(self.client.post("/api/data/ticks" + suffix, json=self.config()).status_code, 403)
-        self.assertEqual(self.client.get("/api/catalog").json["tick_exchanges"], {"bithumb": ["BTC"]})
+            self.assertEqual(
+                anonymous.post("/api/data/ticks" + suffix, json=self.config()).status_code, 401
+            )
+            self.assertEqual(
+                self.client.post("/api/data/ticks" + suffix, json=self.config()).status_code, 403
+            )
+        self.assertEqual(
+            self.client.get("/api/catalog").json["tick_exchanges"], {"bithumb": ["BTC"]}
+        )
         bounds = self.client.get("/api/bounds?data_type=tick&exchange=bithumb&ticker=btc")
         self.assertEqual(bounds.status_code, 200)
         self.assertEqual(bounds.json["data_type"], "tick")
-        response = self.client.post("/api/data/ticks", json=self.config(row_limit=1), headers=self.headers)
+        response = self.client.post(
+            "/api/data/ticks", json=self.config(row_limit=1), headers=self.headers
+        )
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertEqual(len(response.json["rows"]), 1)
-        with self.client.post("/api/data/ticks/csv", json=response.json["config"], headers=self.headers) as response:
+        with self.client.post(
+            "/api/data/ticks/csv", json=response.json["config"], headers=self.headers
+        ) as response:
             self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
             rows = list(csv.DictReader(io.StringIO(response.get_data().decode("utf-8-sig"))))
             self.assertEqual(len(rows), 5)
             self.assertIn("ticks", response.headers["Content-Disposition"])
             self.assertIn("no-store", response.headers["Cache-Control"])
-        self.assertEqual(self.client.post("/api/data/ticks", json=self.config(ticker="../private"), headers=self.headers).status_code, 400)
+        self.assertEqual(
+            self.client.post(
+                "/api/data/ticks", json=self.config(ticker="../private"), headers=self.headers
+            ).status_code,
+            400,
+        )
 
     def test_tick_api_limits_simultaneous_queries(self):
         self.make_client()
@@ -244,7 +325,12 @@ class TickApiTests(TickFixture):
                 thread.start()
             try:
                 entered.wait(timeout=5)
-                self.assertEqual(self.client.post("/api/data/ticks", json=self.config(), headers=self.headers).status_code, 429)
+                self.assertEqual(
+                    self.client.post(
+                        "/api/data/ticks", json=self.config(), headers=self.headers
+                    ).status_code,
+                    429,
+                )
                 self.assertEqual(self.client.get("/api/session").status_code, 200)
             finally:
                 release.set()

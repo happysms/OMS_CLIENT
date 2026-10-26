@@ -1,204 +1,93 @@
 {
-  "point2_limit_fill_cases.ko.md": {
-    "## 2. 체결 결과의 기본 분해": [
-      "limit-lifecycle"
-    ],
-    "## 3. 도착 시 핵심 체결 행렬": [
-      "tif-comparison"
-    ],
-    "## 4. 경우의 수 목록": [
-      "case-navigation"
-    ],
-    "### 5.2 대기열의 경계값": [
-      "queue-budget"
-    ],
-    "### 5.3 취소 지연 중 부분체결": [
-      "cancel-race"
-    ]
-  },
-  "limit_execution_coverage.ko.md": {
-    "## 도착·부분체결·잔량": [
-      "tif-comparison",
-      "fok-atomic"
-    ],
-    "## STP·취소·교체": [
-      "cancel-race"
-    ],
-    "## 판정 불가와 종료": [
-      "limit-lifecycle"
-    ]
-  },
-  "point2_replay_design.ko.md": {
-    "## 3. 권장 구조": [
-      "design-system"
-    ],
-    "## 5. 가상 시계와 이벤트 순서": [
-      "clock-pacing",
-      "time-order"
-    ],
-    "## 7. 원본 호가와 내 주문을 반영한 가상 호가": [
-      "depth-debt"
-    ],
-    "## 8. 지정가 대기열: 첫 버전의 핵심 알고리즘": [
-      "queue-budget"
-    ],
-    "## 9. 주문 로그 없이 추가할 수 있는 취소 위치 모형": [
-      "cancel-inference",
-      "cancel-probability"
-    ],
-    "## 11. 가상 계좌: 실제 상태와 전략이 아는 상태": [
-      "truth-observed"
-    ],
-    "## 12. 부분체결에 따른 OKX 헤지": [
-      "hedge-exposure"
-    ],
-    "## 15. 화면·API·저장 결과": [
-      "orderbook-overlay"
-    ],
-    "### 2.1 가격 조건": [
-      "point-pricing"
-    ]
-  },
-  "point2_replay_modules.ko.md": {
-    "## 4. 전체 구조와 책임 경계": [
-      "module-pipeline"
-    ],
-    "## 9. 가상시계와 스케줄러": [
-      "clock-pacing"
-    ],
-    "## 11. 공공 정합·소진 부채 모듈": [
-      "depth-debt"
-    ],
-    "## 12. 가격별 공유 대기열": [
-      "queue-budget"
-    ],
-    "## 13. 즉시 체결·가상 거래소": [
-      "fok-atomic"
-    ],
-    "## 14. 주문 상태·수량·예약": [
-      "limit-lifecycle",
-      "cancel-race"
-    ],
-    "## 15. 체결 확정과 원장": [
-      "account-settlement"
-    ],
-    "## 16. 지연된 통지와 관측 상태": [
-      "truth-observed"
-    ],
-    "## 18. 헤지·리스크 모듈": [
-      "hedge-exposure"
-    ],
-    "## 22. 저장 스키마·manifest·결과 파일": [
-      "committed-snapshot"
-    ],
-    "## 23. 화면 구성과 결과 지표": [
-      "orderbook-overlay"
-    ],
-    "## 후속 모듈 계약: 실제 거래 피드백": [
-      "feedback-paths"
-    ]
-  },
-  "point2_virtual_accounts.ko.md": {
-    "## 2. 가상계좌 설정과 실행 계좌를 분리": [
-      "account-isolation"
-    ],
-    "## 6. 주문·체결에 따른 가상계좌 변화": [
-      "account-settlement"
-    ],
-    "## 10. 저장 스키마·스냅샷·재현성": [
-      "committed-snapshot"
-    ]
-  },
-  "bithumb_simple_mm.ko.md": {
-    "## 3. 주문 가격과 수량": [
-      "mm-quotes"
-    ],
-    "## 4. 기존 주문 관리": [
-      "mm-requote"
-    ],
-    "## 체결별 거래·손익 보고 요구사항": [
-      "account-settlement"
-    ]
-  },
-  "minmaxma_strategy.ko.md": {
-    "## 신호 의미": [
-      "minmaxma-signal",
-      "minmaxma-ma"
-    ]
-  },
-  "execution_latency_controls.ko.md": {
-    "## 1. 헤지가 들어가기까지의 시간": [
-      "hedge-latency"
-    ],
-    "## 2. 현재 핑 보호에 쓰는 관측값": [
-      "ping-guard"
-    ]
-  },
-  "queue_cancellation_model.ko.md": {
-    "## 1. 틱과 취소 구분": [
-      "cancel-inference"
-    ],
-    "## 2. 하나의 공유 FIFO": [
-      "queue-budget"
-    ],
-    "## 3. 확률과 조절값": [
-      "cancel-probability"
-    ]
-  },
-  "real_execution_feedback.ko.md": {
-    "## 2. 두 가지 실험을 분리": [
-      "feedback-paths"
-    ],
-    "## 5. 정규화·대사 규칙": [
-      "feedback-quality"
-    ]
-  },
-  "replay_architecture.ko.md": {
-    "## 2. 객체별 책임과 상태 소유": [
-      "execution-boundaries"
-    ],
-    "## 3. 주문과 정산 흐름": [
-      "fok-atomic",
-      "committed-snapshot"
-    ]
-  },
-  "replay_performance.ko.md": {
-    "## 2. 확인한 병목과 변경 사항": [
-      "performance-cache"
-    ],
-    "### 저장·조회 경로": [
-      "committed-snapshot"
-    ]
-  },
-  "pnl_currency.ko.md": {
-    "## 계산 기준": [
-      "usdt-cost"
-    ],
-    "## 현금 환산손익과 전체 자산 변화": [
-      "usdt-equity"
-    ],
-    "## 환율의 시간·결측 규칙": [
-      "fx-causality"
-    ]
-  },
-  "storage_retention.ko.md": {
-    "## 객체 책임과 동시 작업": [
-      "retention-gate"
-    ]
-  },
-  "strategy_registration_queries.ko.md": {
-    "## 확정된 요구사항": [
-      "strategy-version"
-    ]
-  },
-  "../oms_client/analysis/README.md": {
-    "## 전체 공통 종목 괴리 누적": [
-      "premium-hourly"
-    ]
-  },
-  "trade_activity.ko.md": {
-    "## 계산과 표시": [
-      "trade-activity"
-    ]
-  }
+    "point2_limit_fill_cases.ko.md": {
+        "## 2. 체결 결과의 기본 분해": ["limit-lifecycle"],
+        "## 3. 도착 시 핵심 체결 행렬": ["tif-comparison"],
+        "## 4. 경우의 수 목록": ["case-navigation"],
+        "### 5.2 대기열의 경계값": ["queue-budget"],
+        "### 5.3 취소 지연 중 부분체결": ["cancel-race"]
+    },
+    "limit_execution_coverage.ko.md": {
+        "## 도착·부분체결·잔량": ["tif-comparison", "fok-atomic"],
+        "## STP·취소·교체": ["cancel-race"],
+        "## 판정 불가와 종료": ["limit-lifecycle"]
+    },
+    "point2_replay_design.ko.md": {
+        "## 3. 권장 구조": ["design-system"],
+        "## 5. 가상 시계와 이벤트 순서": ["clock-pacing", "time-order"],
+        "## 7. 원본 호가와 내 주문을 반영한 가상 호가": ["depth-debt"],
+        "## 8. 지정가 대기열: 첫 버전의 핵심 알고리즘": ["queue-budget"],
+        "## 9. 주문 로그 없이 추가할 수 있는 취소 위치 모형": [
+            "cancel-inference",
+            "cancel-probability"
+        ],
+        "## 11. 가상 계좌: 실제 상태와 전략이 아는 상태": ["truth-observed"],
+        "## 12. 부분체결에 따른 OKX 헤지": ["hedge-exposure"],
+        "## 15. 화면·API·저장 결과": ["orderbook-overlay"],
+        "### 2.1 가격 조건": ["point-pricing"]
+    },
+    "point2_replay_modules.ko.md": {
+        "## 4. 전체 구조와 책임 경계": ["module-pipeline"],
+        "## 9. 가상시계와 스케줄러": ["clock-pacing"],
+        "## 11. 공공 정합·소진 부채 모듈": ["depth-debt"],
+        "## 12. 가격별 공유 대기열": ["queue-budget"],
+        "## 13. 즉시 체결·가상 거래소": ["fok-atomic"],
+        "## 14. 주문 상태·수량·예약": ["limit-lifecycle", "cancel-race"],
+        "## 15. 체결 확정과 원장": ["account-settlement"],
+        "## 16. 지연된 통지와 관측 상태": ["truth-observed"],
+        "## 18. 헤지·리스크 모듈": ["hedge-exposure"],
+        "## 22. 저장 스키마·manifest·결과 파일": ["committed-snapshot"],
+        "## 23. 화면 구성과 결과 지표": ["orderbook-overlay"],
+        "## 후속 모듈 계약: 실제 거래 피드백": ["feedback-paths"]
+    },
+    "point2_virtual_accounts.ko.md": {
+        "## 2. 가상계좌 설정과 실행 계좌를 분리": ["account-isolation"],
+        "## 6. 주문·체결에 따른 가상계좌 변화": ["account-settlement"],
+        "## 10. 저장 스키마·스냅샷·재현성": ["committed-snapshot"]
+    },
+    "bithumb_simple_mm.ko.md": {
+        "## 3. 주문 가격과 수량": ["mm-quotes"],
+        "## 4. 기존 주문 관리": ["mm-requote"],
+        "## 체결별 거래·손익 보고 요구사항": ["account-settlement"]
+    },
+    "minmaxma_strategy.ko.md": {
+        "## 신호 의미": ["minmaxma-signal", "minmaxma-ma"]
+    },
+    "execution_latency_controls.ko.md": {
+        "## 1. 헤지가 들어가기까지의 시간": ["hedge-latency"],
+        "## 2. 현재 핑 보호에 쓰는 관측값": ["ping-guard"]
+    },
+    "queue_cancellation_model.ko.md": {
+        "## 1. 틱과 취소 구분": ["cancel-inference"],
+        "## 2. 하나의 공유 FIFO": ["queue-budget"],
+        "## 3. 확률과 조절값": ["cancel-probability"]
+    },
+    "real_execution_feedback.ko.md": {
+        "## 2. 두 가지 실험을 분리": ["feedback-paths"],
+        "## 5. 정규화·대사 규칙": ["feedback-quality"]
+    },
+    "replay_architecture.ko.md": {
+        "## 2. 객체별 책임과 상태 소유": ["execution-boundaries"],
+        "## 3. 주문과 정산 흐름": ["fok-atomic", "committed-snapshot"]
+    },
+    "replay_performance.ko.md": {
+        "## 2. 확인한 병목과 변경 사항": ["performance-cache"],
+        "### 저장·조회 경로": ["committed-snapshot"]
+    },
+    "pnl_currency.ko.md": {
+        "## 계산 기준": ["usdt-cost"],
+        "## 현금 환산손익과 전체 자산 변화": ["usdt-equity"],
+        "## 환율의 시간·결측 규칙": ["fx-causality"]
+    },
+    "storage_retention.ko.md": {
+        "## 객체 책임과 동시 작업": ["retention-gate"]
+    },
+    "strategy_registration_queries.ko.md": {
+        "## 확정된 요구사항": ["strategy-version"]
+    },
+    "../oms_client/analysis/README.md": {
+        "## 전체 공통 종목 괴리 누적": ["premium-hourly"]
+    },
+    "trade_activity.ko.md": {
+        "## 계산과 표시": ["trade-activity"]
+    }
 }

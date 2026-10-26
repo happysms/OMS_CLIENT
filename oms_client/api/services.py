@@ -1,4 +1,5 @@
 """Lazy service ownership and orderly shutdown for one web application."""
+
 import threading
 
 from flask import abort
@@ -26,6 +27,7 @@ def configure_services(app, store, jobs):
         with paper_lock:
             if "paper_service" not in app.extensions:
                 from ..paper_trading.service import PaperTradingService
+
                 app.extensions["paper_service"] = PaperTradingService(store)
             return app.extensions["paper_service"]
 

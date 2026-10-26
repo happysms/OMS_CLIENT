@@ -1,4 +1,5 @@
 """Read-only fill inspection: immutable reports and bounded, as-of market context."""
+
 from dataclasses import dataclass
 import heapq
 import logging
@@ -51,11 +52,18 @@ def nearby_ticks(events, window, trigger_id, limit=1000):
             yield clean
 
     # A bounded heap retains the nearest observations, not just the first second of a busy market.
-    selected = heapq.nsmallest(limit, candidates(), key=lambda event: abs(event['time'] - window.center_ms))
+    selected = heapq.nsmallest(
+        limit, candidates(), key=lambda event: abs(event['time'] - window.center_ms)
+    )
     if trigger and not any(item['source_id'] == trigger_id for item in selected):
-        selected = selected[:limit - 1] + [trigger]
+        selected = selected[: limit - 1] + [trigger]
     selected.sort(key=lambda event: event['time'])
-    return dict(items=selected, event_count=count, truncated=count > limit, trigger_found=trigger is not None)
+    return dict(
+        items=selected,
+        event_count=count,
+        truncated=count > limit,
+        trigger_found=trigger is not None,
+    )
 
 
 class ContextMarketReader:
@@ -81,17 +89,36 @@ class ContextMarketReader:
                         previous = expected.get(item['path'])
                         if previous is None:
                             matched = False
-                        elif (previous['size'], previous['mtime_ns']) != (item['size'], item['mtime_ns']):
-                            raise DataError('실행 당시와 원본 파일이 달라 해당 구간을 표시하지 않습니다.')
-                    data = book_frames(events, window) if kind == 'book' else nearby_ticks(events, window, fill.get('source_tick'))
+                        elif (previous['size'], previous['mtime_ns']) != (
+                            item['size'],
+                            item['mtime_ns'],
+                        ):
+                            raise DataError(
+                                '실행 당시와 원본 파일이 달라 해당 구간을 표시하지 않습니다.'
+                            )
+                    data = (
+                        book_frames(events, window)
+                        if kind == 'book'
+                        else nearby_ticks(events, window, fill.get('source_tick'))
+                    )
                     source.verify()
-                    market['frames' if kind == 'book' else 'ticks'] = data.pop('frames' if kind == 'book' else 'items')
-                    market['streams'][kind] = dict(status='ok', provenance='matched' if matched and source.manifest else 'unverified',
-                                                   skipped=source.skipped, **data)
+                    market['frames' if kind == 'book' else 'ticks'] = data.pop(
+                        'frames' if kind == 'book' else 'items'
+                    )
+                    market['streams'][kind] = dict(
+                        status='ok',
+                        provenance='matched' if matched and source.manifest else 'unverified',
+                        skipped=source.skipped,
+                        **data,
+                    )
                 except Exception as exc:
                     if not isinstance(exc, (DataError, OSError, ValueError)):
                         LOG.exception('Fill inspection market read failed: %s %s', venue, kind)
-                    message = str(exc) if isinstance(exc, DataError) else '원본을 읽을 수 없습니다. 파일 보관 상태를 확인하세요.'
+                    message = (
+                        str(exc)
+                        if isinstance(exc, DataError)
+                        else '원본을 읽을 수 없습니다. 파일 보관 상태를 확인하세요.'
+                    )
                     market['streams'][kind] = dict(status='unavailable', message=message)
                 finally:
                     source.close()
@@ -109,7 +136,15 @@ class FillContextService:
         snapshot = context.pop('snapshot')
         window = ContextWindow(context['start_ms'], context['end_ms'], context['fill']['timestamp'])
         config = snapshot.get('initial_config') or snapshot['config']
-        return dict(run_id=identifier, ticker=config['ticker'], checkpoint_ms=snapshot['virtual_time_ms'],
-                    run_start_ms=config['start_ms'], run_end_ms=config['end_ms'],
-                    max_quote_age_ms=config.get('strategy', {}).get('parameters', {}).get('max_quote_age_ms', 1000),
-                    **context, markets=self.market_reader.read(snapshot, context['fill'], window))
+        return dict(
+            run_id=identifier,
+            ticker=config['ticker'],
+            checkpoint_ms=snapshot['virtual_time_ms'],
+            run_start_ms=config['start_ms'],
+            run_end_ms=config['end_ms'],
+            max_quote_age_ms=config.get('strategy', {})
+            .get('parameters', {})
+            .get('max_quote_age_ms', 1000),
+            **context,
+            markets=self.market_reader.read(snapshot, context['fill'], window),
+        )

@@ -3,6 +3,7 @@
 Run: python benchmarks/replay_performance.py --repeats 3 --events 20000
 Use --profile /tmp/replay.prof for engine CPU call statistics.
 """
+
 import argparse
 import cProfile
 import hashlib
@@ -21,33 +22,57 @@ from oms_client.replay.store import ReplayStore
 
 
 def config(auto=False):
-    return config_from(dict(
-        ticker='XYZ', start='2026-10-26T12:00:00+09:00', end='2026-10-26T13:00:00+09:00',
-        initial_krw='1000000', initial_coin='1000', fee_bps='5', quantity_step='0.01',
-        min_notional='1', latency_ms=0, auto_mm=auto, queue_cancel_mode='probabilistic',
-    ))
+    return config_from(
+        dict(
+            ticker='XYZ',
+            start='2026-10-26T12:00:00+09:00',
+            end='2026-10-26T13:00:00+09:00',
+            initial_krw='1000000',
+            initial_coin='1000',
+            fee_bps='5',
+            quantity_step='0.01',
+            min_notional='1',
+            latency_ms=0,
+            auto_mm=auto,
+            queue_cancel_mode='probabilistic',
+        )
+    )
 
 
 def book(at, quantity=100):
-    return dict(time=at, kind='book', venue='bithumb', source_id=f'book:{at}', server_time=at,
-                bids=[dict(price=100-i, quantity=quantity) for i in range(5)],
-                asks=[dict(price=102+i, quantity=quantity) for i in range(5)])
+    return dict(
+        time=at,
+        kind='book',
+        venue='bithumb',
+        source_id=f'book:{at}',
+        server_time=at,
+        bids=[dict(price=100 - i, quantity=quantity) for i in range(5)],
+        asks=[dict(price=102 + i, quantity=quantity) for i in range(5)],
+    )
 
 
 def events(start, count):
-    for index in range(1, count+1):
+    for index in range(1, count + 1):
         at = start + index
         if index % 10 == 0:
             yield book(at, 100 + (index // 10) % 3 * 10)
         else:
-            yield dict(time=at, kind='tick', venue='bithumb', source_id=f'tick:{at}',
-                       price=100 if index % 2 else 102, qty=-2 if index % 2 else 2,
-                       direction_known=True, server_time=at)
+            yield dict(
+                time=at,
+                kind='tick',
+                venue='bithumb',
+                source_id=f'tick:{at}',
+                price=100 if index % 2 else 102,
+                qty=-2 if index % 2 else 2,
+                direction_known=True,
+                server_time=at,
+            )
 
 
 def digest(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, allow_nan=False,
-                                    separators=(',', ':')).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, allow_nan=False, separators=(',', ':')).encode()
+    ).hexdigest()
 
 
 def engine_run(data, scenario):
@@ -67,8 +92,12 @@ def engine_run(data, scenario):
     engine.finish()
     elapsed = time.perf_counter() - start
     # Hash at capture so later mutable books cannot change earlier checkpoints.
-    result = dict(final=engine.snapshot(), fills=engine.new_fills,
-                  orders=engine.new_order_events, checkpoints=checkpoints)
+    result = dict(
+        final=engine.snapshot(),
+        fills=engine.new_fills,
+        orders=engine.new_order_events,
+        checkpoints=checkpoints,
+    )
     return elapsed, digest(result)
 
 
@@ -93,9 +122,13 @@ def projection_run(iterations=100, http=False):
             from flask import Flask
             from types import SimpleNamespace
             from oms_client.api.routes.replays import register
+
             app = Flask('replay-benchmark')
-            manager = SimpleNamespace(get=lambda identifier: session.get(),
-                                      get_encoded=lambda identifier: session.get_encoded(), store=session.store)
+            manager = SimpleNamespace(
+                get=lambda identifier: session.get(),
+                get_encoded=lambda identifier: session.get_encoded(),
+                store=session.store,
+            )
             register(app, manager)
             client = app.test_client()
         start = time.perf_counter()
@@ -108,18 +141,24 @@ def projection_run(iterations=100, http=False):
         elapsed = time.perf_counter() - start
         if http:
             result = response.get_json()
-        return elapsed, digest({key: result[key] for key in ('account', 'orders', 'fills', 'ticks')})
+        return elapsed, digest(
+            {key: result[key] for key in ('account', 'orders', 'fills', 'ticks')}
+        )
 
 
 def source_run(count):
     import duckdb
+
     with tempfile.TemporaryDirectory() as temp:
         path = str(Path(temp) / 'books.parquet')
         cfg = config()
         con = duckdb.connect()
-        con.execute('CREATE TABLE input AS SELECT ? + i AS desktopTime, ? + i AS serverTime, '
-                    '100.0 AS b1_p, 10000.0 AS b1_q, 102.0 AS a1_p, 10200.0 AS a1_q '
-                    'FROM range(?) t(i)', [cfg['start_ms'], cfg['start_ms'], count])
+        con.execute(
+            'CREATE TABLE input AS SELECT ? + i AS desktopTime, ? + i AS serverTime, '
+            '100.0 AS b1_p, 10000.0 AS b1_q, 102.0 AS a1_p, 10200.0 AS a1_q '
+            'FROM range(?) t(i)',
+            [cfg['start_ms'], cfg['start_ms'], count],
+        )
         con.sql('SELECT * FROM input').write_parquet(path)
         con.close()
         source = ReplaySource(cfg)
@@ -137,8 +176,12 @@ def main():
     parser.add_argument('--events', type=int, default=20000)
     parser.add_argument('--repeats', type=int, default=3)
     parser.add_argument('--profile')
-    parser.add_argument('--scenarios', nargs='+', default=['idle', 'orders100', 'mm', 'snapshot100', 'http100', 'source'],
-                        choices=['idle', 'orders100', 'mm', 'snapshot100', 'http100', 'source'])
+    parser.add_argument(
+        '--scenarios',
+        nargs='+',
+        default=['idle', 'orders100', 'mm', 'snapshot100', 'http100', 'source'],
+        choices=['idle', 'orders100', 'mm', 'snapshot100', 'http100', 'source'],
+    )
     args = parser.parse_args()
     if args.events < 1 or args.repeats < 1:
         parser.error('events/repeats must be positive')
@@ -157,8 +200,9 @@ def main():
             samples.append(elapsed)
             hashes.add(checksum)
         assert len(hashes) == 1, (scenario, hashes)
-        results[scenario] = dict(median_seconds=statistics.median(samples),
-                                 samples_seconds=samples, sha256=hashes.pop())
+        results[scenario] = dict(
+            median_seconds=statistics.median(samples), samples_seconds=samples, sha256=hashes.pop()
+        )
     print(json.dumps(results, indent=2))
     if args.profile:
         profiler = cProfile.Profile()

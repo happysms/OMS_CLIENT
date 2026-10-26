@@ -1,4 +1,5 @@
 """Bounded, temporary access to read-only compressed funding Parquet files."""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -69,14 +70,18 @@ def materialize_parquet(
                     descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                     with os.fdopen(descriptor, "wb") as output:
                         while True:
-                            remaining = min(max_file_bytes - file_bytes, max_total_bytes - total_bytes)
+                            remaining = min(
+                                max_file_bytes - file_bytes, max_total_bytes - total_bytes
+                            )
                             # Reading one byte past the remaining budget also
                             # detects oversized streams when a limit is exact.
                             chunk = compressed.read(min(_CHUNK_BYTES, remaining + 1))
                             if not chunk:
                                 break
                             if len(chunk) > remaining:
-                                raise DataError("펀딩비 압축 데이터가 읽기 용량 제한을 초과했습니다. 조회 기간을 줄여 주세요.")
+                                raise DataError(
+                                    "펀딩비 압축 데이터가 읽기 용량 제한을 초과했습니다. 조회 기간을 줄여 주세요."
+                                )
                             output.write(chunk)
                             file_bytes += len(chunk)
                             total_bytes += len(chunk)

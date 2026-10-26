@@ -1,4 +1,5 @@
 """Compressed funding is read without changing sources or retaining temp data."""
+
 import gzip
 from pathlib import Path
 import stat
@@ -22,7 +23,9 @@ class FundingArchiveTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.plain = self.root / "plain.parquet"
-        pd.DataFrame({"desktopTime": [1792911579599], "fundingRate": [-0.0000429684]}).to_parquet(self.plain, index=False)
+        pd.DataFrame({"desktopTime": [1792911579599], "fundingRate": [-0.0000429684]}).to_parquet(
+            self.plain, index=False
+        )
         self.archive = self.root / "snapshot.parquet.gz"
         self.archive.write_bytes(gzip.compress(self.plain.read_bytes()))
 
@@ -35,7 +38,9 @@ class FundingArchiveTests(unittest.TestCase):
             created.append(Path(directory.name))
             return directory
 
-        return created, patch.object(funding_archives.tempfile, "TemporaryDirectory", side_effect=temporary_directory)
+        return created, patch.object(
+            funding_archives.tempfile, "TemporaryDirectory", side_effect=temporary_directory
+        )
 
     def test_reads_parquet_preserves_source_and_cleans_up(self):
         original = self.archive.read_bytes()
@@ -43,7 +48,12 @@ class FundingArchiveTests(unittest.TestCase):
             extracted = Path(paths[0])
             self.assertNotEqual(extracted, self.archive)
             with duckdb.connect(":memory:") as connection:
-                self.assertEqual(connection.execute("SELECT fundingRate FROM read_parquet(?)", [paths[0]]).fetchone(), (-0.0000429684,))
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT fundingRate FROM read_parquet(?)", [paths[0]]
+                    ).fetchone(),
+                    (-0.0000429684,),
+                )
             self.assertEqual(stat.S_IMODE(extracted.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(extracted.parent.stat().st_mode), 0o700)
         self.assertFalse(extracted.exists())
@@ -54,7 +64,9 @@ class FundingArchiveTests(unittest.TestCase):
         with materialize_parquet([self.archive, self.plain, self.archive]) as paths:
             self.assertEqual(paths[1], str(self.plain))
             self.assertNotEqual(paths[0], paths[2])
-            self.assertEqual([Path(path).read_bytes() for path in paths], [self.plain.read_bytes()] * 3)
+            self.assertEqual(
+                [Path(path).read_bytes() for path in paths], [self.plain.read_bytes()] * 3
+            )
             self.assertEqual(Path(paths[0]).name, "000000.parquet")
             self.assertEqual(Path(paths[2]).name, "000002.parquet")
         self.assertTrue(self.plain.exists())
@@ -99,7 +111,11 @@ class FundingArchiveTests(unittest.TestCase):
         for limits in scenarios:
             with self.subTest(limits=limits):
                 created, tracked = self.track_extraction()
-                paths = [self.archive, self.archive] if limits.get("max_total_bytes") == 3 * 1024 * 1024 else [self.archive]
+                paths = (
+                    [self.archive, self.archive]
+                    if limits.get("max_total_bytes") == 3 * 1024 * 1024
+                    else [self.archive]
+                )
                 with tracked, self.assertRaisesRegex(DataError, "용량 제한"):
                     with materialize_parquet(paths, **limits):
                         self.fail("Oversized gzip must not reach the consumer")
@@ -144,7 +160,9 @@ class FundingArchiveTests(unittest.TestCase):
 
     def test_exact_byte_limit_succeeds(self):
         size = self.plain.stat().st_size
-        with materialize_parquet([self.archive], max_file_bytes=size, max_total_bytes=size) as paths:
+        with materialize_parquet(
+            [self.archive], max_file_bytes=size, max_total_bytes=size
+        ) as paths:
             self.assertEqual(Path(paths[0]).read_bytes(), self.plain.read_bytes())
 
     def test_plain_and_archive_file_count_limits_apply_before_extraction(self):

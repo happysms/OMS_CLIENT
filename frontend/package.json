@@ -1,8 +1,11 @@
 {
-  "name": "oms-client-frontend",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "check": "node scripts/check.mjs"
-  }
+    "name": "oms-client-frontend",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "check": "node scripts/check.mjs"
+    },
+    "devDependencies": {
+        "prettier": "3.4.2"
+    }
 }

@@ -1,382 +1,1820 @@
-import {TimeChart} from '../../shared/charts.js';
+import { TimeChart } from '../../shared/charts.js';
 
-export function initAnalysis({api,session,catalog,onCatalog}) {
-
-const $=id=>document.getElementById(id);
-const SOURCE_IDS=[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
-const BASE_COLORS=['#5bdfb7','#78b4e8','#f1b66e','#b8a1ed'];
-const COLORS=Object.fromEntries(SOURCE_IDS.map((id,index)=>[id,BASE_COLORS[index]||`hsl(${Math.round((index*137.508+130)%360)} 65% 70%)`]));
-const EXCHANGES={bithumb:'Bithumb',okx:'OKX · 무기한',upbit:'Upbit',binance:'Binance',hyperliquid:'Hyperliquid',ls:'LS'};
-const LIVE_EXCHANGES=new Set(['bithumb','upbit','okx']);
-const INTERVALS={'1s':1000,'10s':10000,'1min':60000,'5min':300000,'1h':3600000,live:1000};
-const INTERVAL_LABEL={'1s':'1초','10s':'10초','1min':'1분','5min':'5분','1h':'1시간',live:'1초'};
-const state={mode:'history',modeVersion:0,session,catalog,sourceIds:[],presets:[],history:[],bounds:new Map(),boundsPending:new Map(),boundsGeneration:0,boundsKey:null,commonBounds:null,result:null,unit:'%',charts:new Map(),zoom:null,queryVersion:0,boundsVersion:0,liveVersion:0,liveId:null,liveTimer:null,liveStarting:false,loading:false,jobId:null,liveResult:false,config:null};
-const maxSources=()=>Math.min(26,Math.max(1,Number.isInteger(state.catalog.limits?.max_sources)?state.catalog.limits.max_sources:26));
-const formulaIds=formula=>new Set(formula.match(/\b[A-Z]\b/g)||[]);
-const label=exchange=>EXCHANGES[exchange]||exchange;
-const currency=exchange=>['bithumb','upbit','ls'].includes(exchange)?'KRW':'USDT';
-const format=(v,d=5)=>Number.isFinite(v)?new Intl.NumberFormat('en-US',{maximumFractionDigits:d}).format(v):'—';
-const price=v=>format(v,Math.abs(v)<10?6:Math.abs(v)<1000?4:2);
-const originalQuote=value=>Number.isFinite(value)?new Intl.NumberFormat('en-US',{maximumFractionDigits:20}).format(value):'—';
-const selectedPriceMode=()=>$('analysis-price-mode').value==='last'?'last':'mean';
-const isFunding=leg=>leg?.data_type==='funding';
-const isCandle=leg=>leg?.data_type==='candle';
-const values=leg=>Array.isArray(leg?.values)?leg.values:isFunding(leg)||isCandle(leg)||(leg?.price_basis&&leg.price_basis!=='mid')?[]:leg?.mid||[];
-const PRICE_BASES=new Set(['mid','bid','ask','buy_vwap','sell_vwap']);
-const isVwap=basis=>basis==='buy_vwap'||basis==='sell_vwap';
-const priceBasisLabel=leg=>leg?.price_basis==='bid'?`매수 ${leg.book_level||1}호가`:leg?.price_basis==='ask'?`매도 ${leg.book_level||1}호가`:leg?.price_basis==='buy_vwap'?'매수 유동성호가':leg?.price_basis==='sell_vwap'?'매도 유동성호가':'중간가';
-const pricingSummary=legs=>legs.filter(l=>!isFunding(l)&&!isCandle(l)&&l.price_basis&&l.price_basis!=='mid').map(l=>`${l.id} ${priceBasisLabel(l)}${isVwap(l.price_basis)?' '+format(l.liquidity_amount,8)+' '+(l.liquidity_currency||currency(l.exchange)):''}`).join(' · ');
-const fundingValue=value=>Number.isFinite(value)?format(value,12)+'%':'—';
-const sourceCatalog=type=>state.catalog?.[{funding:'funding_exchanges',candle:'candle_exchanges'}[type]||'exchanges']||{};
-const typeFor=id=>['funding','candle'].includes($(`data-type-${id}`)?.value)?$(`data-type-${id}`).value:'price';
-const sourceUnit=leg=>isFunding(leg)?'%':isCandle(leg)?'KRW':leg.currency||currency(leg.exchange);
-const hasFunding=legs=>legs.some(isFunding);
-const priceModeLabel=(mode,legs=[])=>{const base=legs.some(isCandle)?(mode==='last'?'마지막 원본 값 · 1분봉 종가':'구간 평균 값 · 1분봉 종가'):hasFunding(legs)?(mode==='last'?'마지막 원본 값':'구간 평균 값'):(mode==='last'?'마지막 원본 호가':'구간 평균 호가'),summary=pricingSummary(legs);return base+(summary?' · '+summary:'');};
-const typedTicker=id=>{const typed=$(`ticker-${id}`).value.trim(),tickers=sourceCatalog(typeFor(id))[$(`exchange-${id}`).value]||[];return tickers.find(t=>t.toUpperCase()===typed.toUpperCase())||typed.toUpperCase();};
-const resultPriceMode=r=>state.mode==='live'?'live':r?.meta?.price_mode==='last'?'last':'mean';
-function priceModeHelp(){
-  const funding=state.sourceIds.some(id=>$(`data-type-${id}`)?.value==='funding');
-  const referenced=formulaIds($('formula').value),candle=[...referenced].some(id=>$(`data-type-${id}`)?.value==='candle');
-  for(const option of $('interval').options)option.disabled=state.mode==='history'&&candle&&INTERVALS[option.value]<60000;
-  if(state.mode==='history'&&candle&&INTERVALS[$('interval').value]<60000)$('interval').value='1min';
-  $('analysis-price-help').textContent=selectedPriceMode()==='last'
-    ?'각 구간의 마지막 원본 값을 사용합니다. 가격 소스는 각각 선택한 가격 기준으로 계산하며, 중간가는 같은 행의 매수·매도 1호가 평균이므로 소수점이 생길 수 있습니다.'
-    :'구간 내 값을 평균 냅니다. 평균 매수·매도 가격에는 실제 주문 호가 단위보다 작은 소수점이 생길 수 있습니다.';
-  if(funding)$('analysis-price-help').textContent+=' 펀딩은 % 값이며, 평균 모드의 원본 관측시각·잔여 시간은 구간의 마지막 스냅샷 기준입니다. 관측이 없는 구간은 앞선 값으로 채우지 않습니다.';
-  if(candle)$('analysis-price-help').textContent+=' 1분봉 소스의 수식 값은 종가(KRW)입니다. 완성 시각으로 집계 구간에 배정하며 차트·결과 시각은 그 구간의 시작입니다. 구간 전체 값은 마지막 원본 분봉이 완성된 뒤 확정되며 그 완성 시각은 소스 카드에 따로 표시합니다. 평균 모드에서는 종가를 평균 내고 OHLCV·시각은 구간 마지막 원본 분봉 기준입니다. 매수·매도 호가와 잔량은 생성하지 않습니다.';
-  const selected=[...referenced].filter(id=>state.sourceIds.includes(id)&&typeFor(id)==='price').map(id=>readPriceOptions(id));
-  if(selected.some(l=>l.price_basis!=='mid'))$('analysis-price-help').textContent+=' 가격 소스의 수식·차트·표는 각각 선택한 가격 기준을 사용합니다. 아래 매수·매도 1호가와 스프레드는 원본 최우선 호가로 표시합니다.';
-  if(selected.some(l=>isVwap(l.price_basis)))$('analysis-price-help').textContent+=' 유동성호가 = 목표 금액 ÷ 체결 코인 수량입니다. 매수는 매도호가를, 매도는 매수호가를 소진하고 마지막 단계는 필요한 만큼만 부분 체결합니다. 저장된 최대 5단계 안에서 금액을 채울 수 없으면 빈 값이며 가격을 추정하지 않습니다. 과거 원화 호가 금액 자료는 정수 절삭 영향으로 근사값입니다.';
-}
-const time=(ms,seconds=false)=>Number.isFinite(Number(ms))?new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',...(seconds?{second:'2-digit'}:{}),hour12:false}).format(Number(ms)):'—';
-const localDate=ms=>new Date(ms+9*3600000).toISOString().slice(0,16);
-const parseLocal=value=>Date.parse(/(?:Z|[+-]\d\d:\d\d)$/.test(value)?value:value+'+09:00');
-const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-let toastTimer;
-function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,4500);}
-function showError(error){$('error').textContent=error instanceof Error?error.message:String(error);$('error').hidden=false;}
-function clearError(){$('error').hidden=true;}
-function status(message,kind='good'){$('data-status').replaceChildren();const dot=document.createElement('span');dot.className=`dot ${kind}`;$('data-status').append(dot,document.createTextNode(message));}
-function storedConfig(){try{return JSON.parse(localStorage.getItem('midprice-server-last-config'));}catch{return null;}}
-function storeConfig(c){try{localStorage.setItem('midprice-server-last-config',JSON.stringify(c));}catch{/* Server persistence remains available. */}}
-
-function readPriceOptions(id,{validate=false}={}){
-  if(typeFor(id)!=='price')return {};
-  const selected=$(`price-basis-${id}`).value,basis=PRICE_BASES.has(selected)?selected:'mid',options={price_basis:basis};
-  if(basis==='bid'||basis==='ask'){
-    const level=Number($(`book-level-${id}`).value);
-    if(validate&&(!Number.isInteger(level)||level<1||level>5))throw new Error(`소스 ${id}의 호가 단계는 1~5로 선택해 주세요.`);
-    options.book_level=level;
-  }
-  if(isVwap(basis)){
-    const amount=Number($(`liquidity-amount-${id}`).value);
-    if(validate&&(!Number.isFinite(amount)||amount<=0))throw new Error(`소스 ${id}의 유동성 금액은 0보다 큰 유한한 수로 입력해 주세요.`);
-    options.liquidity_amount=Number.isFinite(amount)?amount:null;
-  }
-  return options;
-}
-function updatePriceControls(id){
-  const controls=$(`price-options-${id}`),active=typeFor(id)==='price',basis=$(`price-basis-${id}`).value,unit=currency($(`exchange-${id}`).value),amount=$(`liquidity-amount-${id}`);
-  controls.hidden=!active;$(`price-basis-${id}`).disabled=!active;
-  $(`book-level-field-${id}`).hidden=!active||!['bid','ask'].includes(basis);$(`book-level-${id}`).disabled=!active||!['bid','ask'].includes(basis);
-  $(`liquidity-field-${id}`).hidden=!active||!isVwap(basis);amount.disabled=!active||!isVwap(basis);
-  if(!amount.value||amount.dataset.currency!==unit){amount.value=unit==='KRW'?'1000000':'1000';amount.dataset.currency=unit;}
-  $(`liquidity-currency-${id}`).textContent=unit;
-  $(`price-options-help-${id}`).hidden=!active||!isVwap(basis);
-}
-function restorePriceOptions(id,leg){
-  $(`price-basis-${id}`).value=PRICE_BASES.has(leg?.price_basis)?leg.price_basis:'mid';
-  $(`book-level-${id}`).value=Number.isInteger(leg?.book_level)&&leg.book_level>=1&&leg.book_level<=5?String(leg.book_level):'1';
-  const unit=currency($(`exchange-${id}`).value),amount=Number(leg?.liquidity_amount),input=$(`liquidity-amount-${id}`);
-  input.value=Number.isFinite(amount)&&amount>0?String(amount):unit==='KRW'?'1000000':'1000';input.dataset.currency=unit;
-  updatePriceControls(id);
-}
-
-function updateSourceActions(){
-  const count=state.sourceIds.length,maximum=maxSources();
-  $('add-source').disabled=count>=maximum;
-  $('add-source').title=count>=maximum?`최대 ${maximum}개 소스를 사용할 수 있습니다.`:'가격·펀딩·분봉 데이터 소스를 추가합니다.';
-  $('source-controls-count').textContent=`${count} / ${maximum}`;
-  $('formula-source-ids').textContent=state.sourceIds.join(' · ');
-  for(const button of $('leg-controls').querySelectorAll('[data-remove-source]'))button.disabled=count<=1;
-}
-function makeControls(ids){
-  state.sourceIds=[...ids];$('leg-controls').replaceChildren();
-  for(const id of state.sourceIds)makeControl(id);
-  updateSourceActions();
-}
-function makeControl(id){
-    const card=document.createElement('div');card.className='source-control';card.dataset.id=id;
-    card.innerHTML='<div class="source-label"><span class="source-letter"></span><span class="source-kind">중간가</span><span class="currency"></span></div><select class="source-type"><option value="price">실제 호가 · 중간가</option><option value="candle">1분봉 종가 · 과거 보완</option><option value="funding">펀딩비율 · %</option></select><div class="source-pickers"><select></select><input spellcheck="false" autocomplete="off" maxlength="80"><datalist></datalist></div>';
-    card.querySelector('.source-letter').textContent=id;card.querySelector('.source-letter').style.color=COLORS[id];
-    const remove=document.createElement('button');remove.type='button';remove.className='remove-source';remove.dataset.removeSource=id;remove.textContent='×';remove.setAttribute('aria-label',`소스 ${id} 삭제`);remove.title=`소스 ${id} 삭제`;
-    remove.addEventListener('click',()=>removeSource(id));card.querySelector('.source-label').append(remove);
-    const type=card.querySelector('.source-type');type.id=`data-type-${id}`;type.setAttribute('aria-label',`소스 ${id} 데이터 종류`);
-    const exchange=card.querySelector('.source-pickers select');exchange.id=`exchange-${id}`;exchange.setAttribute('aria-label',`소스 ${id} 거래소`);
-    const ticker=card.querySelector('input');ticker.id=`ticker-${id}`;ticker.setAttribute('aria-label',`소스 ${id} 종목`);ticker.setAttribute('list',`tickers-${id}`);card.querySelector('datalist').id=`tickers-${id}`;$('leg-controls').append(card);
-    const options=document.createElement('div');options.className='source-price-options';options.id=`price-options-${id}`;
-    options.innerHTML=`<label for="price-basis-${id}">수식에 사용할 가격</label><select id="price-basis-${id}"><option value="mid">중간가</option><option value="bid">매수 N호가</option><option value="ask">매도 N호가</option><option value="buy_vwap">매수 유동성호가 · 매도호가 소진</option><option value="sell_vwap">매도 유동성호가 · 매수호가 소진</option></select><div id="book-level-field-${id}" class="source-price-field" hidden><label for="book-level-${id}">호가 단계 · N</label><select id="book-level-${id}">${[1,2,3,4,5].map(n=>`<option value="${n}">${n}호가</option>`).join('')}</select></div><div id="liquidity-field-${id}" class="source-price-field" hidden><label for="liquidity-amount-${id}">목표 금액 · <span id="liquidity-currency-${id}">KRW</span></label><input id="liquidity-amount-${id}" type="text" inputmode="decimal" autocomplete="off" aria-describedby="price-options-help-${id}" spellcheck="false"></div><p id="price-options-help-${id}" class="tiny-help" hidden>목표 금액 ÷ 체결 수량 · 마지막 단계 부분 체결 · 저장 깊이 내 부족하면 빈 값</p>`;
-    card.append(options);
-    $(`price-basis-${id}`).addEventListener('change',()=>{updatePriceControls(id);$('preset').value='custom';$('delete-preset').hidden=true;refreshLists();changed();});
-    $(`book-level-${id}`).addEventListener('change',()=>{$('preset').value='custom';$('delete-preset').hidden=true;refreshLists();changed();});
-    $(`liquidity-amount-${id}`).addEventListener('input',()=>{$('preset').value='custom';$('delete-preset').hidden=true;changed();});
-    $(`liquidity-amount-${id}`).addEventListener('change',changed);
-    type.addEventListener('change',()=>{populateExchanges(id);const available=sourceCatalog(typeFor(id))[exchange.value]||[];ticker.value=available.includes('BTC')?'BTC':available[0]||'';if($('formula').value.trim()===id&&['KRW','USDT','%'].includes($('unit').value))$('unit').value=typeFor(id)==='funding'?'%':currency(exchange.value);$('preset').value='custom';$('delete-preset').hidden=true;refreshLists();changed();updateAvailable();});
-    exchange.addEventListener('change',()=>{if(typeFor(id)!=='price'){const available=sourceCatalog(typeFor(id))[exchange.value]||[];if(!available.some(t=>t.toUpperCase()===ticker.value.toUpperCase()))ticker.value=available.includes('BTC')?'BTC':available[0]||'';}syncPair(id,'exchange');refreshLists();changed();updateAvailable();});
-    ticker.addEventListener('change',()=>{ticker.value=typedTicker(id);syncPair(id,'ticker');refreshLists();changed();updateAvailable();});
-    ticker.addEventListener('input',changed);
-}
-function initializeSource(id,leg){
-  $(`data-type-${id}`).value=isFunding(leg)?'funding':isCandle(leg)?'candle':'price';populateExchanges(id);
-  const exchange=$(`exchange-${id}`);
-  if(typeof leg?.exchange==='string'){
-    if(![...exchange.options].some(option=>option.value===leg.exchange))exchange.add(new Option(label(leg.exchange),leg.exchange));
-    exchange.value=leg.exchange;
-  }
-  const tickers=sourceCatalog(typeFor(id))[exchange.value]||[];
-  $(`ticker-${id}`).value=typeof leg?.ticker==='string'?leg.ticker:tickers.includes('BTC')?'BTC':tickers[0]||'';
-  restorePriceOptions(id,leg);
-}
-function ensureSources(ids){
-  for(const id of ids)if(!state.sourceIds.includes(id)){
-    state.sourceIds.push(id);makeControl(id);initializeSource(id,state.catalog.defaults?.legs?.find(leg=>leg.id===id));
-  }
-  updateSourceActions();
-}
-function structureChanged(){
-  state.boundsVersion++;state.commonBounds=null;
-  $('preset').value='custom';$('delete-preset').hidden=true;clearError();refreshLists();changed();updateAvailable();
-}
-function addSource(){
-  if(state.sourceIds.length>=maxSources()){toast(`최대 ${maxSources()}개 소스를 사용할 수 있습니다.`);return;}
-  const id=SOURCE_IDS.slice(0,maxSources()).find(identifier=>!state.sourceIds.includes(identifier));
-  ensureSources([id]);structureChanged();$(`data-type-${id}`).focus();toast(`소스 ${id}를 추가했습니다. 수식에 ${id}를 넣어 사용하세요.`);
-}
-function removeSource(id){
-  if(state.sourceIds.length<=1){toast('데이터 소스는 최소 1개를 유지해야 합니다.');return;}
-  if(formulaIds($('formula').value).has(id)){toast(`수식에서 ${id}를 먼저 제외한 뒤 소스를 삭제하세요.`);return;}
-  const index=state.sourceIds.indexOf(id);if(index<0)return;
-  state.sourceIds.splice(index,1);$(`data-type-${id}`).closest('.source-control').remove();updateSourceActions();structureChanged();
-  $(`data-type-${state.sourceIds[Math.min(index,state.sourceIds.length-1)]}`).focus();
-}
-function populateExchanges(onlyId){for(const id of onlyId?[onlyId]:state.sourceIds){const select=$(`exchange-${id}`),previous=select.value;select.replaceChildren();for(const exchange of Object.keys(sourceCatalog(typeFor(id))))select.add(new Option(label(exchange),exchange));if([...select.options].some(o=>o.value===previous))select.value=previous;}}
-function resetPriceSources(ids){
-  for(const id of ids){
-    const funding=typeFor(id)!=='price',defaultLeg=state.catalog.defaults?.legs?.find(leg=>leg.id===id);
-    $(`data-type-${id}`).value='price';populateExchanges(id);
-    if(funding&&Object.hasOwn(sourceCatalog('price'),defaultLeg?.exchange||''))$(`exchange-${id}`).value=defaultLeg.exchange;
-    const tickers=sourceCatalog('price')[$(`exchange-${id}`).value]||[],input=$(`ticker-${id}`),previous=tickers.find(t=>t.toUpperCase()===input.value.trim().toUpperCase());
-    input.value=previous||(tickers.includes(defaultLeg?.ticker)?defaultLeg.ticker:tickers.includes('BTC')?'BTC':tickers[0]||'');
-    restorePriceOptions(id,null);
-  }
-}
-function refreshLists(){for(const id of state.sourceIds){const exchange=$(`exchange-${id}`).value,type=typeFor(id),list=$(`tickers-${id}`);list.replaceChildren();for(const ticker of sourceCatalog(type)[exchange]||[])list.append(new Option(ticker,ticker));const card=$(`exchange-${id}`).closest('.source-control');updatePriceControls(id);card.querySelector('.source-kind').textContent=type==='funding'?'펀딩비율':type==='candle'?'1분봉 종가':priceBasisLabel(readPriceOptions(id));card.querySelector('.currency').textContent=type==='funding'?'%':currency(exchange);card.classList.toggle('unsupported-live',state.mode==='live'&&(type!=='price'||!LIVE_EXCHANGES.has(exchange)));}updateSourceActions();}
-function syncPair(id,field){const preset=$('preset').value;if(['relative','ratio'].includes(preset)&&id==='A'){if(field==='ticker'&&typeFor('A')===typeFor('B'))$('ticker-B').value=$('ticker-A').value;if(field==='exchange'&&preset==='relative'&&typeFor('A')===typeFor('C'))$('exchange-C').value=$('exchange-A').value;}if(preset==='relative'&&id==='B'&&field==='exchange'&&typeFor('B')===typeFor('D'))$('exchange-D').value=$('exchange-B').value;if(preset==='mid')$('unit').value=typeFor('A')==='funding'?'%':currency($('exchange-A').value);}
-function config(){const formula=$('formula').value.trim();if(!formula||formula.length>256)throw new Error('조합 수식을 1~256자로 입력해주세요.');const referenced=formulaIds(formula),missing=[...referenced].filter(id=>!state.sourceIds.includes(id));if(missing.length)throw new Error(`${missing.join(', ')} 소스를 먼저 추가한 뒤 수식에 사용하세요.`);return{formula,unit:$('unit').value,legs:state.sourceIds.map(id=>({id,data_type:typeFor(id),exchange:$(`exchange-${id}`).value,ticker:typedTicker(id),...readPriceOptions(id,{validate:referenced.has(id)})})),start:$('start').value,end:$('end').value,interval:$('interval').value,ewm_span:Number($('ewm-span').value),max_points:6000,price_mode:state.mode==='live'?'last':selectedPriceMode()};}
-function referencedLegs(c){const ids=formulaIds(c.formula);return c.legs.filter(leg=>ids.has(leg.id));}
-function applyConfig(c){
-  const requested=Array.isArray(c.legs)&&c.legs.length?c.legs:[{id:'A'}],ids=requested.map(leg=>leg?.id);
-  if(ids.length>maxSources()||new Set(ids).size!==ids.length||ids.some(id=>!SOURCE_IDS.slice(0,maxSources()).includes(id)))throw new Error(`저장한 데이터 소스는 중복 없는 A~${SOURCE_IDS[maxSources()-1]}로 최대 ${maxSources()}개까지 불러올 수 있습니다.`);
-  makeControls(ids);
-  $('analysis-price-mode').value=c.price_mode==='last'?'last':'mean';
-  for(const leg of requested)initializeSource(leg.id,leg);
-  $('formula').value=c.formula||ids[0];$('unit').value=c.unit??'%';$('interval').value=Object.hasOwn(INTERVALS,c.interval)?c.interval:'1min';$('ewm-span').value=c.ewm_span||60;if(c.start&&Number.isFinite(parseLocal(c.start)))$('start').value=localDate(parseLocal(c.start));if(c.end&&Number.isFinite(parseLocal(c.end)))$('end').value=localDate(parseLocal(c.end));refreshLists();priceModeHelp();
-}
-function boundsSelectionKey(){
-  return JSON.stringify([...formulaIds($('formula').value)].sort().map(id=>state.sourceIds.includes(id)
-    ?[id,typeFor(id),$(`exchange-${id}`).value,typedTicker(id)]:[id,null]));
-}
-function sourceBounds(leg,{force=false}={}){
-  const key=`${leg.data_type||'price'}:${leg.exchange}:${leg.ticker}`,generation=state.boundsGeneration,saved=state.bounds.get(key);
-  if(!force&&saved&&Date.now()-saved.fetchedAt<30000)return Promise.resolve(saved);
-  const pending=state.boundsPending.get(key);if(pending?.generation===generation)return pending.promise;
-  const entry={generation,promise:null};
-  entry.promise=(async()=>{
-    const response=await api(`/api/bounds?${new URLSearchParams({exchange:leg.exchange,ticker:leg.ticker,...(leg.data_type!=='price'?{data_type:leg.data_type}:{})})}`);
-    const result={start:Date.parse(response.start),end:Date.parse(response.end),fetchedAt:Date.now()};
-    if(!Number.isFinite(result.start)||!Number.isFinite(result.end))throw new Error('저장된 데이터의 시간 범위를 확인하지 못했습니다.');
-    if(generation===state.boundsGeneration)state.bounds.set(key,result);
-    return result;
-  })().finally(()=>{if(state.boundsPending.get(key)===entry)state.boundsPending.delete(key);});
-  state.boundsPending.set(key,entry);return entry.promise;
-}
-async function updateAvailable({force=false}={}){
-  const version=++state.boundsVersion,selection=boundsSelectionKey();state.boundsKey=selection;
-  const current=()=>{
-    if(version!==state.boundsVersion)return false;
-    if(selection!==boundsSelectionKey()){state.commonBounds=null;$('available-range').textContent='소스 설정이 바뀌었습니다. 종목 입력을 마치면 저장 범위를 다시 확인합니다.';return false;}
-    return true;
-  };
-  let legs;try{legs=referencedLegs(config());}catch(error){state.commonBounds=null;$('available-range').textContent=error.message;return null;}
-  if(!legs.length){state.commonBounds=null;$('available-range').textContent='수식에 사용할 데이터 소스를 지정하세요.';return null;}$('available-range').textContent='선택한 소스의 저장 범위를 확인하고 있습니다.';
-  try{const limits=await Promise.all(legs.map(leg=>sourceBounds(leg,{force})));
-    if(!current())return null;const start=Math.max(...limits.map(x=>x.start)),end=Math.ceil((Math.min(...limits.map(x=>x.end))+1)/60000)*60000;state.commonBounds=end>start?{start,end}:null;$('available-range').textContent=state.commonBounds?`공통 저장 범위 ${time(start)} ~ ${time(end)} KST`:'선택한 소스가 함께 존재하는 저장 구간이 없습니다.';return state.commonBounds;
-  }catch(error){if(current()){state.commonBounds=null;$('available-range').textContent=error.message;}return null;}
-}
-async function setRange(hours){const b=await updateAvailable();if(!b){toast('선택한 소스의 공통 저장 구간을 확인해주세요.');return false;}$('end').value=localDate(b.end);$('start').value=localDate(Math.max(b.start,b.end-hours*3600000));document.querySelectorAll('[data-hours]').forEach(el=>el.classList.toggle('selected',Number(el.dataset.hours)===hours));return true;}
-function changed(){
-  state.queryVersion++;state.loading=false;$('job-progress').hidden=true;
-  if(state.boundsKey!==null&&state.boundsKey!==boundsSelectionKey()){
-    state.boundsVersion++;state.boundsKey=null;state.commonBounds=null;
-    $('available-range').textContent='소스 설정이 바뀌었습니다. 종목 입력을 마치면 저장 범위를 다시 확인합니다.';
-  }
-  if(state.liveId||state.liveStarting){stopLive();toast('설정이 바뀌었습니다. 실시간 시작을 눌러 새 조합을 연결하세요.');}
-  priceModeHelp();resetResults(state.mode==='history'?'설정이 바뀌었습니다. 분석 실행을 눌러 새 조건으로 조회하세요.':'실시간 시작을 눌러 새 조건으로 연결하세요.');
-  status('설정 변경 · '+(state.mode==='history'?'분석 실행으로 새 조건 적용':'실시간 시작으로 새 조건 적용'),'muted');
-  if(state.mode==='history'){$('run-button').disabled=false;$('run-button').innerHTML='<span>▶</span> 분석 실행';}
-}
-
-const resultChart=new TimeChart($('result-chart'),{onHover:syncCursor,onZoom:syncZoom,format:v=>format(v,hasFunding(state.result?.legs||[])?12:6)});
-const clockChart=new TimeChart($('analysis-clock-chart'),{onHover:syncCursor,onZoom:syncZoom,format:v=>format(v,3)+' ms'});
-function renderClockChart(r,gapMs){
-  const series=r.legs.map(leg=>({label:`${leg.id} ${label(leg.exchange)} ${leg.ticker}${isFunding(leg)?' · 펀딩':''}`,values:leg.timestamp_delta_ms||r.times.map(()=>null),color:COLORS[leg.id],isolatedPoints:true}));
-  clockChart.setData(r.times,series,{gapMs});
-  $('analysis-clock-mode').textContent=state.mode==='live'?'실시간 수신 시각 − 거래소 이벤트 시각 · 1초마다 최신 호가 관측':r.meta.price_mode==='last'?'각 구간의 마지막 원본 행 기준 · 가격 차트와 공통 시간축':'각 구간의 유효한 원본 행별 시간차 평균 · 가격 차트와 공통 시간축';
-  $('analysis-clock-empty').hidden=series.some(line=>line.values.some(Number.isFinite));
-  $('analysis-clock-empty').firstElementChild.textContent='표시할 기록·서버 시각 쌍이 없습니다.';
-  $('analysis-clock-legend').replaceChildren();
-  series.forEach((line,index)=>{
-    const leg=r.legs[index],item=document.createElement('span'),latest=line.values.at(-1);
-    item.style.setProperty('--quality-color',line.color);
-    item.textContent=`${line.label} · ${Number.isFinite(latest)?format(latest,3)+' ms':'—'}`;
-    const reason=leg.timestamp_delta_unavailable_reason||(!Array.isArray(leg.timestamp_delta_ms)?'이 결과에는 시간차가 저장되어 있지 않습니다. 분석을 다시 실행해 주세요.':!line.values.some(Number.isFinite)?'유효한 기록·서버 시각 쌍이 없습니다.':'');
-    if(reason)item.textContent+=` · ${reason}`;
-    $('analysis-clock-legend').append(item);
-  });
-}
-function syncZoom(range){state.zoom=range;resultChart.setZoom(range);clockChart.setZoom(range);for(const chart of state.charts.values())chart.setZoom(range);$('reset-zoom').hidden=!range;}
-function syncCursor(timestamp){resultChart.setCursor(timestamp);clockChart.setCursor(timestamp);for(const chart of state.charts.values())chart.setCursor(timestamp);if(timestamp===null||!state.result?.times.length){$('cursor-info').textContent='차트 위에 마우스를 올려 값을 확인하세요.';return;}const r=state.result;let lo=0,hi=r.times.length-1;while(lo<hi){const m=Math.floor((lo+hi)/2);if(r.times[m]<timestamp)lo=m+1;else hi=m;}let i=lo;if(i&&Math.abs(r.times[i-1]-timestamp)<Math.abs(r.times[i]-timestamp))i--;$('cursor-info').textContent=`${time(r.times[i],state.mode==='live')} KST · 조합 ${format(r.result[i],hasFunding(r.legs)?12:6)} ${unitLabel()} · EMA ${format(r.ewm[i],hasFunding(r.legs)?12:6)}`;}
-function unitLabel(){return state.unit==='ratio'?'':state.unit;}
-function ensureSourceCards(legs){
-  const signature=legs.map(l=>`${l.id}:${l.data_type||'price'}:${l.exchange}:${l.ticker}:${l.price_basis||'mid'}:${l.book_level||1}:${l.liquidity_amount||''}:${l.depth_limit||''}:${l.quantity_basis||''}`).join('|');if($('source-charts').dataset.signature===signature)return;
-  for(const chart of state.charts.values())chart.destroy();state.charts.clear();$('source-charts').replaceChildren();$('source-charts').dataset.signature=signature;
-  for(const leg of legs){const funding=isFunding(leg),candle=isCandle(leg),card=document.createElement('article');card.className='panel source-panel';card.dataset.id=leg.id;card.dataset.dataType=funding?'funding':candle?'candle':'price';card.dataset.priceBasis=leg.price_basis||'mid';
-    card.innerHTML='<div class="source-card-heading"><div class="source-card-title"><span class="source-letter"></span><div><h3></h3><small></small></div></div><div class="source-price"><span>—</span><small></small></div></div><div class="chart-wrap"><canvas role="img"></canvas></div>'+(funding?'<div class="source-price-grid funding-source-grid"><div>펀딩 원본 비율<span class="funding-raw">—</span></div><div>마지막 관측 (KST)<span class="funding-time">—</span></div><div>관측 기준 정산 잔여<span class="funding-next">—</span></div></div>':candle?'<div class="source-price-grid candle-source-grid"><div>원본 고가 / 저가<span class="candle-range">—</span></div><div>원본 거래량 (USDT)<span class="candle-volume">—</span></div><div>분봉 완성 (KST)<span class="candle-time">—</span></div></div>':'<div class="source-price-grid"><div>매수 1호가<span class="bid">—</span></div><div>매도 1호가<span class="ask">—</span></div><div>스프레드<span class="spread">—</span></div></div>');
-    card.querySelector('.source-letter').textContent=leg.id;card.querySelector('.source-letter').style.color=COLORS[leg.id]||BASE_COLORS[0];card.querySelector('h3').textContent=leg.ticker;card.querySelector('.source-card-title small').textContent=label(leg.exchange)+(funding?' · 펀딩비율':candle?' · 1분봉 종가':' · '+priceBasisLabel(leg));card.querySelector('.source-price small').textContent=sourceUnit(leg);card.querySelector('canvas').setAttribute('aria-label',`${leg.id} ${leg.exchange} ${leg.ticker} ${funding?'펀딩비율 퍼센트':candle?'1분봉 종가':priceBasisLabel(leg)} 차트`);
-    if(!funding&&!candle&&leg.price_basis&&leg.price_basis!=='mid'){
-      const description=document.createElement('p');description.className='source-basis-help';
-      description.textContent=priceBasisLabel(leg)+(isVwap(leg.price_basis)?` · 목표 ${format(leg.liquidity_amount,8)} ${leg.liquidity_currency||currency(leg.exchange)} · 저장 깊이 ${leg.depth_limit||5}단계 내 부족하면 빈 값`:' · 아래 호가는 원본 최우선 1호가');card.append(description);
+export function initAnalysis({ api, session, catalog, onCatalog }) {
+    const $ = (id) => document.getElementById(id);
+    const SOURCE_IDS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
+    const BASE_COLORS = ['#5bdfb7', '#78b4e8', '#f1b66e', '#b8a1ed'];
+    const COLORS = Object.fromEntries(
+        SOURCE_IDS.map((id, index) => [
+            id,
+            BASE_COLORS[index] || `hsl(${Math.round((index * 137.508 + 130) % 360)} 65% 70%)`,
+        ]),
+    );
+    const EXCHANGES = {
+        bithumb: 'Bithumb',
+        okx: 'OKX · 무기한',
+        upbit: 'Upbit',
+        binance: 'Binance',
+        hyperliquid: 'Hyperliquid',
+        ls: 'LS',
+    };
+    const LIVE_EXCHANGES = new Set(['bithumb', 'upbit', 'okx']);
+    const INTERVALS = {
+        '1s': 1000,
+        '10s': 10000,
+        '1min': 60000,
+        '5min': 300000,
+        '1h': 3600000,
+        live: 1000,
+    };
+    const INTERVAL_LABEL = {
+        '1s': '1초',
+        '10s': '10초',
+        '1min': '1분',
+        '5min': '5분',
+        '1h': '1시간',
+        live: '1초',
+    };
+    const state = {
+        mode: 'history',
+        modeVersion: 0,
+        session,
+        catalog,
+        sourceIds: [],
+        presets: [],
+        history: [],
+        bounds: new Map(),
+        boundsPending: new Map(),
+        boundsGeneration: 0,
+        boundsKey: null,
+        commonBounds: null,
+        result: null,
+        unit: '%',
+        charts: new Map(),
+        zoom: null,
+        queryVersion: 0,
+        boundsVersion: 0,
+        liveVersion: 0,
+        liveId: null,
+        liveTimer: null,
+        liveStarting: false,
+        loading: false,
+        jobId: null,
+        liveResult: false,
+        config: null,
+    };
+    const maxSources = () =>
+        Math.min(
+            26,
+            Math.max(
+                1,
+                Number.isInteger(state.catalog.limits?.max_sources)
+                    ? state.catalog.limits.max_sources
+                    : 26,
+            ),
+        );
+    const formulaIds = (formula) => new Set(formula.match(/\b[A-Z]\b/g) || []);
+    const label = (exchange) => EXCHANGES[exchange] || exchange;
+    const currency = (exchange) => (['bithumb', 'upbit', 'ls'].includes(exchange) ? 'KRW' : 'USDT');
+    const format = (v, d = 5) =>
+        Number.isFinite(v)
+            ? new Intl.NumberFormat('en-US', { maximumFractionDigits: d }).format(v)
+            : '—';
+    const price = (v) => format(v, Math.abs(v) < 10 ? 6 : Math.abs(v) < 1000 ? 4 : 2);
+    const originalQuote = (value) =>
+        Number.isFinite(value)
+            ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 20 }).format(value)
+            : '—';
+    const selectedPriceMode = () => ($('analysis-price-mode').value === 'last' ? 'last' : 'mean');
+    const isFunding = (leg) => leg?.data_type === 'funding';
+    const isCandle = (leg) => leg?.data_type === 'candle';
+    const values = (leg) =>
+        Array.isArray(leg?.values)
+            ? leg.values
+            : isFunding(leg) || isCandle(leg) || (leg?.price_basis && leg.price_basis !== 'mid')
+              ? []
+              : leg?.mid || [];
+    const PRICE_BASES = new Set(['mid', 'bid', 'ask', 'buy_vwap', 'sell_vwap']);
+    const isVwap = (basis) => basis === 'buy_vwap' || basis === 'sell_vwap';
+    const priceBasisLabel = (leg) =>
+        leg?.price_basis === 'bid'
+            ? `매수 ${leg.book_level || 1}호가`
+            : leg?.price_basis === 'ask'
+              ? `매도 ${leg.book_level || 1}호가`
+              : leg?.price_basis === 'buy_vwap'
+                ? '매수 유동성호가'
+                : leg?.price_basis === 'sell_vwap'
+                  ? '매도 유동성호가'
+                  : '중간가';
+    const pricingSummary = (legs) =>
+        legs
+            .filter(
+                (l) => !isFunding(l) && !isCandle(l) && l.price_basis && l.price_basis !== 'mid',
+            )
+            .map(
+                (l) =>
+                    `${l.id} ${priceBasisLabel(l)}${isVwap(l.price_basis) ? ' ' + format(l.liquidity_amount, 8) + ' ' + (l.liquidity_currency || currency(l.exchange)) : ''}`,
+            )
+            .join(' · ');
+    const fundingValue = (value) => (Number.isFinite(value) ? format(value, 12) + '%' : '—');
+    const sourceCatalog = (type) =>
+        state.catalog?.[
+            { funding: 'funding_exchanges', candle: 'candle_exchanges' }[type] || 'exchanges'
+        ] || {};
+    const typeFor = (id) =>
+        ['funding', 'candle'].includes($(`data-type-${id}`)?.value)
+            ? $(`data-type-${id}`).value
+            : 'price';
+    const sourceUnit = (leg) =>
+        isFunding(leg) ? '%' : isCandle(leg) ? 'KRW' : leg.currency || currency(leg.exchange);
+    const hasFunding = (legs) => legs.some(isFunding);
+    const priceModeLabel = (mode, legs = []) => {
+        const base = legs.some(isCandle)
+                ? mode === 'last'
+                    ? '마지막 원본 값 · 1분봉 종가'
+                    : '구간 평균 값 · 1분봉 종가'
+                : hasFunding(legs)
+                  ? mode === 'last'
+                      ? '마지막 원본 값'
+                      : '구간 평균 값'
+                  : mode === 'last'
+                    ? '마지막 원본 호가'
+                    : '구간 평균 호가',
+            summary = pricingSummary(legs);
+        return base + (summary ? ' · ' + summary : '');
+    };
+    const typedTicker = (id) => {
+        const typed = $(`ticker-${id}`).value.trim(),
+            tickers = sourceCatalog(typeFor(id))[$(`exchange-${id}`).value] || [];
+        return tickers.find((t) => t.toUpperCase() === typed.toUpperCase()) || typed.toUpperCase();
+    };
+    const resultPriceMode = (r) =>
+        state.mode === 'live' ? 'live' : r?.meta?.price_mode === 'last' ? 'last' : 'mean';
+    function priceModeHelp() {
+        const funding = state.sourceIds.some((id) => $(`data-type-${id}`)?.value === 'funding');
+        const referenced = formulaIds($('formula').value),
+            candle = [...referenced].some((id) => $(`data-type-${id}`)?.value === 'candle');
+        for (const option of $('interval').options)
+            option.disabled = state.mode === 'history' && candle && INTERVALS[option.value] < 60000;
+        if (state.mode === 'history' && candle && INTERVALS[$('interval').value] < 60000)
+            $('interval').value = '1min';
+        $('analysis-price-help').textContent =
+            selectedPriceMode() === 'last'
+                ? '각 구간의 마지막 원본 값을 사용합니다. 가격 소스는 각각 선택한 가격 기준으로 계산하며, 중간가는 같은 행의 매수·매도 1호가 평균이므로 소수점이 생길 수 있습니다.'
+                : '구간 내 값을 평균 냅니다. 평균 매수·매도 가격에는 실제 주문 호가 단위보다 작은 소수점이 생길 수 있습니다.';
+        if (funding)
+            $('analysis-price-help').textContent +=
+                ' 펀딩은 % 값이며, 평균 모드의 원본 관측시각·잔여 시간은 구간의 마지막 스냅샷 기준입니다. 관측이 없는 구간은 앞선 값으로 채우지 않습니다.';
+        if (candle)
+            $('analysis-price-help').textContent +=
+                ' 1분봉 소스의 수식 값은 종가(KRW)입니다. 완성 시각으로 집계 구간에 배정하며 차트·결과 시각은 그 구간의 시작입니다. 구간 전체 값은 마지막 원본 분봉이 완성된 뒤 확정되며 그 완성 시각은 소스 카드에 따로 표시합니다. 평균 모드에서는 종가를 평균 내고 OHLCV·시각은 구간 마지막 원본 분봉 기준입니다. 매수·매도 호가와 잔량은 생성하지 않습니다.';
+        const selected = [...referenced]
+            .filter((id) => state.sourceIds.includes(id) && typeFor(id) === 'price')
+            .map((id) => readPriceOptions(id));
+        if (selected.some((l) => l.price_basis !== 'mid'))
+            $('analysis-price-help').textContent +=
+                ' 가격 소스의 수식·차트·표는 각각 선택한 가격 기준을 사용합니다. 아래 매수·매도 1호가와 스프레드는 원본 최우선 호가로 표시합니다.';
+        if (selected.some((l) => isVwap(l.price_basis)))
+            $('analysis-price-help').textContent +=
+                ' 유동성호가 = 목표 금액 ÷ 체결 코인 수량입니다. 매수는 매도호가를, 매도는 매수호가를 소진하고 마지막 단계는 필요한 만큼만 부분 체결합니다. 저장된 최대 5단계 안에서 금액을 채울 수 없으면 빈 값이며 가격을 추정하지 않습니다. 과거 원화 호가 금액 자료는 정수 절삭 영향으로 근사값입니다.';
     }
-    $('source-charts').append(card);
-    const chart=new TimeChart(card.querySelector('canvas'),{onHover:syncCursor,onZoom:syncZoom,format:funding?fundingValue:price});chart.setZoom(state.zoom);state.charts.set(leg.id,chart);
-  }$('source-count').textContent=`${String(legs.length).padStart(2,'0')} SOURCES`;
-}
-function updateSourcePrice(card,q,mode=resultPriceMode(state.result)){
-  if(card.dataset.dataType==='candle'){
-    card.querySelector('.source-price>span').textContent=mode==='mean'?price(q?.value):originalQuote(q?.value);
-    card.querySelector('.candle-range').textContent=originalQuote(q?.high)+' / '+originalQuote(q?.low);
-    card.querySelector('.candle-volume').textContent=originalQuote(q?.volume);
-    card.querySelector('.candle-time').textContent=Number.isFinite(q?.available_time)?time(q.available_time,true):'—';return;
-  }
-  if(card.dataset.dataType==='funding'){
-    card.querySelector('.funding-raw').parentElement.firstChild.textContent=mode==='mean'?'평균 비율(원단위)':'원본 비율(원단위)';
-    card.querySelector('.source-price>span').textContent=fundingValue(q?.value);
-    card.querySelector('.funding-raw').textContent=format(q?.funding_rate,18);
-    card.querySelector('.funding-time').textContent=Number.isFinite(q?.source_time)?time(q.source_time,true):'—';
-    card.querySelector('.funding-next').textContent=Number.isFinite(q?.next_funding_in_seconds)?format(q.next_funding_in_seconds,3)+'초':'—';
-    card.querySelector('.source-price-grid>div').firstChild.textContent=mode==='mean'?'펀딩 평균 비율':'펀딩 원본 비율';return;
-  }
-  const labels=mode==='live'?['실시간 매수 1호가','실시간 매도 1호가','실시간 스프레드']:mode==='last'?['마지막 원본 매수 1호가','마지막 원본 매도 1호가','원본 스프레드']:['평균 매수 호가','평균 매도 호가','평균 스프레드'];
-  for(const [index,field] of [...card.querySelectorAll('.source-price-grid>div')].entries())field.firstChild.textContent=labels[index];
-  const display=mode==='mean'?price:originalQuote;
-  const selected=q&&Object.hasOwn(q,'value')?q.value:card.dataset.priceBasis==='mid'?q?.mid:null;
-  card.querySelector('.source-price>span').textContent=display(selected);card.querySelector('.bid').textContent=display(q?.bid);card.querySelector('.ask').textContent=display(q?.ask);card.querySelector('.spread').textContent=q&&Number.isFinite(q.ask)&&Number.isFinite(q.bid)?display(q.ask-q.bid):'—';
-}
-function renderResult(r,unit){
-  state.result=r;state.unit=unit;const sampling=resultPriceMode(r);$('chart-placeholder').hidden=r.result.some(Number.isFinite);if(!$('chart-placeholder').hidden)document.querySelector('#chart-placeholder strong').textContent=state.mode==='live'?'지표 계산에 필요한 관측을 모으고 있습니다':'계산 가능한 값이 없습니다. 지표 구간과 조회 기간을 확인하세요.';$('export-button').disabled=!r.times.length;const s=r.stats,suffix=unitLabel()?' '+unitLabel():'',digits=hasFunding(r.legs)?12:5;
-  const latestIndex=r.result.findLastIndex(Number.isFinite),latestTime=Number.isFinite(s.latest)?(Number.isFinite(s.latest_time)?s.latest_time:!Object.hasOwn(s,'latest_time')&&latestIndex>=0?r.times[latestIndex]:null):null;
-  $('stat-latest-time').textContent=Number.isFinite(latestTime)?`유효값 시각 ${time(latestTime,true)} KST`:'—';
-  $('stat-latest').textContent=format(s.latest,digits)+suffix;$('stat-mean').textContent=format(s.mean,digits)+suffix;$('stat-std').textContent=`표준편차 ${format(s.std,digits)}${suffix}`;$('stat-range').textContent=`${format(s.min,hasFunding(r.legs)?12:4)} / ${format(s.max,hasFunding(r.legs)?12:4)}`;$('stat-range').title=`${format(s.min,10)} / ${format(s.max,10)} ${unitLabel()}`;$('stat-count').textContent=format(s.count,0);$('stat-interval').textContent=`${INTERVAL_LABEL[r.meta.interval]||r.meta.interval} ${sampling==='live'?'실시간 관측':sampling==='last'?(hasFunding(r.legs)||r.legs.some(isCandle)?'간격 · 마지막 원본 값':'간격 · 마지막 원본 호가'):'구간 평균'} · 공통 구간만 조합`;$('stat-formula').textContent=r.meta.formula;$('result-formula').textContent=r.meta.formula;$('result-unit').textContent=unit==='ratio'?'비율':unit||'값';
-  const lines=[{label:'조합',values:r.result,color:COLORS.A,width:1.5}];if($('show-ema').checked)lines.push({label:'EMA',values:r.ewm,color:'#f1b66e',width:1.2});if($('show-mean').checked)lines.push({label:'평균',values:r.times.map(()=>r.mean),color:'#8ba7b2',width:1,dashed:true});const gapMs=(INTERVALS[r.meta.interval]||1000)*Math.max(1,Math.ceil((r.meta.aligned_points||r.times.length)/Math.max(1,r.times.length)));resultChart.setData(r.times,lines,{gapMs});renderClockChart(r,gapMs);ensureSourceCards(r.legs);
-  for(const leg of r.legs){
-    const funding=isFunding(leg),candle=isCandle(leg),series=values(leg);
-    state.charts.get(leg.id).setData(r.times,[{label:funding?'펀딩비율 (%)':candle?'1분봉 종가 (KRW)':priceBasisLabel(leg),values:series,color:COLORS[leg.id]}],{gapMs});
-    const card=$('source-charts').querySelector(`[data-id="${leg.id}"]`),last=series.length-1;
-    if(state.mode==='history'){
-      const quote=funding?{value:series[last],funding_rate:leg.funding_rate?.[last],source_time:leg.source_times?.[last],next_funding_in_seconds:leg.next_funding_in_seconds?.[last]}:candle?{value:series[last],high:leg.high?.[last],low:leg.low?.[last],volume:leg.volume?.[last],available_time:leg.available_times?.[last]}:{value:series[last],mid:leg.mid?.[last],bid:leg.bid[last],ask:leg.ask[last]};
-      updateSourcePrice(card,quote,sampling);card.classList.remove('stale');
-      const quoteTime=funding?leg.source_times?.[last]:candle?leg.available_times?.[last]:leg.quote_times?.[last];
-      const basis=(funding||candle||sampling==='last')&&Number.isFinite(quoteTime)?`${funding?'마지막 관측':candle?'마지막 원본 분봉 완성':'원본'} ${time(quoteTime,true)} KST`:`구간 시작 ${time(r.times[last],true)} KST`;
-      card.querySelector('.source-price small').textContent=`${sourceUnit(leg)} · ${funding?(sampling==='mean'?'평균 펀딩비율':'원본 펀딩비율'):candle?(sampling==='mean'?'분봉 종가 평균':'1분봉 종가'):priceModeLabel(sampling,[leg])} · ${basis}`;
+    const time = (ms, seconds = false) =>
+        Number.isFinite(Number(ms))
+            ? new Intl.DateTimeFormat('ko-KR', {
+                  timeZone: 'Asia/Seoul',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  ...(seconds ? { second: '2-digit' } : {}),
+                  hour12: false,
+              }).format(Number(ms))
+            : '—';
+    const localDate = (ms) => new Date(ms + 9 * 3600000).toISOString().slice(0, 16);
+    const parseLocal = (value) =>
+        Date.parse(/(?:Z|[+-]\d\d:\d\d)$/.test(value) ? value : value + '+09:00');
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    let toastTimer;
+    function toast(message) {
+        $('toast').textContent = message;
+        $('toast').hidden = false;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($('toast').hidden = true), 4500);
     }
-  }
-  if(r.times.length)$('data-period').textContent=`${time(r.times[0])} — ${time(r.times.at(-1))} KST`;if($('table-details').open)renderTable();
-}
-function renderTable(){const r=state.result;if(!r)return;$('table-head').replaceChildren();$('table-body').replaceChildren();const head=document.createElement('tr');for(const text of ['시간 (KST)','조합 값','EMA',...r.legs.map(l=>`${l.id} ${l.ticker}${isCandle(l)?' · 1분봉 종가':!isFunding(l)?' · '+priceBasisLabel(l):''} (${sourceUnit(l)})`),...r.legs.map(l=>`${l.id} desk − server (ms)`)]){const cell=document.createElement('th');cell.textContent=text;head.append(cell);}$('table-head').append(head);for(let i=r.times.length-1;i>=Math.max(0,r.times.length-100);i--){const row=document.createElement('tr');for(const v of [time(r.times[i],state.mode==='live'),format(r.result[i],hasFunding(r.legs)?12:7),format(r.ewm[i],hasFunding(r.legs)?12:7),...r.legs.map(l=>isFunding(l)?fundingValue(values(l)[i]):price(values(l)[i])),...r.legs.map(l=>format(l.timestamp_delta_ms?.[i],3))]){const cell=document.createElement('td');cell.textContent=v;row.append(cell);}$('table-body').append(row);}}
-function resetResults(message){state.result=null;state.jobId=null;$('export-button').disabled=true;syncZoom(null);resultChart.setData([],[]);clockChart.setData([],[]);$('analysis-clock-legend').replaceChildren();$('analysis-clock-mode').textContent='분석을 실행하면 소스별 시간차를 표시합니다.';$('analysis-clock-empty').hidden=false;$('analysis-clock-empty').firstElementChild.textContent='분석 결과를 기다리고 있습니다.';for(const chart of state.charts.values())chart.setData([],[]);for(const card of $('source-charts').querySelectorAll('.source-panel')){updateSourcePrice(card,null,state.mode==='live'?'live':selectedPriceMode());card.classList.remove('stale');card.querySelector('.source-price small').textContent='새 조회를 기다리고 있습니다.';}$('chart-placeholder').hidden=false;document.querySelector('#chart-placeholder strong').textContent=message;for(const id of ['stat-latest','stat-latest-time','stat-mean','stat-range','stat-count'])$(id).textContent='—';$('stat-std').textContent='표준편차 —';$('data-period').textContent='—';$('updated-at').textContent='—';$('table-body').replaceChildren();$('table-head').replaceChildren();}
+    function showError(error) {
+        $('error').textContent = error instanceof Error ? error.message : String(error);
+        $('error').hidden = false;
+    }
+    function clearError() {
+        $('error').hidden = true;
+    }
+    function status(message, kind = 'good') {
+        $('data-status').replaceChildren();
+        const dot = document.createElement('span');
+        dot.className = `dot ${kind}`;
+        $('data-status').append(dot, document.createTextNode(message));
+    }
+    function storedConfig() {
+        try {
+            return JSON.parse(localStorage.getItem('midprice-server-last-config'));
+        } catch {
+            return null;
+        }
+    }
+    function storeConfig(c) {
+        try {
+            localStorage.setItem('midprice-server-last-config', JSON.stringify(c));
+        } catch {
+            /* Server persistence remains available. */
+        }
+    }
 
-async function runHistory(){
-  if(state.loading||state.mode!=='history')return;const version=++state.queryVersion,began=Date.now();let submitted=false;state.loading=true;clearError();resetResults('서버에서 선택한 소스와 조회 방식으로 분석하고 있습니다.');$('run-button').disabled=true;$('run-button').textContent='서버에서 계산 중…';$('job-progress').hidden=false;$('job-label').textContent='분석 요청 중';$('job-detail').textContent='조회할 소스와 기간을 전달하고 있습니다.';
-  try{const c=config();if(referencedLegs(c).some(isCandle)&&INTERVALS[c.interval]<60000)throw new Error('1분봉 종가 소스는 1분 이상의 조회 간격을 선택해 주세요.');const created=await api('/api/analyses',{method:'POST',body:c});submitted=true;if(version!==state.queryVersion||state.mode!=='history')return;$('job-detail').textContent='파일을 읽고 소스·수식·통계를 계산합니다.';let job;
-    for(;;){if(version!==state.queryVersion||state.mode!=='history')return;job=await api(`/api/analyses/${encodeURIComponent(created.id)}`);if(version!==state.queryVersion||state.mode!=='history')return;$('job-label').textContent=job.status==='queued'?'분석 대기 중':'구간을 분석하고 있습니다';$('job-elapsed').textContent=`${Math.floor((Date.now()-began)/1000)}초`;if(['complete','succeeded'].includes(job.status))break;if(['failed','cancelled','stopped'].includes(job.status))throw new Error(job.error||'분석을 완료하지 못했습니다. 조건을 확인해주세요.');if(Date.now()-began>600000)throw new Error('분석 대기가 길어지고 있습니다. 분석 기록에서 처리 상태를 확인하세요.');await wait(500);}
-    if(!job.result)throw new Error('이 분석의 임시 결과가 만료되었습니다. 같은 조건으로 다시 실행해주세요.');if((job.result.meta?.price_mode||'mean')!==c.price_mode)throw new Error('요청한 가격 방식과 분석 결과가 다릅니다. 다시 실행해주세요.');state.config=c;state.jobId=created.id;state.liveResult=false;syncZoom(null);renderResult(job.result,c.unit);storeConfig(c);status(`서버 분석 완료 · ${priceModeLabel(c.price_mode,referencedLegs(c))}`);$('updated-at').textContent=`${format(job.result.meta.rows_read,0)}개 원본 관측 · ${format((Date.now()-began)/1000,1)}초`;const warnings=job.result.meta.warnings||[];$('notice').textContent=warnings.join(' ');$('notice').hidden=!warnings.length;
-  }catch(error){if(version===state.queryVersion&&state.mode==='history'){showError(error);status('분석 조건을 확인하세요','bad');}}
-  finally{if(version===state.queryVersion){state.loading=false;$('job-progress').hidden=true;$('run-button').disabled=false;if(state.mode==='history')$('run-button').innerHTML='<span>▶</span> 분석 실행';}if(submitted)loadHistory().catch(()=>{});}
-}
-function renderConnections(connections=[]){$('connections').replaceChildren();const names={connecting:'연결 중',connected:'연결됨',reconnecting:'재연결 중',error:'연결 오류',disconnected:'종료'};for(const s of connections){const card=document.createElement('div');card.className='connection';card.title=s.message||'';const dot=document.createElement('span');dot.className=`dot ${s.state==='connected'?'good':'bad'}`;const title=document.createElement('span');title.textContent=label(s.exchange);const detail=document.createElement('small');detail.textContent=names[s.state]||s.state;card.append(dot,title,detail);$('connections').append(card);}}
-async function stopLive({quiet=false,keepalive=false}={}){const version=++state.liveVersion;clearTimeout(state.liveTimer);state.liveTimer=null;state.liveStarting=false;const id=state.liveId;state.liveId=null;if(state.mode==='live'){$('run-button').disabled=false;$('run-button').innerHTML='<span>▶</span> 실시간 시작';$('run-button').classList.remove('running');if(!quiet)status('실시간 연결 종료','muted');}if(id){try{await api(`/api/live/${encodeURIComponent(id)}`,{method:'DELETE',keepalive});}catch(error){if(!quiet&&version===state.liveVersion)showError(error);}}}
-async function startLive(){
-  clearError();const c=config(),legs=referencedLegs(c);if(!legs.length)throw new Error('수식에 사용할 데이터 소스를 지정하세요.');if(legs.some(isFunding))throw new Error('펀딩비율 소스는 과거 분석에서 지원합니다. 과거 분석으로 전환하거나 수식에서 펀딩 소스를 제외해주세요.');if(legs.some(isCandle))throw new Error('1분봉 종가 소스는 과거 분석에서 지원합니다. 과거 분석으로 전환하거나 수식에서 분봉 소스를 제외해주세요.');if(legs.some(l=>!LIVE_EXCHANGES.has(l.exchange)))throw new Error('실시간 모니터는 Bithumb·Upbit·OKX를 지원합니다. 다른 거래소는 과거 분석에서 조회하세요.');const version=++state.liveVersion;state.liveStarting=true;state.config=c;state.liveResult=true;resetResults('모든 소스의 실시간 호가를 기다리고 있습니다');ensureSourceCards(legs.map(l=>({...l,currency:currency(l.exchange)})));$('notice').textContent='서버가 수신한 최신 호가를 1초 간격으로 조합합니다. 10초 이상 지난 호가는 제외합니다. 과거 분석과 실시간 기록은 별도로 표시됩니다.';$('notice').hidden=false;$('run-button').disabled=true;$('run-button').textContent='실시간 연결 중…';status('거래소 호가 연결 중','muted');
-  try{const response=await api('/api/live',{method:'POST',body:c});if(version!==state.liveVersion||state.mode!=='live'){api(`/api/live/${encodeURIComponent(response.id)}`,{method:'DELETE'}).catch(()=>{});return;}state.liveId=response.id;state.liveStarting=false;$('run-button').disabled=false;$('run-button').textContent='■ 연결 종료';$('run-button').classList.add('running');storeConfig(c);
-    async function poll(){if(version!==state.liveVersion||state.mode!=='live')return;try{const snapshot=await api(`/api/live/${encodeURIComponent(response.id)}`);if(version!==state.liveVersion||state.mode!=='live')return;renderConnections(snapshot.connections||[]);if(snapshot.result)renderResult(snapshot.result,c.unit);const quotes=new Map((snapshot.quotes||[]).map(q=>[q.id,q])),missing=new Set((snapshot.missing||[]).map(l=>typeof l==='string'?l:l.id));for(const leg of legs){const card=$('source-charts').querySelector(`[data-id="${leg.id}"]`),q=quotes.get(leg.id);if(!card)continue;const resultLeg=state.result?.legs?.find(item=>item.id===leg.id),displayQuote=q&&!Object.hasOwn(q,'value')&&Array.isArray(resultLeg?.values)?{...q,value:resultLeg.values.at(-1)}:q;updateSourcePrice(card,displayQuote);card.classList.toggle('stale',missing.has(leg.id)||!q);const age=q?Math.max(0,Math.floor((q.age_ms??Date.now()-q.ts)/1000)):null;card.querySelector('.source-price small').textContent=`${currency(leg.exchange)} · ${priceBasisLabel(leg)} · ${q?.pricing_reason?'선택 가격·유동성 확인 대기':age===null?'호가 대기':age+'초 전'}`;}if(snapshot.error)showError(snapshot.error);else clearError();if(snapshot.status==='failed'){await stopLive({quiet:true});showError(snapshot.error||'실시간 분석을 계속할 수 없습니다.');status('실시간 분석 종료','bad');return;}if(snapshot.status==='stopped'){await stopLive({quiet:true});status('실시간 연결 종료','muted');return;}if(missing.size)status(`호가·유동성 대기 · ${[...missing].join(', ')}`,'bad');else status(snapshot.result?'실시간 · 서버에서 조합 중':'첫 조합 값을 기다리고 있습니다','good');$('updated-at').textContent=`확인 ${time(Date.now(),true)} KST`;
-      }catch(error){if(version!==state.liveVersion)return;showError(error);status('실시간 상태를 확인하지 못했습니다','bad');}if(version===state.liveVersion)state.liveTimer=setTimeout(poll,1000);}
-    poll();
-  }catch(error){if(version===state.liveVersion){await stopLive({quiet:true});showError(error);status('실시간 연결 실패','bad');}}
-}
-async function switchMode(mode){if(mode===state.mode)return;const modeVersion=++state.modeVersion;state.mode=mode;state.queryVersion++;state.loading=false;state.boundsVersion++;await stopLive({quiet:true});if(modeVersion!==state.modeVersion)return;const live=mode==='live';document.querySelectorAll('[data-mode]').forEach(el=>{el.classList.toggle('active',el.dataset.mode===mode);el.setAttribute('aria-pressed',String(el.dataset.mode===mode));});$('history-controls').hidden=live;$('live-controls').hidden=!live;$('connections').hidden=!live;$('connections').replaceChildren();$('start').required=!live;$('end').required=!live;$('mode-eyebrow').textContent=live?'MONITOR / LIVE MARKETS':'RESEARCH / HISTORICAL';$('page-title').textContent=live?'시장의 지금을, 같은 기준으로.':'가격을 조합하고, 흐름을 비교하세요.';$('page-description').textContent=live?'서버에서 계산한 중간가와 조합의 흐름을 실시간으로 확인하세요.':'원하는 구간을 계산하고, 나만의 분석을 저장하세요.';$('run-button').disabled=false;$('run-button').classList.remove('running');$('run-button').innerHTML=live?'<span>▶</span> 실시간 시작':'<span>▶</span> 분석 실행';$('job-progress').hidden=true;$('notice').hidden=true;clearError();refreshLists();priceModeHelp();resetResults(live?'실시간 시작을 눌러 시세를 연결하세요':'분석 실행을 눌러 과거 데이터를 조회하세요');status(live?'실시간 연결 대기':'서버 조회 준비 완료','muted');if(!live){await updateAvailable();await runHistory();}}
+    function readPriceOptions(id, { validate = false } = {}) {
+        if (typeFor(id) !== 'price') return {};
+        const selected = $(`price-basis-${id}`).value,
+            basis = PRICE_BASES.has(selected) ? selected : 'mid',
+            options = { price_basis: basis };
+        if (basis === 'bid' || basis === 'ask') {
+            const level = Number($(`book-level-${id}`).value);
+            if (validate && (!Number.isInteger(level) || level < 1 || level > 5))
+                throw new Error(`소스 ${id}의 호가 단계는 1~5로 선택해 주세요.`);
+            options.book_level = level;
+        }
+        if (isVwap(basis)) {
+            const amount = Number($(`liquidity-amount-${id}`).value);
+            if (validate && (!Number.isFinite(amount) || amount <= 0))
+                throw new Error(`소스 ${id}의 유동성 금액은 0보다 큰 유한한 수로 입력해 주세요.`);
+            options.liquidity_amount = Number.isFinite(amount) ? amount : null;
+        }
+        return options;
+    }
+    function updatePriceControls(id) {
+        const controls = $(`price-options-${id}`),
+            active = typeFor(id) === 'price',
+            basis = $(`price-basis-${id}`).value,
+            unit = currency($(`exchange-${id}`).value),
+            amount = $(`liquidity-amount-${id}`);
+        controls.hidden = !active;
+        $(`price-basis-${id}`).disabled = !active;
+        $(`book-level-field-${id}`).hidden = !active || !['bid', 'ask'].includes(basis);
+        $(`book-level-${id}`).disabled = !active || !['bid', 'ask'].includes(basis);
+        $(`liquidity-field-${id}`).hidden = !active || !isVwap(basis);
+        amount.disabled = !active || !isVwap(basis);
+        if (!amount.value || amount.dataset.currency !== unit) {
+            amount.value = unit === 'KRW' ? '1000000' : '1000';
+            amount.dataset.currency = unit;
+        }
+        $(`liquidity-currency-${id}`).textContent = unit;
+        $(`price-options-help-${id}`).hidden = !active || !isVwap(basis);
+    }
+    function restorePriceOptions(id, leg) {
+        $(`price-basis-${id}`).value = PRICE_BASES.has(leg?.price_basis) ? leg.price_basis : 'mid';
+        $(`book-level-${id}`).value =
+            Number.isInteger(leg?.book_level) && leg.book_level >= 1 && leg.book_level <= 5
+                ? String(leg.book_level)
+                : '1';
+        const unit = currency($(`exchange-${id}`).value),
+            amount = Number(leg?.liquidity_amount),
+            input = $(`liquidity-amount-${id}`);
+        input.value =
+            Number.isFinite(amount) && amount > 0
+                ? String(amount)
+                : unit === 'KRW'
+                  ? '1000000'
+                  : '1000';
+        input.dataset.currency = unit;
+        updatePriceControls(id);
+    }
 
-async function loadPresets(){const response=await api('/api/presets');state.presets=response.items||[];const previous=$('preset').value;for(const option of [...$('preset').options])if(option.value.startsWith('saved:'))option.remove();for(const item of state.presets)$('preset').add(new Option(`저장 · ${item.name} · ${priceModeLabel(item.config?.price_mode,item.config?.legs||[])}`,`saved:${item.id}`));if([...$('preset').options].some(o=>o.value===previous))$('preset').value=previous;$('delete-preset').hidden=!$('preset').value.startsWith('saved:');}
-async function loadHistory(){const response=await api('/api/history');state.history=(response.items||[]).filter(item=>!item.kind||item.kind==='analysis');$('history-list').replaceChildren();if(!state.history.length){const empty=document.createElement('p');empty.className='empty-history';empty.textContent='아직 실행한 분석이 없습니다.';$('history-list').append(empty);return;}const names={queued:'대기',running:'계산 중',complete:'완료',succeeded:'완료',failed:'실패',cancelled:'취소'};for(const item of state.history.slice(0,20)){const button=document.createElement('button');button.type='button';button.className='history-item';const code=document.createElement('code');code.textContent=item.config?.formula||'분석';const detail=document.createElement('span');detail.textContent=`${time(Date.parse(item.created_at))} · ${INTERVAL_LABEL[item.config?.interval]||item.config?.interval||''} · ${priceModeLabel(item.config?.price_mode,item.config?.legs||[])}`;const badge=document.createElement('small');badge.className=`history-status ${item.status}`;badge.textContent=names[item.status]||item.status;button.append(code,detail,badge);button.addEventListener('click',()=>restoreHistory(item));$('history-list').append(button);}}
-async function restoreHistory(item){if(!item.config)return;const version=++state.queryVersion,modeVersion=++state.modeVersion;state.loading=false;await stopLive({quiet:true});if(version!==state.queryVersion||modeVersion!==state.modeVersion)return;if(state.mode!=='history'){state.mode='history';document.querySelectorAll('[data-mode]').forEach(el=>{el.classList.toggle('active',el.dataset.mode==='history');el.setAttribute('aria-pressed',String(el.dataset.mode==='history'));});$('history-controls').hidden=false;$('live-controls').hidden=true;$('connections').hidden=true;$('mode-eyebrow').textContent='RESEARCH / HISTORICAL';$('page-title').textContent='가격을 조합하고, 흐름을 비교하세요.';$('page-description').textContent='원하는 구간을 계산하고, 나만의 분석을 저장하세요.';}applyConfig(item.config);resetResults('선택한 기록의 가격 방식과 결과를 불러오고 있습니다.');$('preset').value='custom';$('delete-preset').hidden=true;$('start').required=true;$('end').required=true;$('run-button').disabled=false;$('run-button').classList.remove('running');$('run-button').innerHTML='<span>▶</span> 분석 실행';$('job-progress').hidden=true;clearError();await updateAvailable();if(version!==state.queryVersion||modeVersion!==state.modeVersion)return;if(['complete','succeeded'].includes(item.status)&&item.result_available!==false){try{const job=await api(`/api/analyses/${encodeURIComponent(item.id)}`);if(version!==state.queryVersion||modeVersion!==state.modeVersion)return;if(job.result){state.config=item.config;state.jobId=item.id;state.liveResult=false;syncZoom(null);renderResult(job.result,item.config.unit??'%');status('저장된 분석 결과');$('notice').textContent=(job.result.meta.warnings||[]).join(' ');$('notice').hidden=!$('notice').textContent;return;}}catch{/* Cached results may expire while the saved conditions remain. */}}if(version!==state.queryVersion||modeVersion!==state.modeVersion)return;resetResults('분석 실행을 눌러 이 조건을 다시 계산하세요');$('notice').hidden=true;status('분석 조건을 불러왔습니다','muted');toast('분석 조건을 불러왔습니다. 분석 실행으로 다시 계산할 수 있습니다.');}
-function renderFunctionHelp(){const defaults=[{syntax:'MA(A, 60)',description:'이동평균'},{syntax:'EMA(A, 60)',description:'지수이동평균'},{syntax:'DIFF(A, 1)',description:'이전 관측과의 차이'},{syntax:'RET(A, 1)',description:'이전 관측 대비 수익률 (%)'},{syntax:'ZSCORE(A, 60)',description:'이동평균 대비 표준편차 배수'},{syntax:'ABS(A)',description:'절댓값'}];$('function-list').replaceChildren();for(const item of state.catalog.functions||defaults){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=item.syntax||item.name;dd.textContent=item.description||'';$('function-list').append(dt,dd);}}
-async function exportCSV(){if(!state.result?.times.length)return;if(!state.liveResult&&state.jobId){const version=state.queryVersion,result=state.result,jobId=state.jobId,current=()=>version===state.queryVersion&&result===state.result&&jobId===state.jobId;$('export-button').disabled=true;try{const response=await fetch(`/api/analyses/${encodeURIComponent(jobId)}/csv`,{credentials:'same-origin',headers:{Accept:'text/csv'}});if(!current())return;if(response.status===401){location.assign('/login?next=%2F');throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');}if(!response.ok){let details={};try{details=await response.json();}catch{}if(!current())return;throw new Error(typeof details.error==='string'?details.error:response.status===410?'결과 보관 기간이 지났습니다. 같은 조건으로 다시 분석해주세요.':'CSV를 내보내지 못했습니다.');}const blob=await response.blob();if(!current())return;const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='midprice-analysis.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(error){if(current())showError(error);}finally{if(current())$('export-button').disabled=!state.result?.times.length;}return;}exportLiveCSV();}
-function exportLiveCSV(){
-  const r=state.result,metadata=leg=>({...state.config?.legs?.find(item=>item.id===leg.id),...leg});
-  const rows=[['time_kst','result','ema','unit',...r.legs.flatMap(l=>[`${l.id}_value`,`${l.id}_price_basis`,`${l.id}_book_level`,`${l.id}_liquidity_amount`,`${l.id}_liquidity_currency`,`${l.id}_quantity_basis`,`${l.id}_depth_limit`,`${l.id}_${l.exchange}_${l.ticker}_mid`,`${l.id}_bid`,`${l.id}_ask`,`${l.id}_timestamp_delta_ms`])]];
-  for(let i=0;i<r.times.length;i++)rows.push([new Date(r.times[i]+9*3600000).toISOString().replace('Z','+09:00'),r.result[i],r.ewm[i],state.unit,...r.legs.flatMap(l=>{const m=metadata(l);return [values(l)[i],m.price_basis||'mid',m.book_level??'',m.liquidity_amount??'',m.liquidity_currency||currency(l.exchange),m.quantity_basis||'',m.depth_limit??'',l.mid?.[i],l.bid?.[i],l.ask?.[i],l.timestamp_delta_ms?.[i]];})]);
-  const csv='\ufeff'+rows.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
-  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='midprice-live.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-}
-async function refreshCatalog(){state.catalog=await api('/api/catalog');onCatalog(state.catalog);state.boundsGeneration++;state.boundsVersion++;state.boundsKey=null;state.commonBounds=null;state.bounds.clear();state.boundsPending.clear();updateSourceActions();populateExchanges();refreshLists();renderFunctionHelp();document.dispatchEvent(new Event('oms:catalog'));await updateAvailable({force:true});}
+    function updateSourceActions() {
+        const count = state.sourceIds.length,
+            maximum = maxSources();
+        $('add-source').disabled = count >= maximum;
+        $('add-source').title =
+            count >= maximum
+                ? `최대 ${maximum}개 소스를 사용할 수 있습니다.`
+                : '가격·펀딩·분봉 데이터 소스를 추가합니다.';
+        $('source-controls-count').textContent = `${count} / ${maximum}`;
+        $('formula-source-ids').textContent = state.sourceIds.join(' · ');
+        for (const button of $('leg-controls').querySelectorAll('[data-remove-source]'))
+            button.disabled = count <= 1;
+    }
+    function makeControls(ids) {
+        state.sourceIds = [...ids];
+        $('leg-controls').replaceChildren();
+        for (const id of state.sourceIds) makeControl(id);
+        updateSourceActions();
+    }
+    function makeControl(id) {
+        const card = document.createElement('div');
+        card.className = 'source-control';
+        card.dataset.id = id;
+        card.innerHTML =
+            '<div class="source-label"><span class="source-letter"></span><span class="source-kind">중간가</span><span class="currency"></span></div><select class="source-type"><option value="price">실제 호가 · 중간가</option><option value="candle">1분봉 종가 · 과거 보완</option><option value="funding">펀딩비율 · %</option></select><div class="source-pickers"><select></select><input spellcheck="false" autocomplete="off" maxlength="80"><datalist></datalist></div>';
+        card.querySelector('.source-letter').textContent = id;
+        card.querySelector('.source-letter').style.color = COLORS[id];
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'remove-source';
+        remove.dataset.removeSource = id;
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `소스 ${id} 삭제`);
+        remove.title = `소스 ${id} 삭제`;
+        remove.addEventListener('click', () => removeSource(id));
+        card.querySelector('.source-label').append(remove);
+        const type = card.querySelector('.source-type');
+        type.id = `data-type-${id}`;
+        type.setAttribute('aria-label', `소스 ${id} 데이터 종류`);
+        const exchange = card.querySelector('.source-pickers select');
+        exchange.id = `exchange-${id}`;
+        exchange.setAttribute('aria-label', `소스 ${id} 거래소`);
+        const ticker = card.querySelector('input');
+        ticker.id = `ticker-${id}`;
+        ticker.setAttribute('aria-label', `소스 ${id} 종목`);
+        ticker.setAttribute('list', `tickers-${id}`);
+        card.querySelector('datalist').id = `tickers-${id}`;
+        $('leg-controls').append(card);
+        const options = document.createElement('div');
+        options.className = 'source-price-options';
+        options.id = `price-options-${id}`;
+        options.innerHTML = `<label for="price-basis-${id}">수식에 사용할 가격</label><select id="price-basis-${id}"><option value="mid">중간가</option><option value="bid">매수 N호가</option><option value="ask">매도 N호가</option><option value="buy_vwap">매수 유동성호가 · 매도호가 소진</option><option value="sell_vwap">매도 유동성호가 · 매수호가 소진</option></select><div id="book-level-field-${id}" class="source-price-field" hidden><label for="book-level-${id}">호가 단계 · N</label><select id="book-level-${id}">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}">${n}호가</option>`).join('')}</select></div><div id="liquidity-field-${id}" class="source-price-field" hidden><label for="liquidity-amount-${id}">목표 금액 · <span id="liquidity-currency-${id}">KRW</span></label><input id="liquidity-amount-${id}" type="text" inputmode="decimal" autocomplete="off" aria-describedby="price-options-help-${id}" spellcheck="false"></div><p id="price-options-help-${id}" class="tiny-help" hidden>목표 금액 ÷ 체결 수량 · 마지막 단계 부분 체결 · 저장 깊이 내 부족하면 빈 값</p>`;
+        card.append(options);
+        $(`price-basis-${id}`).addEventListener('change', () => {
+            updatePriceControls(id);
+            $('preset').value = 'custom';
+            $('delete-preset').hidden = true;
+            refreshLists();
+            changed();
+        });
+        $(`book-level-${id}`).addEventListener('change', () => {
+            $('preset').value = 'custom';
+            $('delete-preset').hidden = true;
+            refreshLists();
+            changed();
+        });
+        $(`liquidity-amount-${id}`).addEventListener('input', () => {
+            $('preset').value = 'custom';
+            $('delete-preset').hidden = true;
+            changed();
+        });
+        $(`liquidity-amount-${id}`).addEventListener('change', changed);
+        type.addEventListener('change', () => {
+            populateExchanges(id);
+            const available = sourceCatalog(typeFor(id))[exchange.value] || [];
+            ticker.value = available.includes('BTC') ? 'BTC' : available[0] || '';
+            if ($('formula').value.trim() === id && ['KRW', 'USDT', '%'].includes($('unit').value))
+                $('unit').value = typeFor(id) === 'funding' ? '%' : currency(exchange.value);
+            $('preset').value = 'custom';
+            $('delete-preset').hidden = true;
+            refreshLists();
+            changed();
+            updateAvailable();
+        });
+        exchange.addEventListener('change', () => {
+            if (typeFor(id) !== 'price') {
+                const available = sourceCatalog(typeFor(id))[exchange.value] || [];
+                if (!available.some((t) => t.toUpperCase() === ticker.value.toUpperCase()))
+                    ticker.value = available.includes('BTC') ? 'BTC' : available[0] || '';
+            }
+            syncPair(id, 'exchange');
+            refreshLists();
+            changed();
+            updateAvailable();
+        });
+        ticker.addEventListener('change', () => {
+            ticker.value = typedTicker(id);
+            syncPair(id, 'ticker');
+            refreshLists();
+            changed();
+            updateAvailable();
+        });
+        ticker.addEventListener('input', changed);
+    }
+    function initializeSource(id, leg) {
+        $(`data-type-${id}`).value = isFunding(leg)
+            ? 'funding'
+            : isCandle(leg)
+              ? 'candle'
+              : 'price';
+        populateExchanges(id);
+        const exchange = $(`exchange-${id}`);
+        if (typeof leg?.exchange === 'string') {
+            if (![...exchange.options].some((option) => option.value === leg.exchange))
+                exchange.add(new Option(label(leg.exchange), leg.exchange));
+            exchange.value = leg.exchange;
+        }
+        const tickers = sourceCatalog(typeFor(id))[exchange.value] || [];
+        $(`ticker-${id}`).value =
+            typeof leg?.ticker === 'string'
+                ? leg.ticker
+                : tickers.includes('BTC')
+                  ? 'BTC'
+                  : tickers[0] || '';
+        restorePriceOptions(id, leg);
+    }
+    function ensureSources(ids) {
+        for (const id of ids)
+            if (!state.sourceIds.includes(id)) {
+                state.sourceIds.push(id);
+                makeControl(id);
+                initializeSource(
+                    id,
+                    state.catalog.defaults?.legs?.find((leg) => leg.id === id),
+                );
+            }
+        updateSourceActions();
+    }
+    function structureChanged() {
+        state.boundsVersion++;
+        state.commonBounds = null;
+        $('preset').value = 'custom';
+        $('delete-preset').hidden = true;
+        clearError();
+        refreshLists();
+        changed();
+        updateAvailable();
+    }
+    function addSource() {
+        if (state.sourceIds.length >= maxSources()) {
+            toast(`최대 ${maxSources()}개 소스를 사용할 수 있습니다.`);
+            return;
+        }
+        const id = SOURCE_IDS.slice(0, maxSources()).find(
+            (identifier) => !state.sourceIds.includes(identifier),
+        );
+        ensureSources([id]);
+        structureChanged();
+        $(`data-type-${id}`).focus();
+        toast(`소스 ${id}를 추가했습니다. 수식에 ${id}를 넣어 사용하세요.`);
+    }
+    function removeSource(id) {
+        if (state.sourceIds.length <= 1) {
+            toast('데이터 소스는 최소 1개를 유지해야 합니다.');
+            return;
+        }
+        if (formulaIds($('formula').value).has(id)) {
+            toast(`수식에서 ${id}를 먼저 제외한 뒤 소스를 삭제하세요.`);
+            return;
+        }
+        const index = state.sourceIds.indexOf(id);
+        if (index < 0) return;
+        state.sourceIds.splice(index, 1);
+        $(`data-type-${id}`).closest('.source-control').remove();
+        updateSourceActions();
+        structureChanged();
+        $(`data-type-${state.sourceIds[Math.min(index, state.sourceIds.length - 1)]}`).focus();
+    }
+    function populateExchanges(onlyId) {
+        for (const id of onlyId ? [onlyId] : state.sourceIds) {
+            const select = $(`exchange-${id}`),
+                previous = select.value;
+            select.replaceChildren();
+            for (const exchange of Object.keys(sourceCatalog(typeFor(id))))
+                select.add(new Option(label(exchange), exchange));
+            if ([...select.options].some((o) => o.value === previous)) select.value = previous;
+        }
+    }
+    function resetPriceSources(ids) {
+        for (const id of ids) {
+            const funding = typeFor(id) !== 'price',
+                defaultLeg = state.catalog.defaults?.legs?.find((leg) => leg.id === id);
+            $(`data-type-${id}`).value = 'price';
+            populateExchanges(id);
+            if (funding && Object.hasOwn(sourceCatalog('price'), defaultLeg?.exchange || ''))
+                $(`exchange-${id}`).value = defaultLeg.exchange;
+            const tickers = sourceCatalog('price')[$(`exchange-${id}`).value] || [],
+                input = $(`ticker-${id}`),
+                previous = tickers.find(
+                    (t) => t.toUpperCase() === input.value.trim().toUpperCase(),
+                );
+            input.value =
+                previous ||
+                (tickers.includes(defaultLeg?.ticker)
+                    ? defaultLeg.ticker
+                    : tickers.includes('BTC')
+                      ? 'BTC'
+                      : tickers[0] || '');
+            restorePriceOptions(id, null);
+        }
+    }
+    function refreshLists() {
+        for (const id of state.sourceIds) {
+            const exchange = $(`exchange-${id}`).value,
+                type = typeFor(id),
+                list = $(`tickers-${id}`);
+            list.replaceChildren();
+            for (const ticker of sourceCatalog(type)[exchange] || [])
+                list.append(new Option(ticker, ticker));
+            const card = $(`exchange-${id}`).closest('.source-control');
+            updatePriceControls(id);
+            card.querySelector('.source-kind').textContent =
+                type === 'funding'
+                    ? '펀딩비율'
+                    : type === 'candle'
+                      ? '1분봉 종가'
+                      : priceBasisLabel(readPriceOptions(id));
+            card.querySelector('.currency').textContent =
+                type === 'funding' ? '%' : currency(exchange);
+            card.classList.toggle(
+                'unsupported-live',
+                state.mode === 'live' && (type !== 'price' || !LIVE_EXCHANGES.has(exchange)),
+            );
+        }
+        updateSourceActions();
+    }
+    function syncPair(id, field) {
+        const preset = $('preset').value;
+        if (['relative', 'ratio'].includes(preset) && id === 'A') {
+            if (field === 'ticker' && typeFor('A') === typeFor('B'))
+                $('ticker-B').value = $('ticker-A').value;
+            if (field === 'exchange' && preset === 'relative' && typeFor('A') === typeFor('C'))
+                $('exchange-C').value = $('exchange-A').value;
+        }
+        if (
+            preset === 'relative' &&
+            id === 'B' &&
+            field === 'exchange' &&
+            typeFor('B') === typeFor('D')
+        )
+            $('exchange-D').value = $('exchange-B').value;
+        if (preset === 'mid')
+            $('unit').value = typeFor('A') === 'funding' ? '%' : currency($('exchange-A').value);
+    }
+    function config() {
+        const formula = $('formula').value.trim();
+        if (!formula || formula.length > 256)
+            throw new Error('조합 수식을 1~256자로 입력해주세요.');
+        const referenced = formulaIds(formula),
+            missing = [...referenced].filter((id) => !state.sourceIds.includes(id));
+        if (missing.length)
+            throw new Error(`${missing.join(', ')} 소스를 먼저 추가한 뒤 수식에 사용하세요.`);
+        return {
+            formula,
+            unit: $('unit').value,
+            legs: state.sourceIds.map((id) => ({
+                id,
+                data_type: typeFor(id),
+                exchange: $(`exchange-${id}`).value,
+                ticker: typedTicker(id),
+                ...readPriceOptions(id, { validate: referenced.has(id) }),
+            })),
+            start: $('start').value,
+            end: $('end').value,
+            interval: $('interval').value,
+            ewm_span: Number($('ewm-span').value),
+            max_points: 6000,
+            price_mode: state.mode === 'live' ? 'last' : selectedPriceMode(),
+        };
+    }
+    function referencedLegs(c) {
+        const ids = formulaIds(c.formula);
+        return c.legs.filter((leg) => ids.has(leg.id));
+    }
+    function applyConfig(c) {
+        const requested = Array.isArray(c.legs) && c.legs.length ? c.legs : [{ id: 'A' }],
+            ids = requested.map((leg) => leg?.id);
+        if (
+            ids.length > maxSources() ||
+            new Set(ids).size !== ids.length ||
+            ids.some((id) => !SOURCE_IDS.slice(0, maxSources()).includes(id))
+        )
+            throw new Error(
+                `저장한 데이터 소스는 중복 없는 A~${SOURCE_IDS[maxSources() - 1]}로 최대 ${maxSources()}개까지 불러올 수 있습니다.`,
+            );
+        makeControls(ids);
+        $('analysis-price-mode').value = c.price_mode === 'last' ? 'last' : 'mean';
+        for (const leg of requested) initializeSource(leg.id, leg);
+        $('formula').value = c.formula || ids[0];
+        $('unit').value = c.unit ?? '%';
+        $('interval').value = Object.hasOwn(INTERVALS, c.interval) ? c.interval : '1min';
+        $('ewm-span').value = c.ewm_span || 60;
+        if (c.start && Number.isFinite(parseLocal(c.start)))
+            $('start').value = localDate(parseLocal(c.start));
+        if (c.end && Number.isFinite(parseLocal(c.end)))
+            $('end').value = localDate(parseLocal(c.end));
+        refreshLists();
+        priceModeHelp();
+    }
+    function boundsSelectionKey() {
+        return JSON.stringify(
+            [...formulaIds($('formula').value)]
+                .sort()
+                .map((id) =>
+                    state.sourceIds.includes(id)
+                        ? [id, typeFor(id), $(`exchange-${id}`).value, typedTicker(id)]
+                        : [id, null],
+                ),
+        );
+    }
+    function sourceBounds(leg, { force = false } = {}) {
+        const key = `${leg.data_type || 'price'}:${leg.exchange}:${leg.ticker}`,
+            generation = state.boundsGeneration,
+            saved = state.bounds.get(key);
+        if (!force && saved && Date.now() - saved.fetchedAt < 30000) return Promise.resolve(saved);
+        const pending = state.boundsPending.get(key);
+        if (pending?.generation === generation) return pending.promise;
+        const entry = { generation, promise: null };
+        entry.promise = (async () => {
+            const response = await api(
+                `/api/bounds?${new URLSearchParams({ exchange: leg.exchange, ticker: leg.ticker, ...(leg.data_type !== 'price' ? { data_type: leg.data_type } : {}) })}`,
+            );
+            const result = {
+                start: Date.parse(response.start),
+                end: Date.parse(response.end),
+                fetchedAt: Date.now(),
+            };
+            if (!Number.isFinite(result.start) || !Number.isFinite(result.end))
+                throw new Error('저장된 데이터의 시간 범위를 확인하지 못했습니다.');
+            if (generation === state.boundsGeneration) state.bounds.set(key, result);
+            return result;
+        })().finally(() => {
+            if (state.boundsPending.get(key) === entry) state.boundsPending.delete(key);
+        });
+        state.boundsPending.set(key, entry);
+        return entry.promise;
+    }
+    async function updateAvailable({ force = false } = {}) {
+        const version = ++state.boundsVersion,
+            selection = boundsSelectionKey();
+        state.boundsKey = selection;
+        const current = () => {
+            if (version !== state.boundsVersion) return false;
+            if (selection !== boundsSelectionKey()) {
+                state.commonBounds = null;
+                $('available-range').textContent =
+                    '소스 설정이 바뀌었습니다. 종목 입력을 마치면 저장 범위를 다시 확인합니다.';
+                return false;
+            }
+            return true;
+        };
+        let legs;
+        try {
+            legs = referencedLegs(config());
+        } catch (error) {
+            state.commonBounds = null;
+            $('available-range').textContent = error.message;
+            return null;
+        }
+        if (!legs.length) {
+            state.commonBounds = null;
+            $('available-range').textContent = '수식에 사용할 데이터 소스를 지정하세요.';
+            return null;
+        }
+        $('available-range').textContent = '선택한 소스의 저장 범위를 확인하고 있습니다.';
+        try {
+            const limits = await Promise.all(legs.map((leg) => sourceBounds(leg, { force })));
+            if (!current()) return null;
+            const start = Math.max(...limits.map((x) => x.start)),
+                end = Math.ceil((Math.min(...limits.map((x) => x.end)) + 1) / 60000) * 60000;
+            state.commonBounds = end > start ? { start, end } : null;
+            $('available-range').textContent = state.commonBounds
+                ? `공통 저장 범위 ${time(start)} ~ ${time(end)} KST`
+                : '선택한 소스가 함께 존재하는 저장 구간이 없습니다.';
+            return state.commonBounds;
+        } catch (error) {
+            if (current()) {
+                state.commonBounds = null;
+                $('available-range').textContent = error.message;
+            }
+            return null;
+        }
+    }
+    async function setRange(hours) {
+        const b = await updateAvailable();
+        if (!b) {
+            toast('선택한 소스의 공통 저장 구간을 확인해주세요.');
+            return false;
+        }
+        $('end').value = localDate(b.end);
+        $('start').value = localDate(Math.max(b.start, b.end - hours * 3600000));
+        document
+            .querySelectorAll('[data-hours]')
+            .forEach((el) => el.classList.toggle('selected', Number(el.dataset.hours) === hours));
+        return true;
+    }
+    function changed() {
+        state.queryVersion++;
+        state.loading = false;
+        $('job-progress').hidden = true;
+        if (state.boundsKey !== null && state.boundsKey !== boundsSelectionKey()) {
+            state.boundsVersion++;
+            state.boundsKey = null;
+            state.commonBounds = null;
+            $('available-range').textContent =
+                '소스 설정이 바뀌었습니다. 종목 입력을 마치면 저장 범위를 다시 확인합니다.';
+        }
+        if (state.liveId || state.liveStarting) {
+            stopLive();
+            toast('설정이 바뀌었습니다. 실시간 시작을 눌러 새 조합을 연결하세요.');
+        }
+        priceModeHelp();
+        resetResults(
+            state.mode === 'history'
+                ? '설정이 바뀌었습니다. 분석 실행을 눌러 새 조건으로 조회하세요.'
+                : '실시간 시작을 눌러 새 조건으로 연결하세요.',
+        );
+        status(
+            '설정 변경 · ' +
+                (state.mode === 'history'
+                    ? '분석 실행으로 새 조건 적용'
+                    : '실시간 시작으로 새 조건 적용'),
+            'muted',
+        );
+        if (state.mode === 'history') {
+            $('run-button').disabled = false;
+            $('run-button').innerHTML = '<span>▶</span> 분석 실행';
+        }
+    }
 
-$('composer').addEventListener('submit',e=>{e.preventDefault();if(state.mode==='history')runHistory();else if(state.liveId||state.liveStarting)stopLive();else startLive().catch(showError);});
-$('add-source').addEventListener('click',addSource);
-$('preset').addEventListener('change',async()=>{
-  const value=$('preset').value;changed();
-  if(['relative','ratio','mid'].includes(value)){
-    const required=value==='relative'?['A','B','C','D']:value==='ratio'?['A','B']:['A'];ensureSources(required);
-    if(value!=='mid')resetPriceSources(required);
-  }
-  if(value.startsWith('saved:')){const item=state.presets.find(item=>String(item.id)===value.slice(6));if(item)applyConfig(item.config);}
-  else if(value==='relative'){$('formula').value='((A / B) / (C / D) - 1) * 100';$('unit').value='%';$('ticker-C').value='BTC';$('ticker-D').value='BTC';$('ticker-B').value=$('ticker-A').value;$('exchange-C').value=$('exchange-A').value;$('exchange-D').value=$('exchange-B').value;}
-  else if(value==='ratio'){$('formula').value='A / B';$('unit').value='ratio';$('ticker-B').value=$('ticker-A').value;}
-  else if(value==='mid'){$('formula').value='A';$('unit').value=typeFor('A')==='funding'?'%':currency($('exchange-A').value);}
-  $('delete-preset').hidden=!value.startsWith('saved:');refreshLists();priceModeHelp();await updateAvailable();
-});
-$('formula').addEventListener('input',()=>{$('preset').value='custom';$('delete-preset').hidden=true;changed();updateAvailable();});
-document.querySelectorAll('[data-formula]').forEach(el=>el.addEventListener('click',()=>{ensureSources(['A']);$('formula').value=el.dataset.formula;$('unit').value=el.dataset.unit==='KRW'?(typeFor('A')==='funding'?'%':currency($('exchange-A').value)):el.dataset.unit;$('preset').value='custom';$('delete-preset').hidden=true;changed();updateAvailable();}));
-for(const id of ['start','end','interval','ewm-span','unit','analysis-price-mode'])$(id).addEventListener('change',changed);
-document.querySelectorAll('[data-mode]').forEach(el=>el.addEventListener('click',()=>switchMode(el.dataset.mode).catch(showError)));
-document.querySelectorAll('[data-hours]').forEach(el=>el.addEventListener('click',async()=>{changed();await setRange(Number(el.dataset.hours));}));
-for(const id of ['show-mean','show-ema'])$(id).addEventListener('change',()=>{if(state.result)renderResult(state.result,state.unit);});
-$('reset-zoom').addEventListener('click',()=>syncZoom(null));$('table-details').addEventListener('toggle',()=>{if($('table-details').open)renderTable();});$('export-button').addEventListener('click',exportCSV);
-$('history-toggle').addEventListener('click',async()=>{const visible=$('history-panel').hidden;$('history-panel').hidden=!visible;$('history-toggle').setAttribute('aria-expanded',String(visible));if(visible)try{await loadHistory();}catch(error){showError(error);}});
-$('refresh-history').addEventListener('click',()=>loadHistory().catch(showError));
-$('refresh-data').addEventListener('click',async()=>{$('refresh-data').disabled=true;try{await refreshCatalog();toast('서버의 종목과 저장 범위를 새로 확인했습니다.');}catch(error){showError(error);}finally{$('refresh-data').disabled=false;}});
-$('save-combo').addEventListener('click',async()=>{try{const c=config(),name=prompt('서버에 저장할 조합 이름을 입력하세요.','나의 분석 조합');if(!name?.trim())return;const response=await api('/api/presets',{method:'POST',body:{name:name.trim().slice(0,100),config:c}});await loadPresets();const saved=response.item||response.preset||response;if(saved.id!==undefined)$('preset').value=`saved:${saved.id}`;$('delete-preset').hidden=false;toast('분석 조합을 서버에 저장했습니다.');}catch(error){showError(error);}});
-$('delete-preset').addEventListener('click',async()=>{const value=$('preset').value;if(!value.startsWith('saved:'))return;try{await api(`/api/presets/${encodeURIComponent(value.slice(6))}`,{method:'DELETE'});$('preset').value='custom';await loadPresets();toast('저장한 조합을 삭제했습니다.');}catch(error){showError(error);}});
-$('logout-button').addEventListener('click',async()=>{try{await stopLive({quiet:true});await api('/logout',{method:'POST',body:{}});location.assign('/login');}catch(error){showError(error);}});
-window.addEventListener('pagehide',()=>{stopLive({quiet:true,keepalive:true});});
+    const resultChart = new TimeChart($('result-chart'), {
+        onHover: syncCursor,
+        onZoom: syncZoom,
+        format: (v) => format(v, hasFunding(state.result?.legs || []) ? 12 : 6),
+    });
+    const clockChart = new TimeChart($('analysis-clock-chart'), {
+        onHover: syncCursor,
+        onZoom: syncZoom,
+        format: (v) => format(v, 3) + ' ms',
+    });
+    function renderClockChart(r, gapMs) {
+        const series = r.legs.map((leg) => ({
+            label: `${leg.id} ${label(leg.exchange)} ${leg.ticker}${isFunding(leg) ? ' · 펀딩' : ''}`,
+            values: leg.timestamp_delta_ms || r.times.map(() => null),
+            color: COLORS[leg.id],
+            isolatedPoints: true,
+        }));
+        clockChart.setData(r.times, series, { gapMs });
+        $('analysis-clock-mode').textContent =
+            state.mode === 'live'
+                ? '실시간 수신 시각 − 거래소 이벤트 시각 · 1초마다 최신 호가 관측'
+                : r.meta.price_mode === 'last'
+                  ? '각 구간의 마지막 원본 행 기준 · 가격 차트와 공통 시간축'
+                  : '각 구간의 유효한 원본 행별 시간차 평균 · 가격 차트와 공통 시간축';
+        $('analysis-clock-empty').hidden = series.some((line) => line.values.some(Number.isFinite));
+        $('analysis-clock-empty').firstElementChild.textContent =
+            '표시할 기록·서버 시각 쌍이 없습니다.';
+        $('analysis-clock-legend').replaceChildren();
+        series.forEach((line, index) => {
+            const leg = r.legs[index],
+                item = document.createElement('span'),
+                latest = line.values.at(-1);
+            item.style.setProperty('--quality-color', line.color);
+            item.textContent = `${line.label} · ${Number.isFinite(latest) ? format(latest, 3) + ' ms' : '—'}`;
+            const reason =
+                leg.timestamp_delta_unavailable_reason ||
+                (!Array.isArray(leg.timestamp_delta_ms)
+                    ? '이 결과에는 시간차가 저장되어 있지 않습니다. 분석을 다시 실행해 주세요.'
+                    : !line.values.some(Number.isFinite)
+                      ? '유효한 기록·서버 시각 쌍이 없습니다.'
+                      : '');
+            if (reason) item.textContent += ` · ${reason}`;
+            $('analysis-clock-legend').append(item);
+        });
+    }
+    function syncZoom(range) {
+        state.zoom = range;
+        resultChart.setZoom(range);
+        clockChart.setZoom(range);
+        for (const chart of state.charts.values()) chart.setZoom(range);
+        $('reset-zoom').hidden = !range;
+    }
+    function syncCursor(timestamp) {
+        resultChart.setCursor(timestamp);
+        clockChart.setCursor(timestamp);
+        for (const chart of state.charts.values()) chart.setCursor(timestamp);
+        if (timestamp === null || !state.result?.times.length) {
+            $('cursor-info').textContent = '차트 위에 마우스를 올려 값을 확인하세요.';
+            return;
+        }
+        const r = state.result;
+        let lo = 0,
+            hi = r.times.length - 1;
+        while (lo < hi) {
+            const m = Math.floor((lo + hi) / 2);
+            if (r.times[m] < timestamp) lo = m + 1;
+            else hi = m;
+        }
+        let i = lo;
+        if (i && Math.abs(r.times[i - 1] - timestamp) < Math.abs(r.times[i] - timestamp)) i--;
+        $('cursor-info').textContent =
+            `${time(r.times[i], state.mode === 'live')} KST · 조합 ${format(r.result[i], hasFunding(r.legs) ? 12 : 6)} ${unitLabel()} · EMA ${format(r.ewm[i], hasFunding(r.legs) ? 12 : 6)}`;
+    }
+    function unitLabel() {
+        return state.unit === 'ratio' ? '' : state.unit;
+    }
+    function ensureSourceCards(legs) {
+        const signature = legs
+            .map(
+                (l) =>
+                    `${l.id}:${l.data_type || 'price'}:${l.exchange}:${l.ticker}:${l.price_basis || 'mid'}:${l.book_level || 1}:${l.liquidity_amount || ''}:${l.depth_limit || ''}:${l.quantity_basis || ''}`,
+            )
+            .join('|');
+        if ($('source-charts').dataset.signature === signature) return;
+        for (const chart of state.charts.values()) chart.destroy();
+        state.charts.clear();
+        $('source-charts').replaceChildren();
+        $('source-charts').dataset.signature = signature;
+        for (const leg of legs) {
+            const funding = isFunding(leg),
+                candle = isCandle(leg),
+                card = document.createElement('article');
+            card.className = 'panel source-panel';
+            card.dataset.id = leg.id;
+            card.dataset.dataType = funding ? 'funding' : candle ? 'candle' : 'price';
+            card.dataset.priceBasis = leg.price_basis || 'mid';
+            card.innerHTML =
+                '<div class="source-card-heading"><div class="source-card-title"><span class="source-letter"></span><div><h3></h3><small></small></div></div><div class="source-price"><span>—</span><small></small></div></div><div class="chart-wrap"><canvas role="img"></canvas></div>' +
+                (funding
+                    ? '<div class="source-price-grid funding-source-grid"><div>펀딩 원본 비율<span class="funding-raw">—</span></div><div>마지막 관측 (KST)<span class="funding-time">—</span></div><div>관측 기준 정산 잔여<span class="funding-next">—</span></div></div>'
+                    : candle
+                      ? '<div class="source-price-grid candle-source-grid"><div>원본 고가 / 저가<span class="candle-range">—</span></div><div>원본 거래량 (USDT)<span class="candle-volume">—</span></div><div>분봉 완성 (KST)<span class="candle-time">—</span></div></div>'
+                      : '<div class="source-price-grid"><div>매수 1호가<span class="bid">—</span></div><div>매도 1호가<span class="ask">—</span></div><div>스프레드<span class="spread">—</span></div></div>');
+            card.querySelector('.source-letter').textContent = leg.id;
+            card.querySelector('.source-letter').style.color = COLORS[leg.id] || BASE_COLORS[0];
+            card.querySelector('h3').textContent = leg.ticker;
+            card.querySelector('.source-card-title small').textContent =
+                label(leg.exchange) +
+                (funding ? ' · 펀딩비율' : candle ? ' · 1분봉 종가' : ' · ' + priceBasisLabel(leg));
+            card.querySelector('.source-price small').textContent = sourceUnit(leg);
+            card.querySelector('canvas').setAttribute(
+                'aria-label',
+                `${leg.id} ${leg.exchange} ${leg.ticker} ${funding ? '펀딩비율 퍼센트' : candle ? '1분봉 종가' : priceBasisLabel(leg)} 차트`,
+            );
+            if (!funding && !candle && leg.price_basis && leg.price_basis !== 'mid') {
+                const description = document.createElement('p');
+                description.className = 'source-basis-help';
+                description.textContent =
+                    priceBasisLabel(leg) +
+                    (isVwap(leg.price_basis)
+                        ? ` · 목표 ${format(leg.liquidity_amount, 8)} ${leg.liquidity_currency || currency(leg.exchange)} · 저장 깊이 ${leg.depth_limit || 5}단계 내 부족하면 빈 값`
+                        : ' · 아래 호가는 원본 최우선 1호가');
+                card.append(description);
+            }
+            $('source-charts').append(card);
+            const chart = new TimeChart(card.querySelector('canvas'), {
+                onHover: syncCursor,
+                onZoom: syncZoom,
+                format: funding ? fundingValue : price,
+            });
+            chart.setZoom(state.zoom);
+            state.charts.set(leg.id, chart);
+        }
+        $('source-count').textContent = `${String(legs.length).padStart(2, '0')} SOURCES`;
+    }
+    function updateSourcePrice(card, q, mode = resultPriceMode(state.result)) {
+        if (card.dataset.dataType === 'candle') {
+            card.querySelector('.source-price>span').textContent =
+                mode === 'mean' ? price(q?.value) : originalQuote(q?.value);
+            card.querySelector('.candle-range').textContent =
+                originalQuote(q?.high) + ' / ' + originalQuote(q?.low);
+            card.querySelector('.candle-volume').textContent = originalQuote(q?.volume);
+            card.querySelector('.candle-time').textContent = Number.isFinite(q?.available_time)
+                ? time(q.available_time, true)
+                : '—';
+            return;
+        }
+        if (card.dataset.dataType === 'funding') {
+            card.querySelector('.funding-raw').parentElement.firstChild.textContent =
+                mode === 'mean' ? '평균 비율(원단위)' : '원본 비율(원단위)';
+            card.querySelector('.source-price>span').textContent = fundingValue(q?.value);
+            card.querySelector('.funding-raw').textContent = format(q?.funding_rate, 18);
+            card.querySelector('.funding-time').textContent = Number.isFinite(q?.source_time)
+                ? time(q.source_time, true)
+                : '—';
+            card.querySelector('.funding-next').textContent = Number.isFinite(
+                q?.next_funding_in_seconds,
+            )
+                ? format(q.next_funding_in_seconds, 3) + '초'
+                : '—';
+            card.querySelector('.source-price-grid>div').firstChild.textContent =
+                mode === 'mean' ? '펀딩 평균 비율' : '펀딩 원본 비율';
+            return;
+        }
+        const labels =
+            mode === 'live'
+                ? ['실시간 매수 1호가', '실시간 매도 1호가', '실시간 스프레드']
+                : mode === 'last'
+                  ? ['마지막 원본 매수 1호가', '마지막 원본 매도 1호가', '원본 스프레드']
+                  : ['평균 매수 호가', '평균 매도 호가', '평균 스프레드'];
+        for (const [index, field] of [...card.querySelectorAll('.source-price-grid>div')].entries())
+            field.firstChild.textContent = labels[index];
+        const display = mode === 'mean' ? price : originalQuote;
+        const selected =
+            q && Object.hasOwn(q, 'value')
+                ? q.value
+                : card.dataset.priceBasis === 'mid'
+                  ? q?.mid
+                  : null;
+        card.querySelector('.source-price>span').textContent = display(selected);
+        card.querySelector('.bid').textContent = display(q?.bid);
+        card.querySelector('.ask').textContent = display(q?.ask);
+        card.querySelector('.spread').textContent =
+            q && Number.isFinite(q.ask) && Number.isFinite(q.bid) ? display(q.ask - q.bid) : '—';
+    }
+    function renderResult(r, unit) {
+        state.result = r;
+        state.unit = unit;
+        const sampling = resultPriceMode(r);
+        $('chart-placeholder').hidden = r.result.some(Number.isFinite);
+        if (!$('chart-placeholder').hidden)
+            document.querySelector('#chart-placeholder strong').textContent =
+                state.mode === 'live'
+                    ? '지표 계산에 필요한 관측을 모으고 있습니다'
+                    : '계산 가능한 값이 없습니다. 지표 구간과 조회 기간을 확인하세요.';
+        $('export-button').disabled = !r.times.length;
+        const s = r.stats,
+            suffix = unitLabel() ? ' ' + unitLabel() : '',
+            digits = hasFunding(r.legs) ? 12 : 5;
+        const latestIndex = r.result.findLastIndex(Number.isFinite),
+            latestTime = Number.isFinite(s.latest)
+                ? Number.isFinite(s.latest_time)
+                    ? s.latest_time
+                    : !Object.hasOwn(s, 'latest_time') && latestIndex >= 0
+                      ? r.times[latestIndex]
+                      : null
+                : null;
+        $('stat-latest-time').textContent = Number.isFinite(latestTime)
+            ? `유효값 시각 ${time(latestTime, true)} KST`
+            : '—';
+        $('stat-latest').textContent = format(s.latest, digits) + suffix;
+        $('stat-mean').textContent = format(s.mean, digits) + suffix;
+        $('stat-std').textContent = `표준편차 ${format(s.std, digits)}${suffix}`;
+        $('stat-range').textContent =
+            `${format(s.min, hasFunding(r.legs) ? 12 : 4)} / ${format(s.max, hasFunding(r.legs) ? 12 : 4)}`;
+        $('stat-range').title = `${format(s.min, 10)} / ${format(s.max, 10)} ${unitLabel()}`;
+        $('stat-count').textContent = format(s.count, 0);
+        $('stat-interval').textContent =
+            `${INTERVAL_LABEL[r.meta.interval] || r.meta.interval} ${sampling === 'live' ? '실시간 관측' : sampling === 'last' ? (hasFunding(r.legs) || r.legs.some(isCandle) ? '간격 · 마지막 원본 값' : '간격 · 마지막 원본 호가') : '구간 평균'} · 공통 구간만 조합`;
+        $('stat-formula').textContent = r.meta.formula;
+        $('result-formula').textContent = r.meta.formula;
+        $('result-unit').textContent = unit === 'ratio' ? '비율' : unit || '값';
+        const lines = [{ label: '조합', values: r.result, color: COLORS.A, width: 1.5 }];
+        if ($('show-ema').checked)
+            lines.push({ label: 'EMA', values: r.ewm, color: '#f1b66e', width: 1.2 });
+        if ($('show-mean').checked)
+            lines.push({
+                label: '평균',
+                values: r.times.map(() => r.mean),
+                color: '#8ba7b2',
+                width: 1,
+                dashed: true,
+            });
+        const gapMs =
+            (INTERVALS[r.meta.interval] || 1000) *
+            Math.max(
+                1,
+                Math.ceil((r.meta.aligned_points || r.times.length) / Math.max(1, r.times.length)),
+            );
+        resultChart.setData(r.times, lines, { gapMs });
+        renderClockChart(r, gapMs);
+        ensureSourceCards(r.legs);
+        for (const leg of r.legs) {
+            const funding = isFunding(leg),
+                candle = isCandle(leg),
+                series = values(leg);
+            state.charts.get(leg.id).setData(
+                r.times,
+                [
+                    {
+                        label: funding
+                            ? '펀딩비율 (%)'
+                            : candle
+                              ? '1분봉 종가 (KRW)'
+                              : priceBasisLabel(leg),
+                        values: series,
+                        color: COLORS[leg.id],
+                    },
+                ],
+                { gapMs },
+            );
+            const card = $('source-charts').querySelector(`[data-id="${leg.id}"]`),
+                last = series.length - 1;
+            if (state.mode === 'history') {
+                const quote = funding
+                    ? {
+                          value: series[last],
+                          funding_rate: leg.funding_rate?.[last],
+                          source_time: leg.source_times?.[last],
+                          next_funding_in_seconds: leg.next_funding_in_seconds?.[last],
+                      }
+                    : candle
+                      ? {
+                            value: series[last],
+                            high: leg.high?.[last],
+                            low: leg.low?.[last],
+                            volume: leg.volume?.[last],
+                            available_time: leg.available_times?.[last],
+                        }
+                      : {
+                            value: series[last],
+                            mid: leg.mid?.[last],
+                            bid: leg.bid[last],
+                            ask: leg.ask[last],
+                        };
+                updateSourcePrice(card, quote, sampling);
+                card.classList.remove('stale');
+                const quoteTime = funding
+                    ? leg.source_times?.[last]
+                    : candle
+                      ? leg.available_times?.[last]
+                      : leg.quote_times?.[last];
+                const basis =
+                    (funding || candle || sampling === 'last') && Number.isFinite(quoteTime)
+                        ? `${funding ? '마지막 관측' : candle ? '마지막 원본 분봉 완성' : '원본'} ${time(quoteTime, true)} KST`
+                        : `구간 시작 ${time(r.times[last], true)} KST`;
+                card.querySelector('.source-price small').textContent =
+                    `${sourceUnit(leg)} · ${funding ? (sampling === 'mean' ? '평균 펀딩비율' : '원본 펀딩비율') : candle ? (sampling === 'mean' ? '분봉 종가 평균' : '1분봉 종가') : priceModeLabel(sampling, [leg])} · ${basis}`;
+            }
+        }
+        if (r.times.length)
+            $('data-period').textContent = `${time(r.times[0])} — ${time(r.times.at(-1))} KST`;
+        if ($('table-details').open) renderTable();
+    }
+    function renderTable() {
+        const r = state.result;
+        if (!r) return;
+        $('table-head').replaceChildren();
+        $('table-body').replaceChildren();
+        const head = document.createElement('tr');
+        for (const text of [
+            '시간 (KST)',
+            '조합 값',
+            'EMA',
+            ...r.legs.map(
+                (l) =>
+                    `${l.id} ${l.ticker}${isCandle(l) ? ' · 1분봉 종가' : !isFunding(l) ? ' · ' + priceBasisLabel(l) : ''} (${sourceUnit(l)})`,
+            ),
+            ...r.legs.map((l) => `${l.id} desk − server (ms)`),
+        ]) {
+            const cell = document.createElement('th');
+            cell.textContent = text;
+            head.append(cell);
+        }
+        $('table-head').append(head);
+        for (let i = r.times.length - 1; i >= Math.max(0, r.times.length - 100); i--) {
+            const row = document.createElement('tr');
+            for (const v of [
+                time(r.times[i], state.mode === 'live'),
+                format(r.result[i], hasFunding(r.legs) ? 12 : 7),
+                format(r.ewm[i], hasFunding(r.legs) ? 12 : 7),
+                ...r.legs.map((l) =>
+                    isFunding(l) ? fundingValue(values(l)[i]) : price(values(l)[i]),
+                ),
+                ...r.legs.map((l) => format(l.timestamp_delta_ms?.[i], 3)),
+            ]) {
+                const cell = document.createElement('td');
+                cell.textContent = v;
+                row.append(cell);
+            }
+            $('table-body').append(row);
+        }
+    }
+    function resetResults(message) {
+        state.result = null;
+        state.jobId = null;
+        $('export-button').disabled = true;
+        syncZoom(null);
+        resultChart.setData([], []);
+        clockChart.setData([], []);
+        $('analysis-clock-legend').replaceChildren();
+        $('analysis-clock-mode').textContent = '분석을 실행하면 소스별 시간차를 표시합니다.';
+        $('analysis-clock-empty').hidden = false;
+        $('analysis-clock-empty').firstElementChild.textContent = '분석 결과를 기다리고 있습니다.';
+        for (const chart of state.charts.values()) chart.setData([], []);
+        for (const card of $('source-charts').querySelectorAll('.source-panel')) {
+            updateSourcePrice(card, null, state.mode === 'live' ? 'live' : selectedPriceMode());
+            card.classList.remove('stale');
+            card.querySelector('.source-price small').textContent = '새 조회를 기다리고 있습니다.';
+        }
+        $('chart-placeholder').hidden = false;
+        document.querySelector('#chart-placeholder strong').textContent = message;
+        for (const id of [
+            'stat-latest',
+            'stat-latest-time',
+            'stat-mean',
+            'stat-range',
+            'stat-count',
+        ])
+            $(id).textContent = '—';
+        $('stat-std').textContent = '표준편차 —';
+        $('data-period').textContent = '—';
+        $('updated-at').textContent = '—';
+        $('table-body').replaceChildren();
+        $('table-head').replaceChildren();
+    }
 
+    async function runHistory() {
+        if (state.loading || state.mode !== 'history') return;
+        const version = ++state.queryVersion,
+            began = Date.now();
+        let submitted = false;
+        state.loading = true;
+        clearError();
+        resetResults('서버에서 선택한 소스와 조회 방식으로 분석하고 있습니다.');
+        $('run-button').disabled = true;
+        $('run-button').textContent = '서버에서 계산 중…';
+        $('job-progress').hidden = false;
+        $('job-label').textContent = '분석 요청 중';
+        $('job-detail').textContent = '조회할 소스와 기간을 전달하고 있습니다.';
+        try {
+            const c = config();
+            if (referencedLegs(c).some(isCandle) && INTERVALS[c.interval] < 60000)
+                throw new Error('1분봉 종가 소스는 1분 이상의 조회 간격을 선택해 주세요.');
+            const created = await api('/api/analyses', { method: 'POST', body: c });
+            submitted = true;
+            if (version !== state.queryVersion || state.mode !== 'history') return;
+            $('job-detail').textContent = '파일을 읽고 소스·수식·통계를 계산합니다.';
+            let job;
+            for (;;) {
+                if (version !== state.queryVersion || state.mode !== 'history') return;
+                job = await api(`/api/analyses/${encodeURIComponent(created.id)}`);
+                if (version !== state.queryVersion || state.mode !== 'history') return;
+                $('job-label').textContent =
+                    job.status === 'queued' ? '분석 대기 중' : '구간을 분석하고 있습니다';
+                $('job-elapsed').textContent = `${Math.floor((Date.now() - began) / 1000)}초`;
+                if (['complete', 'succeeded'].includes(job.status)) break;
+                if (['failed', 'cancelled', 'stopped'].includes(job.status))
+                    throw new Error(
+                        job.error || '분석을 완료하지 못했습니다. 조건을 확인해주세요.',
+                    );
+                if (Date.now() - began > 600000)
+                    throw new Error(
+                        '분석 대기가 길어지고 있습니다. 분석 기록에서 처리 상태를 확인하세요.',
+                    );
+                await wait(500);
+            }
+            if (!job.result)
+                throw new Error(
+                    '이 분석의 임시 결과가 만료되었습니다. 같은 조건으로 다시 실행해주세요.',
+                );
+            if ((job.result.meta?.price_mode || 'mean') !== c.price_mode)
+                throw new Error('요청한 가격 방식과 분석 결과가 다릅니다. 다시 실행해주세요.');
+            state.config = c;
+            state.jobId = created.id;
+            state.liveResult = false;
+            syncZoom(null);
+            renderResult(job.result, c.unit);
+            storeConfig(c);
+            status(`서버 분석 완료 · ${priceModeLabel(c.price_mode, referencedLegs(c))}`);
+            $('updated-at').textContent =
+                `${format(job.result.meta.rows_read, 0)}개 원본 관측 · ${format((Date.now() - began) / 1000, 1)}초`;
+            const warnings = job.result.meta.warnings || [];
+            $('notice').textContent = warnings.join(' ');
+            $('notice').hidden = !warnings.length;
+        } catch (error) {
+            if (version === state.queryVersion && state.mode === 'history') {
+                showError(error);
+                status('분석 조건을 확인하세요', 'bad');
+            }
+        } finally {
+            if (version === state.queryVersion) {
+                state.loading = false;
+                $('job-progress').hidden = true;
+                $('run-button').disabled = false;
+                if (state.mode === 'history')
+                    $('run-button').innerHTML = '<span>▶</span> 분석 실행';
+            }
+            if (submitted) loadHistory().catch(() => {});
+        }
+    }
+    function renderConnections(connections = []) {
+        $('connections').replaceChildren();
+        const names = {
+            connecting: '연결 중',
+            connected: '연결됨',
+            reconnecting: '재연결 중',
+            error: '연결 오류',
+            disconnected: '종료',
+        };
+        for (const s of connections) {
+            const card = document.createElement('div');
+            card.className = 'connection';
+            card.title = s.message || '';
+            const dot = document.createElement('span');
+            dot.className = `dot ${s.state === 'connected' ? 'good' : 'bad'}`;
+            const title = document.createElement('span');
+            title.textContent = label(s.exchange);
+            const detail = document.createElement('small');
+            detail.textContent = names[s.state] || s.state;
+            card.append(dot, title, detail);
+            $('connections').append(card);
+        }
+    }
+    async function stopLive({ quiet = false, keepalive = false } = {}) {
+        const version = ++state.liveVersion;
+        clearTimeout(state.liveTimer);
+        state.liveTimer = null;
+        state.liveStarting = false;
+        const id = state.liveId;
+        state.liveId = null;
+        if (state.mode === 'live') {
+            $('run-button').disabled = false;
+            $('run-button').innerHTML = '<span>▶</span> 실시간 시작';
+            $('run-button').classList.remove('running');
+            if (!quiet) status('실시간 연결 종료', 'muted');
+        }
+        if (id) {
+            try {
+                await api(`/api/live/${encodeURIComponent(id)}`, { method: 'DELETE', keepalive });
+            } catch (error) {
+                if (!quiet && version === state.liveVersion) showError(error);
+            }
+        }
+    }
+    async function startLive() {
+        clearError();
+        const c = config(),
+            legs = referencedLegs(c);
+        if (!legs.length) throw new Error('수식에 사용할 데이터 소스를 지정하세요.');
+        if (legs.some(isFunding))
+            throw new Error(
+                '펀딩비율 소스는 과거 분석에서 지원합니다. 과거 분석으로 전환하거나 수식에서 펀딩 소스를 제외해주세요.',
+            );
+        if (legs.some(isCandle))
+            throw new Error(
+                '1분봉 종가 소스는 과거 분석에서 지원합니다. 과거 분석으로 전환하거나 수식에서 분봉 소스를 제외해주세요.',
+            );
+        if (legs.some((l) => !LIVE_EXCHANGES.has(l.exchange)))
+            throw new Error(
+                '실시간 모니터는 Bithumb·Upbit·OKX를 지원합니다. 다른 거래소는 과거 분석에서 조회하세요.',
+            );
+        const version = ++state.liveVersion;
+        state.liveStarting = true;
+        state.config = c;
+        state.liveResult = true;
+        resetResults('모든 소스의 실시간 호가를 기다리고 있습니다');
+        ensureSourceCards(legs.map((l) => ({ ...l, currency: currency(l.exchange) })));
+        $('notice').textContent =
+            '서버가 수신한 최신 호가를 1초 간격으로 조합합니다. 10초 이상 지난 호가는 제외합니다. 과거 분석과 실시간 기록은 별도로 표시됩니다.';
+        $('notice').hidden = false;
+        $('run-button').disabled = true;
+        $('run-button').textContent = '실시간 연결 중…';
+        status('거래소 호가 연결 중', 'muted');
+        try {
+            const response = await api('/api/live', { method: 'POST', body: c });
+            if (version !== state.liveVersion || state.mode !== 'live') {
+                api(`/api/live/${encodeURIComponent(response.id)}`, { method: 'DELETE' }).catch(
+                    () => {},
+                );
+                return;
+            }
+            state.liveId = response.id;
+            state.liveStarting = false;
+            $('run-button').disabled = false;
+            $('run-button').textContent = '■ 연결 종료';
+            $('run-button').classList.add('running');
+            storeConfig(c);
+            async function poll() {
+                if (version !== state.liveVersion || state.mode !== 'live') return;
+                try {
+                    const snapshot = await api(`/api/live/${encodeURIComponent(response.id)}`);
+                    if (version !== state.liveVersion || state.mode !== 'live') return;
+                    renderConnections(snapshot.connections || []);
+                    if (snapshot.result) renderResult(snapshot.result, c.unit);
+                    const quotes = new Map((snapshot.quotes || []).map((q) => [q.id, q])),
+                        missing = new Set(
+                            (snapshot.missing || []).map((l) => (typeof l === 'string' ? l : l.id)),
+                        );
+                    for (const leg of legs) {
+                        const card = $('source-charts').querySelector(`[data-id="${leg.id}"]`),
+                            q = quotes.get(leg.id);
+                        if (!card) continue;
+                        const resultLeg = state.result?.legs?.find((item) => item.id === leg.id),
+                            displayQuote =
+                                q && !Object.hasOwn(q, 'value') && Array.isArray(resultLeg?.values)
+                                    ? { ...q, value: resultLeg.values.at(-1) }
+                                    : q;
+                        updateSourcePrice(card, displayQuote);
+                        card.classList.toggle('stale', missing.has(leg.id) || !q);
+                        const age = q
+                            ? Math.max(0, Math.floor((q.age_ms ?? Date.now() - q.ts) / 1000))
+                            : null;
+                        card.querySelector('.source-price small').textContent =
+                            `${currency(leg.exchange)} · ${priceBasisLabel(leg)} · ${q?.pricing_reason ? '선택 가격·유동성 확인 대기' : age === null ? '호가 대기' : age + '초 전'}`;
+                    }
+                    if (snapshot.error) showError(snapshot.error);
+                    else clearError();
+                    if (snapshot.status === 'failed') {
+                        await stopLive({ quiet: true });
+                        showError(snapshot.error || '실시간 분석을 계속할 수 없습니다.');
+                        status('실시간 분석 종료', 'bad');
+                        return;
+                    }
+                    if (snapshot.status === 'stopped') {
+                        await stopLive({ quiet: true });
+                        status('실시간 연결 종료', 'muted');
+                        return;
+                    }
+                    if (missing.size)
+                        status(`호가·유동성 대기 · ${[...missing].join(', ')}`, 'bad');
+                    else
+                        status(
+                            snapshot.result
+                                ? '실시간 · 서버에서 조합 중'
+                                : '첫 조합 값을 기다리고 있습니다',
+                            'good',
+                        );
+                    $('updated-at').textContent = `확인 ${time(Date.now(), true)} KST`;
+                } catch (error) {
+                    if (version !== state.liveVersion) return;
+                    showError(error);
+                    status('실시간 상태를 확인하지 못했습니다', 'bad');
+                }
+                if (version === state.liveVersion) state.liveTimer = setTimeout(poll, 1000);
+            }
+            poll();
+        } catch (error) {
+            if (version === state.liveVersion) {
+                await stopLive({ quiet: true });
+                showError(error);
+                status('실시간 연결 실패', 'bad');
+            }
+        }
+    }
+    async function switchMode(mode) {
+        if (mode === state.mode) return;
+        const modeVersion = ++state.modeVersion;
+        state.mode = mode;
+        state.queryVersion++;
+        state.loading = false;
+        state.boundsVersion++;
+        await stopLive({ quiet: true });
+        if (modeVersion !== state.modeVersion) return;
+        const live = mode === 'live';
+        document.querySelectorAll('[data-mode]').forEach((el) => {
+            el.classList.toggle('active', el.dataset.mode === mode);
+            el.setAttribute('aria-pressed', String(el.dataset.mode === mode));
+        });
+        $('history-controls').hidden = live;
+        $('live-controls').hidden = !live;
+        $('connections').hidden = !live;
+        $('connections').replaceChildren();
+        $('start').required = !live;
+        $('end').required = !live;
+        $('mode-eyebrow').textContent = live ? 'MONITOR / LIVE MARKETS' : 'RESEARCH / HISTORICAL';
+        $('page-title').textContent = live
+            ? '시장의 지금을, 같은 기준으로.'
+            : '가격을 조합하고, 흐름을 비교하세요.';
+        $('page-description').textContent = live
+            ? '서버에서 계산한 중간가와 조합의 흐름을 실시간으로 확인하세요.'
+            : '원하는 구간을 계산하고, 나만의 분석을 저장하세요.';
+        $('run-button').disabled = false;
+        $('run-button').classList.remove('running');
+        $('run-button').innerHTML = live
+            ? '<span>▶</span> 실시간 시작'
+            : '<span>▶</span> 분석 실행';
+        $('job-progress').hidden = true;
+        $('notice').hidden = true;
+        clearError();
+        refreshLists();
+        priceModeHelp();
+        resetResults(
+            live
+                ? '실시간 시작을 눌러 시세를 연결하세요'
+                : '분석 실행을 눌러 과거 데이터를 조회하세요',
+        );
+        status(live ? '실시간 연결 대기' : '서버 조회 준비 완료', 'muted');
+        if (!live) {
+            await updateAvailable();
+            await runHistory();
+        }
+    }
 
-  async function prepare(){
-    renderFunctionHelp();
-    const saved=storedConfig();
-    try{applyConfig({...state.catalog.defaults,...saved,price_mode:saved?.price_mode==='mean'?'mean':'last'});}
-    catch(error){if(!saved)throw error;applyConfig({...state.catalog.defaults,price_mode:'last'});toast('이 브라우저에 저장한 소스 설정을 확인하지 못해 기본 조합을 불러왔습니다.');}
-    if(saved)$('preset').value='custom';
-    await Promise.all([loadPresets(),loadHistory()]);
-    if(saved)await updateAvailable();else await setRange(24);
-  }
-  return {prepare,runHistory,stopLive};
+    async function loadPresets() {
+        const response = await api('/api/presets');
+        state.presets = response.items || [];
+        const previous = $('preset').value;
+        for (const option of [...$('preset').options])
+            if (option.value.startsWith('saved:')) option.remove();
+        for (const item of state.presets)
+            $('preset').add(
+                new Option(
+                    `저장 · ${item.name} · ${priceModeLabel(item.config?.price_mode, item.config?.legs || [])}`,
+                    `saved:${item.id}`,
+                ),
+            );
+        if ([...$('preset').options].some((o) => o.value === previous))
+            $('preset').value = previous;
+        $('delete-preset').hidden = !$('preset').value.startsWith('saved:');
+    }
+    async function loadHistory() {
+        const response = await api('/api/history');
+        state.history = (response.items || []).filter(
+            (item) => !item.kind || item.kind === 'analysis',
+        );
+        $('history-list').replaceChildren();
+        if (!state.history.length) {
+            const empty = document.createElement('p');
+            empty.className = 'empty-history';
+            empty.textContent = '아직 실행한 분석이 없습니다.';
+            $('history-list').append(empty);
+            return;
+        }
+        const names = {
+            queued: '대기',
+            running: '계산 중',
+            complete: '완료',
+            succeeded: '완료',
+            failed: '실패',
+            cancelled: '취소',
+        };
+        for (const item of state.history.slice(0, 20)) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'history-item';
+            const code = document.createElement('code');
+            code.textContent = item.config?.formula || '분석';
+            const detail = document.createElement('span');
+            detail.textContent = `${time(Date.parse(item.created_at))} · ${INTERVAL_LABEL[item.config?.interval] || item.config?.interval || ''} · ${priceModeLabel(item.config?.price_mode, item.config?.legs || [])}`;
+            const badge = document.createElement('small');
+            badge.className = `history-status ${item.status}`;
+            badge.textContent = names[item.status] || item.status;
+            button.append(code, detail, badge);
+            button.addEventListener('click', () => restoreHistory(item));
+            $('history-list').append(button);
+        }
+    }
+    async function restoreHistory(item) {
+        if (!item.config) return;
+        const version = ++state.queryVersion,
+            modeVersion = ++state.modeVersion;
+        state.loading = false;
+        await stopLive({ quiet: true });
+        if (version !== state.queryVersion || modeVersion !== state.modeVersion) return;
+        if (state.mode !== 'history') {
+            state.mode = 'history';
+            document.querySelectorAll('[data-mode]').forEach((el) => {
+                el.classList.toggle('active', el.dataset.mode === 'history');
+                el.setAttribute('aria-pressed', String(el.dataset.mode === 'history'));
+            });
+            $('history-controls').hidden = false;
+            $('live-controls').hidden = true;
+            $('connections').hidden = true;
+            $('mode-eyebrow').textContent = 'RESEARCH / HISTORICAL';
+            $('page-title').textContent = '가격을 조합하고, 흐름을 비교하세요.';
+            $('page-description').textContent = '원하는 구간을 계산하고, 나만의 분석을 저장하세요.';
+        }
+        applyConfig(item.config);
+        resetResults('선택한 기록의 가격 방식과 결과를 불러오고 있습니다.');
+        $('preset').value = 'custom';
+        $('delete-preset').hidden = true;
+        $('start').required = true;
+        $('end').required = true;
+        $('run-button').disabled = false;
+        $('run-button').classList.remove('running');
+        $('run-button').innerHTML = '<span>▶</span> 분석 실행';
+        $('job-progress').hidden = true;
+        clearError();
+        await updateAvailable();
+        if (version !== state.queryVersion || modeVersion !== state.modeVersion) return;
+        if (['complete', 'succeeded'].includes(item.status) && item.result_available !== false) {
+            try {
+                const job = await api(`/api/analyses/${encodeURIComponent(item.id)}`);
+                if (version !== state.queryVersion || modeVersion !== state.modeVersion) return;
+                if (job.result) {
+                    state.config = item.config;
+                    state.jobId = item.id;
+                    state.liveResult = false;
+                    syncZoom(null);
+                    renderResult(job.result, item.config.unit ?? '%');
+                    status('저장된 분석 결과');
+                    $('notice').textContent = (job.result.meta.warnings || []).join(' ');
+                    $('notice').hidden = !$('notice').textContent;
+                    return;
+                }
+            } catch {
+                /* Cached results may expire while the saved conditions remain. */
+            }
+        }
+        if (version !== state.queryVersion || modeVersion !== state.modeVersion) return;
+        resetResults('분석 실행을 눌러 이 조건을 다시 계산하세요');
+        $('notice').hidden = true;
+        status('분석 조건을 불러왔습니다', 'muted');
+        toast('분석 조건을 불러왔습니다. 분석 실행으로 다시 계산할 수 있습니다.');
+    }
+    function renderFunctionHelp() {
+        const defaults = [
+            { syntax: 'MA(A, 60)', description: '이동평균' },
+            { syntax: 'EMA(A, 60)', description: '지수이동평균' },
+            { syntax: 'DIFF(A, 1)', description: '이전 관측과의 차이' },
+            { syntax: 'RET(A, 1)', description: '이전 관측 대비 수익률 (%)' },
+            { syntax: 'ZSCORE(A, 60)', description: '이동평균 대비 표준편차 배수' },
+            { syntax: 'ABS(A)', description: '절댓값' },
+        ];
+        $('function-list').replaceChildren();
+        for (const item of state.catalog.functions || defaults) {
+            const dt = document.createElement('dt'),
+                dd = document.createElement('dd');
+            dt.textContent = item.syntax || item.name;
+            dd.textContent = item.description || '';
+            $('function-list').append(dt, dd);
+        }
+    }
+    async function exportCSV() {
+        if (!state.result?.times.length) return;
+        if (!state.liveResult && state.jobId) {
+            const version = state.queryVersion,
+                result = state.result,
+                jobId = state.jobId,
+                current = () =>
+                    version === state.queryVersion &&
+                    result === state.result &&
+                    jobId === state.jobId;
+            $('export-button').disabled = true;
+            try {
+                const response = await fetch(`/api/analyses/${encodeURIComponent(jobId)}/csv`, {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'text/csv' },
+                });
+                if (!current()) return;
+                if (response.status === 401) {
+                    location.assign('/login?next=%2F');
+                    throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');
+                }
+                if (!response.ok) {
+                    let details = {};
+                    try {
+                        details = await response.json();
+                    } catch {}
+                    if (!current()) return;
+                    throw new Error(
+                        typeof details.error === 'string'
+                            ? details.error
+                            : response.status === 410
+                              ? '결과 보관 기간이 지났습니다. 같은 조건으로 다시 분석해주세요.'
+                              : 'CSV를 내보내지 못했습니다.',
+                    );
+                }
+                const blob = await response.blob();
+                if (!current()) return;
+                const url = URL.createObjectURL(blob),
+                    a = document.createElement('a');
+                a.href = url;
+                a.download = 'midprice-analysis.csv';
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch (error) {
+                if (current()) showError(error);
+            } finally {
+                if (current()) $('export-button').disabled = !state.result?.times.length;
+            }
+            return;
+        }
+        exportLiveCSV();
+    }
+    function exportLiveCSV() {
+        const r = state.result,
+            metadata = (leg) => ({
+                ...state.config?.legs?.find((item) => item.id === leg.id),
+                ...leg,
+            });
+        const rows = [
+            [
+                'time_kst',
+                'result',
+                'ema',
+                'unit',
+                ...r.legs.flatMap((l) => [
+                    `${l.id}_value`,
+                    `${l.id}_price_basis`,
+                    `${l.id}_book_level`,
+                    `${l.id}_liquidity_amount`,
+                    `${l.id}_liquidity_currency`,
+                    `${l.id}_quantity_basis`,
+                    `${l.id}_depth_limit`,
+                    `${l.id}_${l.exchange}_${l.ticker}_mid`,
+                    `${l.id}_bid`,
+                    `${l.id}_ask`,
+                    `${l.id}_timestamp_delta_ms`,
+                ]),
+            ],
+        ];
+        for (let i = 0; i < r.times.length; i++)
+            rows.push([
+                new Date(r.times[i] + 9 * 3600000).toISOString().replace('Z', '+09:00'),
+                r.result[i],
+                r.ewm[i],
+                state.unit,
+                ...r.legs.flatMap((l) => {
+                    const m = metadata(l);
+                    return [
+                        values(l)[i],
+                        m.price_basis || 'mid',
+                        m.book_level ?? '',
+                        m.liquidity_amount ?? '',
+                        m.liquidity_currency || currency(l.exchange),
+                        m.quantity_basis || '',
+                        m.depth_limit ?? '',
+                        l.mid?.[i],
+                        l.bid?.[i],
+                        l.ask?.[i],
+                        l.timestamp_delta_ms?.[i],
+                    ];
+                }),
+            ]);
+        const csv =
+            '\ufeff' +
+            rows
+                .map((row) =>
+                    row.map((v) => '"' + String(v ?? '').replaceAll('"', '""') + '"').join(','),
+                )
+                .join('\r\n');
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })),
+            a = document.createElement('a');
+        a.href = url;
+        a.download = 'midprice-live.csv';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    async function refreshCatalog() {
+        state.catalog = await api('/api/catalog');
+        onCatalog(state.catalog);
+        state.boundsGeneration++;
+        state.boundsVersion++;
+        state.boundsKey = null;
+        state.commonBounds = null;
+        state.bounds.clear();
+        state.boundsPending.clear();
+        updateSourceActions();
+        populateExchanges();
+        refreshLists();
+        renderFunctionHelp();
+        document.dispatchEvent(new Event('oms:catalog'));
+        await updateAvailable({ force: true });
+    }
+
+    $('composer').addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (state.mode === 'history') runHistory();
+        else if (state.liveId || state.liveStarting) stopLive();
+        else startLive().catch(showError);
+    });
+    $('add-source').addEventListener('click', addSource);
+    $('preset').addEventListener('change', async () => {
+        const value = $('preset').value;
+        changed();
+        if (['relative', 'ratio', 'mid'].includes(value)) {
+            const required =
+                value === 'relative'
+                    ? ['A', 'B', 'C', 'D']
+                    : value === 'ratio'
+                      ? ['A', 'B']
+                      : ['A'];
+            ensureSources(required);
+            if (value !== 'mid') resetPriceSources(required);
+        }
+        if (value.startsWith('saved:')) {
+            const item = state.presets.find((item) => String(item.id) === value.slice(6));
+            if (item) applyConfig(item.config);
+        } else if (value === 'relative') {
+            $('formula').value = '((A / B) / (C / D) - 1) * 100';
+            $('unit').value = '%';
+            $('ticker-C').value = 'BTC';
+            $('ticker-D').value = 'BTC';
+            $('ticker-B').value = $('ticker-A').value;
+            $('exchange-C').value = $('exchange-A').value;
+            $('exchange-D').value = $('exchange-B').value;
+        } else if (value === 'ratio') {
+            $('formula').value = 'A / B';
+            $('unit').value = 'ratio';
+            $('ticker-B').value = $('ticker-A').value;
+        } else if (value === 'mid') {
+            $('formula').value = 'A';
+            $('unit').value = typeFor('A') === 'funding' ? '%' : currency($('exchange-A').value);
+        }
+        $('delete-preset').hidden = !value.startsWith('saved:');
+        refreshLists();
+        priceModeHelp();
+        await updateAvailable();
+    });
+    $('formula').addEventListener('input', () => {
+        $('preset').value = 'custom';
+        $('delete-preset').hidden = true;
+        changed();
+        updateAvailable();
+    });
+    document.querySelectorAll('[data-formula]').forEach((el) =>
+        el.addEventListener('click', () => {
+            ensureSources(['A']);
+            $('formula').value = el.dataset.formula;
+            $('unit').value =
+                el.dataset.unit === 'KRW'
+                    ? typeFor('A') === 'funding'
+                        ? '%'
+                        : currency($('exchange-A').value)
+                    : el.dataset.unit;
+            $('preset').value = 'custom';
+            $('delete-preset').hidden = true;
+            changed();
+            updateAvailable();
+        }),
+    );
+    for (const id of ['start', 'end', 'interval', 'ewm-span', 'unit', 'analysis-price-mode'])
+        $(id).addEventListener('change', changed);
+    document
+        .querySelectorAll('[data-mode]')
+        .forEach((el) =>
+            el.addEventListener('click', () => switchMode(el.dataset.mode).catch(showError)),
+        );
+    document.querySelectorAll('[data-hours]').forEach((el) =>
+        el.addEventListener('click', async () => {
+            changed();
+            await setRange(Number(el.dataset.hours));
+        }),
+    );
+    for (const id of ['show-mean', 'show-ema'])
+        $(id).addEventListener('change', () => {
+            if (state.result) renderResult(state.result, state.unit);
+        });
+    $('reset-zoom').addEventListener('click', () => syncZoom(null));
+    $('table-details').addEventListener('toggle', () => {
+        if ($('table-details').open) renderTable();
+    });
+    $('export-button').addEventListener('click', exportCSV);
+    $('history-toggle').addEventListener('click', async () => {
+        const visible = $('history-panel').hidden;
+        $('history-panel').hidden = !visible;
+        $('history-toggle').setAttribute('aria-expanded', String(visible));
+        if (visible)
+            try {
+                await loadHistory();
+            } catch (error) {
+                showError(error);
+            }
+    });
+    $('refresh-history').addEventListener('click', () => loadHistory().catch(showError));
+    $('refresh-data').addEventListener('click', async () => {
+        $('refresh-data').disabled = true;
+        try {
+            await refreshCatalog();
+            toast('서버의 종목과 저장 범위를 새로 확인했습니다.');
+        } catch (error) {
+            showError(error);
+        } finally {
+            $('refresh-data').disabled = false;
+        }
+    });
+    $('save-combo').addEventListener('click', async () => {
+        try {
+            const c = config(),
+                name = prompt('서버에 저장할 조합 이름을 입력하세요.', '나의 분석 조합');
+            if (!name?.trim()) return;
+            const response = await api('/api/presets', {
+                method: 'POST',
+                body: { name: name.trim().slice(0, 100), config: c },
+            });
+            await loadPresets();
+            const saved = response.item || response.preset || response;
+            if (saved.id !== undefined) $('preset').value = `saved:${saved.id}`;
+            $('delete-preset').hidden = false;
+            toast('분석 조합을 서버에 저장했습니다.');
+        } catch (error) {
+            showError(error);
+        }
+    });
+    $('delete-preset').addEventListener('click', async () => {
+        const value = $('preset').value;
+        if (!value.startsWith('saved:')) return;
+        try {
+            await api(`/api/presets/${encodeURIComponent(value.slice(6))}`, { method: 'DELETE' });
+            $('preset').value = 'custom';
+            await loadPresets();
+            toast('저장한 조합을 삭제했습니다.');
+        } catch (error) {
+            showError(error);
+        }
+    });
+    $('logout-button').addEventListener('click', async () => {
+        try {
+            await stopLive({ quiet: true });
+            await api('/logout', { method: 'POST', body: {} });
+            location.assign('/login');
+        } catch (error) {
+            showError(error);
+        }
+    });
+    window.addEventListener('pagehide', () => {
+        stopLive({ quiet: true, keepalive: true });
+    });
+
+    async function prepare() {
+        renderFunctionHelp();
+        const saved = storedConfig();
+        try {
+            applyConfig({
+                ...state.catalog.defaults,
+                ...saved,
+                price_mode: saved?.price_mode === 'mean' ? 'mean' : 'last',
+            });
+        } catch (error) {
+            if (!saved) throw error;
+            applyConfig({ ...state.catalog.defaults, price_mode: 'last' });
+            toast('이 브라우저에 저장한 소스 설정을 확인하지 못해 기본 조합을 불러왔습니다.');
+        }
+        if (saved) $('preset').value = 'custom';
+        await Promise.all([loadPresets(), loadHistory()]);
+        if (saved) await updateAvailable();
+        else await setRange(24);
+    }
+    return { prepare, runHistory, stopLive };
 }

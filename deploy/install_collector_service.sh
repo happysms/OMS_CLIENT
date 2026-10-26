@@ -7,26 +7,32 @@ oms_state=${DASHBOARD_STATE_DIR:-"$oms_root/.state"}
 oms_data=${DASHBOARD_COLLECTOR_DATA_ROOT:-"$oms_root/data/market"}
 oms_units=${XDG_CONFIG_HOME:-"$HOME/.config"}/systemd/user
 if [[ $# -gt 0 ]]; then
-  printf 'Usage: bash deploy/install_collector_service.sh\n' >&2
-  exit 2
+    printf 'Usage: bash deploy/install_collector_service.sh\n' >&2
+    exit 2
 fi
 if [[ ! -x "$oms_python" ]]; then
-  printf 'Set OMS_PYTHON to the virtualenv Python executable.\n' >&2
-  exit 1
+    printf 'Set OMS_PYTHON to the virtualenv Python executable.\n' >&2
+    exit 1
 fi
 
 "$oms_python" - "$oms_root" "$oms_python" "$oms_state" "$oms_data" "$oms_units" <<'PY'
 from pathlib import Path
 import sys
 
-root, python, state, data, units = map(lambda value: Path(value).expanduser().absolute(), sys.argv[1:])
+root, python, state, data, units = map(
+    lambda value: Path(value).expanduser().absolute(), sys.argv[1:]
+)
 collector_state = state / 'collectors' / 'usdt'
 for directory in (state, collector_state, data, units):
     directory.mkdir(parents=True, exist_ok=True)
 state.chmod(0o700)
 collector_state.chmod(0o700)
-replacements = {'@APP_ROOT@': root, '@PYTHON@': python, '@DATA_ROOT@': data,
-                '@COLLECTOR_STATE@': collector_state}
+replacements = {
+    '@APP_ROOT@': root,
+    '@PYTHON@': python,
+    '@DATA_ROOT@': data,
+    '@COLLECTOR_STATE@': collector_state,
+}
 content = (root / 'deploy' / 'oms-usdt-collector.service.in').read_text()
 for token, path in replacements.items():
     value = str(path)

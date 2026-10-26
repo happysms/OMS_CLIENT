@@ -1,4 +1,5 @@
 """Deterministic virtual events; no wall clock, order mutation or persistence."""
+
 from dataclasses import dataclass, field
 import heapq
 

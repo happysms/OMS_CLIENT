@@ -3,6 +3,7 @@
 Quick routes are temporary; named routes require a Cloudflare tunnel token file
 and a dashboard route configured to the same loopback origin.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,6 +26,7 @@ from urllib.request import urlopen
 
 
 from ..paths import ROOT
+
 SCRIPT = ROOT / "routing.py"
 QUICK_URL = re.compile(r"https://([a-z0-9]+(?:-[a-z0-9]+)*\.trycloudflare\.com)(?![a-zA-Z0-9._:-])")
 
@@ -104,8 +106,12 @@ def is_manager(state):
 def status(directory):
     state = read_state(directory)
     active = is_manager(state)
-    return {**state, "active": active, "url": state.get("url") if active else None,
-            "status": state.get("status", "starting") if active else "stopped"}
+    return {
+        **state,
+        "active": active,
+        "url": state.get("url") if active else None,
+        "status": state.get("status", "starting") if active else "stopped",
+    }
 
 
 def stop(directory):
@@ -140,7 +146,9 @@ def stop(directory):
 
 def make_logger(directory):
     logger = logging.Logger(f"midprice.routing.{os.getpid()}")
-    handler = RotatingFileHandler(directory / "routing.log", maxBytes=1024 * 1024, backupCount=2, encoding="utf-8")
+    handler = RotatingFileHandler(
+        directory / "routing.log", maxBytes=1024 * 1024, backupCount=2, encoding="utf-8"
+    )
     os.chmod(directory / "routing.log", 0o600)
     handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
     logger.addHandler(handler)
@@ -156,7 +164,15 @@ def redact(line, token=""):
 
 
 def command(mode, port, binary):
-    base = [str(binary), "tunnel", "--no-autoupdate", "--protocol", "http2", "--metrics", "127.0.0.1:0"]
+    base = [
+        str(binary),
+        "tunnel",
+        "--no-autoupdate",
+        "--protocol",
+        "http2",
+        "--metrics",
+        "127.0.0.1:0",
+    ]
     token = ""
     if mode == "quick":
         return [*base, "--url", origin_url(port)], token
@@ -186,12 +202,19 @@ def run(mode, port):
         try:
             with urlopen(origin_url(port) + "/api/health", timeout=3) as response:
                 health = json.load(response)
-            if (not isinstance(health, dict) or health.get("service") not in ("oms-client", "midprice-lab")
-                    or health.get("ok") is not True):
+            if (
+                not isinstance(health, dict)
+                or health.get("service") not in ("oms-client", "midprice-lab")
+                or health.get("ok") is not True
+            ):
                 raise ValueError("origin")
         except (OSError, ValueError, URLError) as exc:
             raise ValueError("먼저 로컬 대시보드 서버를 실행하세요.") from exc
-        binary = Path(os.environ.get("DASHBOARD_CLOUDFLARED", str(ROOT / ".tools" / "cloudflared"))).expanduser().resolve()
+        binary = (
+            Path(os.environ.get("DASHBOARD_CLOUDFLARED", str(ROOT / ".tools" / "cloudflared")))
+            .expanduser()
+            .resolve()
+        )
         if not binary.is_file() or not os.access(binary, os.X_OK):
             raise ValueError(".tools/cloudflared 실행 파일을 설치하세요.")
         args, token = command(mode, port, binary)
@@ -200,24 +223,43 @@ def run(mode, port):
             raise ValueError("routing.py 파일 경로로 실행하세요.")
         logger = make_logger(directory)
         stopping = threading.Event()
-        previous = {sig: signal.signal(sig, lambda _sig, _frame: stopping.set()) for sig in (signal.SIGINT, signal.SIGTERM)}
-        state = {"mode": mode, "origin": origin_url(port), "status": "starting", "url": None,
-                 "manager_pid": os.getpid(), "manager_start_ticks": identity["start_ticks"],
-                 "started_at": datetime.now(timezone.utc).isoformat()}
+        previous = {
+            sig: signal.signal(sig, lambda _sig, _frame: stopping.set())
+            for sig in (signal.SIGINT, signal.SIGTERM)
+        }
+        state = {
+            "mode": mode,
+            "origin": origin_url(port),
+            "status": "starting",
+            "url": None,
+            "manager_pid": os.getpid(),
+            "manager_start_ticks": identity["start_ticks"],
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
         child = None
         reader = None
         messages = queue.Queue(maxsize=128)
         try:
-            child = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                     text=True, encoding="utf-8", errors="replace", start_new_session=True)
+            child = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                start_new_session=True,
+            )
             state["child_pid"] = child.pid
             write_state(directory, state)
+
             def receive():
                 for line in iter(lambda: child.stdout.readline(4096), ""):
                     try:
                         messages.put_nowait(line)
                     except queue.Full:
                         pass
+
             reader = threading.Thread(target=receive, name="routing-output", daemon=True)
             reader.start()
             print("외부 HTTPS 라우팅을 연결하고 있습니다.", flush=True)
@@ -251,8 +293,12 @@ def run(mode, port):
                 reader.join(timeout=1)
             if child is not None and child.stdout:
                 child.stdout.close()
-            state.update(status="stopped", last_url=state.get("url"), url=None,
-                         stopped_at=datetime.now(timezone.utc).isoformat())
+            state.update(
+                status="stopped",
+                last_url=state.get("url"),
+                url=None,
+                stopped_at=datetime.now(timezone.utc).isoformat(),
+            )
             write_state(directory, state)
             for sig, handler in previous.items():
                 signal.signal(sig, handler)

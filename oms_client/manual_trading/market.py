@@ -1,4 +1,5 @@
 """Public spot orderbook/trade subscriptions, independent of all private credentials."""
+
 from collections import deque, OrderedDict
 from decimal import Decimal, InvalidOperation
 import json
@@ -7,21 +8,36 @@ import time
 import uuid
 from websockets.sync.client import connect
 from .exchange import amount, symbol
-ENDPOINTS = {'bithumb': 'wss://ws-api.bithumb.com/websocket/v1', 'okx': 'wss://ws.okx.com/ws/v5/public'}
+
+ENDPOINTS = {
+    'bithumb': 'wss://ws-api.bithumb.com/websocket/v1',
+    'okx': 'wss://ws.okx.com/ws/v5/public',
+}
+
 
 def subscription(exchange, ticker):
     pair = symbol(exchange, ticker)
     if exchange == 'okx':
-        return {'op': 'subscribe', 'args': [{'channel': kind, 'instId': pair} for kind in ('books5', 'trades')]}
-    return [{'ticket': uuid.uuid4().hex}, {'type': 'orderbook', 'codes': [pair]}, {'type': 'trade', 'codes': [pair]}, {'format': 'DEFAULT'}]
+        return {
+            'op': 'subscribe',
+            'args': [{'channel': kind, 'instId': pair} for kind in ('books5', 'trades')],
+        }
+    return [
+        {'ticket': uuid.uuid4().hex},
+        {'type': 'orderbook', 'codes': [pair]},
+        {'type': 'trade', 'codes': [pair]},
+        {'format': 'DEFAULT'},
+    ]
+
 
 def stamp(value):
     value = int(value)
-    if value > 10 ** 14:
+    if value > 10**14:
         value //= 1000
     if value <= 0:
         raise ValueError('timestamp')
     return value
+
 
 def levels(raw, descending):
     result = []
@@ -30,12 +46,17 @@ def levels(raw, descending):
         quantity = Decimal(str(row[1]))
         if not quantity.is_finite() or not 0 <= quantity <= Decimal('1e18'):
             raise ValueError('quantity')
-        if result and (Decimal(price) >= Decimal(result[-1][0]) if descending else Decimal(price) <= Decimal(result[-1][0])):
+        if result and (
+            Decimal(price) >= Decimal(result[-1][0])
+            if descending
+            else Decimal(price) <= Decimal(result[-1][0])
+        ):
             raise ValueError('depth order')
         result.append([price, format(quantity, 'f')])
     if not result:
         raise ValueError('empty book')
     return result
+
 
 def parse_events(exchange, ticker, message, received_ms):
     pair = symbol(exchange, ticker)
@@ -49,18 +70,56 @@ def parse_events(exchange, ticker, message, received_ms):
                 return []
             for raw in message.get('data', []):
                 if arg.get('channel') == 'books5':
-                    result.append(dict(kind='book', time=stamp(raw['ts']), bids=levels(raw['bids'], True), asks=levels(raw['asks'], False)))
+                    result.append(
+                        dict(
+                            kind='book',
+                            time=stamp(raw['ts']),
+                            bids=levels(raw['bids'], True),
+                            asks=levels(raw['asks'], False),
+                        )
+                    )
                 elif arg.get('channel') == 'trades' and raw.get('side') in {'buy', 'sell'}:
-                    result.append(dict(kind='tick', time=stamp(raw['ts']), id=str(raw['tradeId']), price=amount(raw['px']), quantity=amount(raw['sz']), side=raw['side']))
+                    result.append(
+                        dict(
+                            kind='tick',
+                            time=stamp(raw['ts']),
+                            id=str(raw['tradeId']),
+                            price=amount(raw['px']),
+                            quantity=amount(raw['sz']),
+                            side=raw['side'],
+                        )
+                    )
         elif message.get('code') == pair:
             if message.get('type') == 'orderbook':
                 raw = message['orderbook_units']
-                result.append(dict(kind='book', time=stamp(message['timestamp']), bids=levels([[item['bid_price'], item['bid_size']] for item in raw], True), asks=levels([[item['ask_price'], item['ask_size']] for item in raw], False)))
+                result.append(
+                    dict(
+                        kind='book',
+                        time=stamp(message['timestamp']),
+                        bids=levels([[item['bid_price'], item['bid_size']] for item in raw], True),
+                        asks=levels([[item['ask_price'], item['ask_size']] for item in raw], False),
+                    )
+                )
             elif message.get('type') == 'trade' and message.get('ask_bid') in {'ASK', 'BID'}:
-                result.append(dict(kind='tick', time=stamp(message['trade_timestamp']), id=str(message['sequential_id']), price=amount(str(message['trade_price'])), quantity=amount(str(message['trade_volume'])), side='buy' if message['ask_bid'] == 'BID' else 'sell'))
+                result.append(
+                    dict(
+                        kind='tick',
+                        time=stamp(message['trade_timestamp']),
+                        id=str(message['sequential_id']),
+                        price=amount(str(message['trade_price'])),
+                        quantity=amount(str(message['trade_volume'])),
+                        side='buy' if message['ask_bid'] == 'BID' else 'sell',
+                    )
+                )
     except (ValueError, TypeError, KeyError, IndexError, InvalidOperation, OverflowError):
         return []
-    return [dict(event, received_ms=received_ms, exchange=exchange, ticker=ticker) for event in result if event['time'] <= received_ms + 5000 and (event['kind'] != 'book' or Decimal(event['bids'][0][0]) < Decimal(event['asks'][0][0]))]
+    return [
+        dict(event, received_ms=received_ms, exchange=exchange, ticker=ticker)
+        for event in result
+        if event['time'] <= received_ms + 5000
+        and (event['kind'] != 'book' or Decimal(event['bids'][0][0]) < Decimal(event['asks'][0][0]))
+    ]
+
 
 class SpotFeed:
 
@@ -80,7 +139,15 @@ class SpotFeed:
         while not self.stopped.is_set():
             self.on_status('connecting')
             try:
-                with self.connector(ENDPOINTS[self.exchange], open_timeout=6, close_timeout=1, ping_interval=20, ping_timeout=20, max_size=2 ** 20, max_queue=16) as socket:
+                with self.connector(
+                    ENDPOINTS[self.exchange],
+                    open_timeout=6,
+                    close_timeout=1,
+                    ping_interval=20,
+                    ping_timeout=20,
+                    max_size=2**20,
+                    max_queue=16,
+                ) as socket:
                     self.socket = socket
                     if self.stopped.is_set():
                         break
@@ -109,10 +176,14 @@ class SpotFeed:
                             message = json.loads(raw, parse_float=Decimal)
                         except (ValueError, TypeError):
                             continue
-                        if isinstance(message, dict) and (message.get('event') == 'error' or message.get('error')):
+                        if isinstance(message, dict) and (
+                            message.get('event') == 'error' or message.get('error')
+                        ):
                             self.on_status('error')
                             return
-                        for event in parse_events(self.exchange, self.ticker, message, int(time.time() * 1000)):
+                        for event in parse_events(
+                            self.exchange, self.ticker, message, int(time.time() * 1000)
+                        ):
                             if not self.stopped.is_set():
                                 self.on_event(event)
             except Exception:
@@ -134,6 +205,7 @@ class SpotFeed:
         if self.thread.is_alive() and self.thread is not threading.current_thread():
             self.thread.join(1.5)
 
+
 class MarketSessions:
 
     def __init__(self, feed_factory=SpotFeed, clock=time.time):
@@ -154,7 +226,14 @@ class MarketSessions:
                 self.generation += 1
                 generation = self.generation
                 previous = self.feeds.pop(exchange, None)
-                self.sessions[exchange] = dict(ticker=ticker, status='connecting', book=None, ticks=deque(maxlen=300), seen=OrderedDict(), generation=generation)
+                self.sessions[exchange] = dict(
+                    ticker=ticker,
+                    status='connecting',
+                    book=None,
+                    ticks=deque(maxlen=300),
+                    seen=OrderedDict(),
+                    generation=generation,
+                )
             if previous:
                 previous.stop()
 
@@ -183,6 +262,7 @@ class MarketSessions:
                         return
                     state['status'] = value
                     state['book'] = None
+
             feed = self.feed_factory(exchange, ticker, event, status)
             with self.lock:
                 self.feeds[exchange] = feed
@@ -196,13 +276,28 @@ class MarketSessions:
                 return dict(status='disconnected', book=None, ticks=[], can_order=False)
             book = state['book']
             age = max(now - book['time'], now - book['received_ms']) if book else None
-            fresh = bool(book and state['status'] == 'connected' and (-1000 <= now - book['time'] <= 2000) and (0 <= now - book['received_ms'] <= 2000))
-            return dict(exchange=exchange, ticker=state['ticker'], status=state['status'], book=book, ticks=list(reversed(state['ticks'])), age_ms=age, can_order=fresh)
+            fresh = bool(
+                book
+                and state['status'] == 'connected'
+                and (-1000 <= now - book['time'] <= 2000)
+                and (0 <= now - book['received_ms'] <= 2000)
+            )
+            return dict(
+                exchange=exchange,
+                ticker=state['ticker'],
+                status=state['status'],
+                book=book,
+                ticks=list(reversed(state['ticks'])),
+                age_ms=age,
+                can_order=fresh,
+            )
 
     def require_fresh(self, exchange, ticker):
         current = self.snapshot(exchange)
         if current.get('ticker') != ticker or not current['can_order']:
-            raise ValueError('선택 종목의 호가가 없거나 2초 이상 지연되었습니다. 시세 연결 후 다시 주문하세요.')
+            raise ValueError(
+                '선택 종목의 호가가 없거나 2초 이상 지연되었습니다. 시세 연결 후 다시 주문하세요.'
+            )
 
     def close(self):
         with self.change_lock:

@@ -1,4 +1,5 @@
 """Authenticated durable all-symbol premium summaries and hourly history."""
+
 import csv
 import io
 
@@ -39,14 +40,39 @@ def register(app, service):
         result = service.status()
         output = io.StringIO(newline='')
         writer = csv.writer(output)
-        writer.writerow(['ticker', 'end_ms', 'mean_3d_pct', 'samples_3d', 'coverage_3d_pct',
-                         'mean_7d_pct', 'samples_7d', 'coverage_7d_pct', 'error_hours', 'profile'])
+        writer.writerow(
+            [
+                'ticker',
+                'end_ms',
+                'mean_3d_pct',
+                'samples_3d',
+                'coverage_3d_pct',
+                'mean_7d_pct',
+                'samples_7d',
+                'coverage_7d_pct',
+                'error_hours',
+                'profile',
+            ]
+        )
         for item in result['items']:
             ticker = item['ticker']
             if ticker.startswith(('=', '+', '-', '@')):
                 ticker = "'" + ticker
-            writer.writerow([ticker, result['end_ms'], *[item['windows'][str(days)][key]
-                             for days in (3, 7) for key in ('mean_pct', 'samples', 'coverage_pct')],
-                             item['error_hours'], result['profile']])
-        return Response('\ufeff' + output.getvalue(), mimetype='text/csv',
-                        headers={'Content-Disposition': 'attachment; filename=premium-averages.csv'})
+            writer.writerow(
+                [
+                    ticker,
+                    result['end_ms'],
+                    *[
+                        item['windows'][str(days)][key]
+                        for days in (3, 7)
+                        for key in ('mean_pct', 'samples', 'coverage_pct')
+                    ],
+                    item['error_hours'],
+                    result['profile'],
+                ]
+            )
+        return Response(
+            '\ufeff' + output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=premium-averages.csv'},
+        )

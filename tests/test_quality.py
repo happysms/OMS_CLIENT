@@ -18,18 +18,27 @@ class QualityTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.legacy, self.collector = self.root / "legacy", self.root / "collector"
-        environment = patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": str(self.legacy),
-                                             "DASHBOARD_COLLECTOR_DATA_ROOT": str(self.collector)})
+        environment = patch.dict(
+            os.environ,
+            {
+                "DASHBOARD_DATA_ROOT": str(self.legacy),
+                "DASHBOARD_COLLECTOR_DATA_ROOT": str(self.collector),
+            },
+        )
         environment.start()
         self.addCleanup(environment.stop)
         self.origin = int(pd.Timestamp("2026-10-25T00:00:00Z").timestamp() * 1000)
 
-    def write(self, exchange="bithumb", kind="ob", ticker="BTC", frame=None, hour="00", gzip_only=False):
+    def write(
+        self, exchange="bithumb", kind="ob", ticker="BTC", frame=None, hour="00", gzip_only=False
+    ):
         root = self.collector if kind == "ob_1s" else self.legacy
         path = root / exchange / kind / ticker / "2026/10/25" / f"{hour}.parquet"
         path.parent.mkdir(parents=True, exist_ok=True)
         if frame is None:
-            frame = pd.DataFrame({"desktopTime": [self.origin + 1000], "serverTime": [self.origin + 975]})
+            frame = pd.DataFrame(
+                {"desktopTime": [self.origin + 1000], "serverTime": [self.origin + 975]}
+            )
         frame.to_parquet(path, index=False)
         if gzip_only:
             compressed = Path(str(path) + ".gz")
@@ -39,8 +48,15 @@ class QualityTests(unittest.TestCase):
         return path
 
     def query(self, **changes):
-        payload = {"data_kind": "ob", "exchanges": ["bithumb"], "start": "2026-10-25T00:00:00Z",
-                   "end": "2026-10-25T00:01:00Z", "interval": "1s", "threshold_ms": 1000, "max_points": 2000}
+        payload = {
+            "data_kind": "ob",
+            "exchanges": ["bithumb"],
+            "start": "2026-10-25T00:00:00Z",
+            "end": "2026-10-25T00:01:00Z",
+            "interval": "1s",
+            "threshold_ms": 1000,
+            "max_points": 2000,
+        }
         payload.update(changes)
         return quality.query_history(payload)
 
@@ -54,7 +70,9 @@ class QualityTests(unittest.TestCase):
         self.write("unknown", "ob_1s", "USDT")
         self.write("fx", "fx", "fx")
         result = quality.catalog()
-        self.assertEqual({item["id"] for item in result["kinds"]}, {"ob", "tick", "funding", "ob_1s"})
+        self.assertEqual(
+            {item["id"] for item in result["kinds"]}, {"ob", "tick", "funding", "ob_1s"}
+        )
         self.assertTrue(all(item["live_supported"] for item in result["kinds"]))
         self.assertEqual(result["exchanges"]["tick"], {"bithumb": ["ETH"]})
         self.assertEqual(result["exchanges"]["ob_1s"], {"bithumb": ["USDT"]})
@@ -64,32 +82,74 @@ class QualityTests(unittest.TestCase):
         deltas = [-10, 0, 10, 1000, 2000]
         desktop = [self.origin + index * 1000 for index in range(5)]
         server = [stamp - delta for stamp, delta in zip(desktop, deltas)]
-        bad_server = [0, None, float("nan"), self.origin / 1000, self.origin * 1000, self.origin * 1_000_000]
-        bad_desktop = [0, None, float("nan"), self.origin / 1000, self.origin * 1000, self.origin * 1_000_000]
-        frame = pd.DataFrame({"desktopTime": desktop + [self.origin + 10000 + i for i in range(6)] + bad_desktop,
-                              "serverTime": server + bad_server + [self.origin] * 6,
-                              "b1_p": [-1] * 17, "a1_p": [-2] * 17})
+        bad_server = [
+            0,
+            None,
+            float("nan"),
+            self.origin / 1000,
+            self.origin * 1000,
+            self.origin * 1_000_000,
+        ]
+        bad_desktop = [
+            0,
+            None,
+            float("nan"),
+            self.origin / 1000,
+            self.origin * 1000,
+            self.origin * 1_000_000,
+        ]
+        frame = pd.DataFrame(
+            {
+                "desktopTime": desktop + [self.origin + 10000 + i for i in range(6)] + bad_desktop,
+                "serverTime": server + bad_server + [self.origin] * 6,
+                "b1_p": [-1] * 17,
+                "a1_p": [-2] * 17,
+            }
+        )
         self.write(frame=frame)
         result = self.query()
         item = result["series"][0]
         stats = item["stats"]
         self.assertEqual(item["status"], "ok")
-        self.assertEqual((stats["rows"], stats["valid_pairs"], stats["invalid_server_rows"], stats["unplaced_desktop_rows"]), (17, 5, 6, 6))
+        self.assertEqual(
+            (
+                stats["rows"],
+                stats["valid_pairs"],
+                stats["invalid_server_rows"],
+                stats["unplaced_desktop_rows"],
+            ),
+            (17, 5, 6, 6),
+        )
         self.assertEqual(stats["negative_count"], 1)
         self.assertEqual(stats["above_threshold_count"], 1)  # Strictly above, not equal.
-        for field, expected in (("mean_ms", 600), ("p50_ms", 10), ("p95_ms", 1800), ("min_ms", -10), ("max_ms", 2000)):
+        for field, expected in (
+            ("mean_ms", 600),
+            ("p50_ms", 10),
+            ("p95_ms", 1800),
+            ("min_ms", -10),
+            ("max_ms", 2000),
+        ):
             self.assertAlmostEqual(stats[field], expected)
         self.assertEqual(item["min_ms"][0], -10)
         self.assertEqual(stats["latest_ms"], 2000)
         self.assertEqual(stats["latest_desktop_ms"], self.origin + 4000)
         self.assertEqual(stats["latest_server_ms"], self.origin + 2000)
-        self.assertTrue(any("선택된 파일 전체" in warning for warning in result["meta"]["warnings"]))
+        self.assertTrue(
+            any("선택된 파일 전체" in warning for warning in result["meta"]["warnings"])
+        )
         json.dumps(result, allow_nan=False)
 
     def test_fractional_ms_and_raw_p95_are_not_replaced_by_means_or_last_prices(self):
         deltas = [0.25, 0.5, 10.75, 100.5, 1000.25]
         desktop = [self.origin + 100 + index for index in range(5)]
-        self.write(frame=pd.DataFrame({"desktopTime": desktop, "serverTime": [stamp - delta for stamp, delta in zip(desktop, deltas)]}))
+        self.write(
+            frame=pd.DataFrame(
+                {
+                    "desktopTime": desktop,
+                    "serverTime": [stamp - delta for stamp, delta in zip(desktop, deltas)],
+                }
+            )
+        )
         item = self.query(interval="1min")["series"][0]
         self.assertEqual(item["count"], [5])
         self.assertAlmostEqual(item["mean_ms"][0], sum(deltas) / 5)
@@ -98,7 +158,11 @@ class QualityTests(unittest.TestCase):
 
     def test_desktop_filter_is_start_inclusive_end_exclusive_without_filling_buckets(self):
         desktop = [self.origin, self.origin + 1000, self.origin + 3000, self.origin + 60000]
-        self.write(frame=pd.DataFrame({"desktopTime": desktop, "serverTime": [stamp - 5 for stamp in desktop]}))
+        self.write(
+            frame=pd.DataFrame(
+                {"desktopTime": desktop, "serverTime": [stamp - 5 for stamp in desktop]}
+            )
+        )
         item = self.query(start="2026-10-25T00:00:01Z")["series"][0]
         self.assertEqual(item["times"], [self.origin + 1000, self.origin + 3000])
         self.assertEqual(item["stats"]["rows"], 2)
@@ -118,7 +182,14 @@ class QualityTests(unittest.TestCase):
         deltas = [10] * 30
         deltas[11], deltas[21] = 9000, -8000
         desktop = [self.origin + index * 1000 for index in range(30)]
-        self.write(frame=pd.DataFrame({"desktopTime": desktop, "serverTime": [stamp - delta for stamp, delta in zip(desktop, deltas)]}))
+        self.write(
+            frame=pd.DataFrame(
+                {
+                    "desktopTime": desktop,
+                    "serverTime": [stamp - delta for stamp, delta in zip(desktop, deltas)],
+                }
+            )
+        )
         full = self.query()["series"][0]
         sampled = self.query(max_points=2)["series"][0]
         self.assertEqual(sampled["stats"], full["stats"])
@@ -151,9 +222,30 @@ class QualityTests(unittest.TestCase):
         self.assertIn("용량 제한", limited["error"])
 
     def test_selected_source_kind_is_isolated_from_orderbook_precedence_and_other_sources(self):
-        self.write(ticker="USDT", frame=pd.DataFrame({"desktopTime": [self.origin + 1000], "serverTime": [self.origin + 990]}))
-        self.write(kind="ob_1s", ticker="USDT", frame=pd.DataFrame({"desktopTime": [self.origin + 1000], "serverTime": [self.origin + 900], "receivedTime": [self.origin + 920]}))
-        self.write(kind="tick", ticker="USDT", frame=pd.DataFrame({"desktopTime": [self.origin + 1000], "serverTime": [self.origin + 500]}))
+        self.write(
+            ticker="USDT",
+            frame=pd.DataFrame(
+                {"desktopTime": [self.origin + 1000], "serverTime": [self.origin + 990]}
+            ),
+        )
+        self.write(
+            kind="ob_1s",
+            ticker="USDT",
+            frame=pd.DataFrame(
+                {
+                    "desktopTime": [self.origin + 1000],
+                    "serverTime": [self.origin + 900],
+                    "receivedTime": [self.origin + 920],
+                }
+            ),
+        )
+        self.write(
+            kind="tick",
+            ticker="USDT",
+            frame=pd.DataFrame(
+                {"desktopTime": [self.origin + 1000], "serverTime": [self.origin + 500]}
+            ),
+        )
         legacy = self.query(ticker="USDT")["series"][0]
         collected = self.query(ticker="USDT", data_kind="ob_1s")
         self.assertEqual(legacy["stats"]["mean_ms"], 10)
@@ -164,7 +256,11 @@ class QualityTests(unittest.TestCase):
     def test_synthetic_and_unmeasurable_server_clocks_are_not_zero_latency_measurements(self):
         for exchange, kind in (("okx", "funding"), ("hyperliquid", "funding"), ("ls", "ob")):
             with self.subTest(exchange=exchange):
-                self.write(exchange, kind, frame=pd.DataFrame({"desktopTime": [self.origin], "serverTime": [self.origin]}))
+                self.write(
+                    exchange,
+                    kind,
+                    frame=pd.DataFrame({"desktopTime": [self.origin], "serverTime": [self.origin]}),
+                )
                 result = self.query(exchanges=[exchange], data_kind=kind)["series"][0]
                 self.assertEqual(result["status"], "no_data")
                 self.assertIsNone(result["stats"]["mean_ms"])
@@ -190,13 +286,30 @@ class QualityTests(unittest.TestCase):
 
     def test_query_bounds_and_resource_caps_fail_clearly(self):
         self.write()
-        for changes in ({"end": "2026-11-02T00:00:00Z"}, {"end": "2026-10-25T00:00:00Z"},
-                        {"end": "2026-10-29T00:00:00Z", "interval": "1s"}, {"max_points": 6001},
-                        {"threshold_ms": True}, {"threshold_ms": float("inf")}, {"threshold_ms": -1}, {"threshold_ms": 86_400_001},
-                        {"exchanges": []}, {"exchanges": ["bithumb", "bithumb"]}, {"ticker": "../BTC"}, {"ticker": 0}):
+        for changes in (
+            {"end": "2026-11-02T00:00:00Z"},
+            {"end": "2026-10-25T00:00:00Z"},
+            {"end": "2026-10-29T00:00:00Z", "interval": "1s"},
+            {"max_points": 6001},
+            {"threshold_ms": True},
+            {"threshold_ms": float("inf")},
+            {"threshold_ms": -1},
+            {"threshold_ms": 86_400_001},
+            {"exchanges": []},
+            {"exchanges": ["bithumb", "bithumb"]},
+            {"ticker": "../BTC"},
+            {"ticker": 0},
+        ):
             with self.subTest(changes=changes), self.assertRaises(DataError):
                 self.query(**changes)
-        self.write(frame=pd.DataFrame({"desktopTime": [self.origin + i for i in range(3)], "serverTime": [self.origin] * 3}))
+        self.write(
+            frame=pd.DataFrame(
+                {
+                    "desktopTime": [self.origin + i for i in range(3)],
+                    "serverTime": [self.origin] * 3,
+                }
+            )
+        )
         self.write("upbit")
         with patch.object(quality, "MAX_RAW_ROWS", 2):
             result = self.query(exchanges=["bithumb", "upbit"])

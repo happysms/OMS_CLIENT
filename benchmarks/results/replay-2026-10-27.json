@@ -1,135 +1,79 @@
 {
-  "date": "2026-10-27",
-  "baseline_commit": "71f585e",
-  "python": "3.12.3",
-  "architecture": "x86_64",
-  "events": 20000,
-  "repetitions": 3,
-  "benchmark_sha256": "207afaf46b0bc2037fd24be8d4b43fa44bb6cae7d5ea43ea9d87cf0ce8def437",
-  "before": {
-    "idle": {
-      "median_seconds": 0.20056244172155857,
-      "samples_seconds": [
-        0.20056244172155857,
-        0.2025117827579379,
-        0.19802483171224594
-      ],
-      "sha256": "05ad75c29b4b69fba43e1bb82adfd98db658256abce8133ae14548e793770a51"
+    "date": "2026-10-27",
+    "baseline_commit": "71f585e",
+    "python": "3.12.3",
+    "architecture": "x86_64",
+    "events": 20000,
+    "repetitions": 3,
+    "benchmark_sha256": "207afaf46b0bc2037fd24be8d4b43fa44bb6cae7d5ea43ea9d87cf0ce8def437",
+    "before": {
+        "idle": {
+            "median_seconds": 0.20056244172155857,
+            "samples_seconds": [0.20056244172155857, 0.2025117827579379, 0.19802483171224594],
+            "sha256": "05ad75c29b4b69fba43e1bb82adfd98db658256abce8133ae14548e793770a51"
+        },
+        "orders100": {
+            "median_seconds": 1.0505545977503061,
+            "samples_seconds": [1.0505545977503061, 1.0415768465027213, 1.0507746515795588],
+            "sha256": "cb544d21ee8108f2b5287b149284c59ce5ed1c1e313c1b923f3cac223b980ba7"
+        },
+        "mm": {
+            "median_seconds": 9.942648833617568,
+            "samples_seconds": [9.96140743792057, 9.899977420456707, 9.942648833617568],
+            "sha256": "033aba4bacfdd260ed3bbeb362e74c161e27b1394e21cc23168715a738755779"
+        },
+        "snapshot100": {
+            "median_seconds": 1.6185733946040273,
+            "samples_seconds": [1.5825327476486564, 1.6185733946040273, 1.642547432333231],
+            "sha256": "709bb4196c45475ad088259ccccf36ea0cb368712aa701d043babbe6cda845da"
+        },
+        "source": {
+            "median_seconds": 0.09750468097627163,
+            "samples_seconds": [0.11157070752233267, 0.09750468097627163, 0.09511411841958761],
+            "sha256": "5d7fa54aa57b6a47fc5c4de8ae95b28e3dd4943b4fe542ade6e9a2e80b0c2d52"
+        },
+        "http100": {
+            "median_seconds": 2.342693888582289,
+            "samples_seconds": [2.2966394079849124, 2.342693888582289, 2.369869121350348],
+            "sha256": "709bb4196c45475ad088259ccccf36ea0cb368712aa701d043babbe6cda845da"
+        }
     },
-    "orders100": {
-      "median_seconds": 1.0505545977503061,
-      "samples_seconds": [
-        1.0505545977503061,
-        1.0415768465027213,
-        1.0507746515795588
-      ],
-      "sha256": "cb544d21ee8108f2b5287b149284c59ce5ed1c1e313c1b923f3cac223b980ba7"
+    "after": {
+        "idle": {
+            "median_seconds": 0.15869850851595402,
+            "samples_seconds": [0.15869850851595402, 0.16070560924708843, 0.15735214296728373],
+            "sha256": "05ad75c29b4b69fba43e1bb82adfd98db658256abce8133ae14548e793770a51"
+        },
+        "orders100": {
+            "median_seconds": 0.6681634103879333,
+            "samples_seconds": [0.6692140996456146, 0.6675638714805245, 0.6681634103879333],
+            "sha256": "cb544d21ee8108f2b5287b149284c59ce5ed1c1e313c1b923f3cac223b980ba7"
+        },
+        "mm": {
+            "median_seconds": 3.5769410310313106,
+            "samples_seconds": [3.5842897025868297, 3.5635359128937125, 3.5769410310313106],
+            "sha256": "033aba4bacfdd260ed3bbeb362e74c161e27b1394e21cc23168715a738755779"
+        },
+        "snapshot100": {
+            "median_seconds": 0.8273029495030642,
+            "samples_seconds": [0.8144175922498107, 0.8273029495030642, 0.8418296463787556],
+            "sha256": "709bb4196c45475ad088259ccccf36ea0cb368712aa701d043babbe6cda845da"
+        },
+        "http100": {
+            "median_seconds": 0.011466747149825096,
+            "samples_seconds": [0.029056906700134277, 0.010294037871062756, 0.011466747149825096],
+            "sha256": "709bb4196c45475ad088259ccccf36ea0cb368712aa701d043babbe6cda845da"
+        },
+        "source": {
+            "median_seconds": 0.07784261275082827,
+            "samples_seconds": [0.10853920597583055, 0.07784261275082827, 0.07374811079353094],
+            "sha256": "5d7fa54aa57b6a47fc5c4de8ae95b28e3dd4943b4fe542ade6e9a2e80b0c2d52"
+        }
     },
-    "mm": {
-      "median_seconds": 9.942648833617568,
-      "samples_seconds": [
-        9.96140743792057,
-        9.899977420456707,
-        9.942648833617568
-      ],
-      "sha256": "033aba4bacfdd260ed3bbeb362e74c161e27b1394e21cc23168715a738755779"
+    "formatting": {
+        "before_ms": [195.83992700000002, 170.36657499999998, 175.19696299999998],
+        "after_ms": [6.277725000000004, 5.6213880000000245, 9.760914999999954],
+        "speedup": 27.90771545424495
     },
-    "snapshot100": {
-      "median_seconds": 1.6185733946040273,
-      "samples_seconds": [
-        1.5825327476486564,
-        1.6185733946040273,
-        1.642547432333231
-      ],
-      "sha256": "709bb4196c45475ad088259ccccf36ea0cb368712aa701d043babbe6cda845da"
-    },
-    "source": {
-      "median_seconds": 0.09750468097627163,
-      "samples_seconds": [
-        0.11157070752233267,
-        0.09750468097627163,
-        0.09511411841958761
-      ],
-      "sha256": "5d7fa54aa57b6a47fc5c4de8ae95b28e3dd4943b4fe542ade6e9a2e80b0c2d52"
-    },
-    "http100": {
-      "median_seconds": 2.342693888582289,
-      "samples_seconds": [
-        2.2966394079849124,
-        2.342693888582289,
-        2.369869121350348
-      ],
-      "sha256": "709bb4196c45475ad088259ccccf36ea0cb368712aa701d043babbe6cda845da"
-    }
-  },
-  "after": {
-    "idle": {
-      "median_seconds": 0.15869850851595402,
-      "samples_seconds": [
-        0.15869850851595402,
-        0.16070560924708843,
-        0.15735214296728373
-      ],
-      "sha256": "05ad75c29b4b69fba43e1bb82adfd98db658256abce8133ae14548e793770a51"
-    },
-    "orders100": {
-      "median_seconds": 0.6681634103879333,
-      "samples_seconds": [
-        0.6692140996456146,
-        0.6675638714805245,
-        0.6681634103879333
-      ],
-      "sha256": "cb544d21ee8108f2b5287b149284c59ce5ed1c1e313c1b923f3cac223b980ba7"
-    },
-    "mm": {
-      "median_seconds": 3.5769410310313106,
-      "samples_seconds": [
-        3.5842897025868297,
-        3.5635359128937125,
-        3.5769410310313106
-      ],
-      "sha256": "033aba4bacfdd260ed3bbeb362e74c161e27b1394e21cc23168715a738755779"
-    },
-    "snapshot100": {
-      "median_seconds": 0.8273029495030642,
-      "samples_seconds": [
-        0.8144175922498107,
-        0.8273029495030642,
-        0.8418296463787556
-      ],
-      "sha256": "709bb4196c45475ad088259ccccf36ea0cb368712aa701d043babbe6cda845da"
-    },
-    "http100": {
-      "median_seconds": 0.011466747149825096,
-      "samples_seconds": [
-        0.029056906700134277,
-        0.010294037871062756,
-        0.011466747149825096
-      ],
-      "sha256": "709bb4196c45475ad088259ccccf36ea0cb368712aa701d043babbe6cda845da"
-    },
-    "source": {
-      "median_seconds": 0.07784261275082827,
-      "samples_seconds": [
-        0.10853920597583055,
-        0.07784261275082827,
-        0.07374811079353094
-      ],
-      "sha256": "5d7fa54aa57b6a47fc5c4de8ae95b28e3dd4943b4fe542ade6e9a2e80b0c2d52"
-    }
-  },
-  "formatting": {
-    "before_ms": [
-      195.83992700000002,
-      170.36657499999998,
-      175.19696299999998
-    ],
-    "after_ms": [
-      6.277725000000004,
-      5.6213880000000245,
-      9.760914999999954
-    ],
-    "speedup": 27.90771545424495
-  },
-  "scope": "Isolated synthetic workloads. HTTP uses Flask test_client without auth/network. Source uses generated one-level Parquet. Formatting is not full browser rendering."
+    "scope": "Isolated synthetic workloads. HTTP uses Flask test_client without auth/network. Source uses generated one-level Parquet. Formatting is not full browser rendering."
 }

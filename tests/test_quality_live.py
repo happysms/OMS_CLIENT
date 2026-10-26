@@ -1,4 +1,5 @@
 """Latest-offset monitoring reads existing records and preserves clock anomalies."""
+
 import json
 import os
 from pathlib import Path
@@ -14,12 +15,14 @@ from oms_client.market_data import quality_live
 from oms_client.market_data.validation import DataError
 
 NOW = 1792911600000
-CATALOG = {'exchanges': {
-    'ob': {'bithumb': ['BTC', 'ETH'], 'upbit': ['BTC'], 'ls': ['005930']},
-    'tick': {'bithumb': ['BTC'], 'upbit': ['BTC']},
-    'funding': {'binance': ['BTC'], 'okx': ['BTC'], 'hyperliquid': ['xyz:AAOI']},
-    'ob_1s': {'bithumb': ['USDT'], 'upbit': ['USDT']},
-}}
+CATALOG = {
+    'exchanges': {
+        'ob': {'bithumb': ['BTC', 'ETH'], 'upbit': ['BTC'], 'ls': ['005930']},
+        'tick': {'bithumb': ['BTC'], 'upbit': ['BTC']},
+        'funding': {'binance': ['BTC'], 'okx': ['BTC'], 'hyperliquid': ['xyz:AAOI']},
+        'ob_1s': {'bithumb': ['USDT'], 'upbit': ['USDT']},
+    }
+}
 
 
 class FakeRedis:
@@ -46,11 +49,15 @@ class LiveQualityTests(unittest.TestCase):
         self.addCleanup(self.catalog.stop)
 
     def run_query(self, payload, client):
-        return quality_live.query_live(payload, redis_factory=lambda: client, clock=lambda: NOW / 1000)
+        return quality_live.query_live(
+            payload, redis_factory=lambda: client, clock=lambda: NOW / 1000
+        )
 
     def test_signed_offsets_threshold_and_independent_record_age_use_only_hget(self):
-        records = {('latest:bithumb:ob', 'BTC'): ','.join(map(str, [NOW-30, NOW-130, *([0] * 20)])),
-                   ('latest:upbit:ob', 'BTC'): ','.join(map(str, [NOW-20, NOW+5, *([0] * 20)]))}
+        records = {
+            ('latest:bithumb:ob', 'BTC'): ','.join(map(str, [NOW - 30, NOW - 130, *([0] * 20)])),
+            ('latest:upbit:ob', 'BTC'): ','.join(map(str, [NOW - 20, NOW + 5, *([0] * 20)])),
+        }
         client = FakeRedis(records)
         result = self.run_query({'exchanges': ['bithumb', 'upbit'], 'threshold_ms': 50}, client)
         first, second = result['series']
@@ -65,15 +72,24 @@ class LiveQualityTests(unittest.TestCase):
 
     def test_trade_format_is_not_guessed_from_legacy_columns_cache(self):
         client = FakeRedis({('latest:bithumb:tick', 'BTC'): f'{NOW},{NOW-12},100,-0.001'})
-        item = self.run_query({'data_kind': 'tick', 'exchanges': ['bithumb'], 'ticker': 'btc'}, client)['series'][0]
+        item = self.run_query(
+            {'data_kind': 'tick', 'exchanges': ['bithumb'], 'ticker': 'btc'}, client
+        )['series'][0]
         self.assertEqual(item['latency_ms'], 12)
         self.assertEqual(item['ticker'], 'BTC')
         self.assertEqual(client.calls, [('latest:bithumb:tick', 'BTC')])
 
     def test_synthetic_server_clocks_are_unmeasurable_without_reading_redis(self):
         client = FakeRedis()
-        result = self.run_query({'data_kind': 'funding', 'exchanges': ['okx', 'hyperliquid']}, client)
-        self.assertTrue(all(item['status'] == 'no_data' and item['latency_ms'] is None for item in result['series']))
+        result = self.run_query(
+            {'data_kind': 'funding', 'exchanges': ['okx', 'hyperliquid']}, client
+        )
+        self.assertTrue(
+            all(
+                item['status'] == 'no_data' and item['latency_ms'] is None
+                for item in result['series']
+            )
+        )
         self.assertTrue(all('생성' in item['error'] for item in result['series']))
         self.assertEqual(client.calls, [])
         ls = self.run_query({'data_kind': 'ob', 'exchanges': ['ls']}, client)['series'][0]
@@ -81,11 +97,24 @@ class LiveQualityTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
     def test_missing_or_malformed_records_are_isolated_and_never_a_zero_offset(self):
-        for value in [None, 'not,csv', f'{NOW},0,1,1', f'{NOW},NaN,1,1', f'{NOW},{NOW*1000},1,1', f'{NOW},1792911600,1,1']:
+        for value in [
+            None,
+            'not,csv',
+            f'{NOW},0,1,1',
+            f'{NOW},NaN,1,1',
+            f'{NOW},{NOW*1000},1,1',
+            f'{NOW},1792911600,1,1',
+        ]:
             with self.subTest(value=value):
-                client = FakeRedis({('latest:bithumb:tick', 'BTC'): value,
-                                    ('latest:upbit:tick', 'BTC'): f'{NOW},{NOW-20},100,1'})
-                result = self.run_query({'data_kind': 'tick', 'exchanges': ['bithumb', 'upbit']}, client)
+                client = FakeRedis(
+                    {
+                        ('latest:bithumb:tick', 'BTC'): value,
+                        ('latest:upbit:tick', 'BTC'): f'{NOW},{NOW-20},100,1',
+                    }
+                )
+                result = self.run_query(
+                    {'data_kind': 'tick', 'exchanges': ['bithumb', 'upbit']}, client
+                )
                 self.assertIsNone(result['series'][0]['latency_ms'])
                 self.assertEqual(result['series'][1]['latency_ms'], 20)
 
@@ -111,14 +140,19 @@ class LiveQualityTests(unittest.TestCase):
             self.assertTrue(client.closed)
             return (NOW + 20) / 1000
 
-        result = quality_live.query_live({'data_kind': 'tick', 'exchanges': ['bithumb']},
-                                         redis_factory=lambda: client, clock=observed_clock)
+        result = quality_live.query_live(
+            {'data_kind': 'tick', 'exchanges': ['bithumb']},
+            redis_factory=lambda: client,
+            clock=observed_clock,
+        )
         self.assertEqual(result['observed_at_ms'], NOW + 20)
         self.assertEqual(result['series'][0]['age_ms'], 10)
         self.assertFalse(result['series'][0]['future_desktop'])
 
     def test_native_snapshot_and_receive_offsets_are_distinct(self):
-        with patch.object(quality_live, '_latest_parquet', return_value=(NOW-100, NOW-1100, NOW-1050)):
+        with patch.object(
+            quality_live, '_latest_parquet', return_value=(NOW - 100, NOW - 1100, NOW - 1050)
+        ):
             result = self.run_query({'data_kind': 'ob_1s', 'exchanges': ['bithumb']}, FakeRedis())
         item = result['series'][0]
         self.assertEqual(item['source'], 'parquet')
@@ -131,29 +165,61 @@ class LiveQualityTests(unittest.TestCase):
             root = Path(directory)
             path = root / 'bithumb/ob_1s/USDT/2026/10/25/07.parquet'
             path.parent.mkdir(parents=True)
-            pq.write_table(pa.table({'desktopTime': [NOW-100, NOW], 'serverTime': [NOW-150, None],
-                                     'receivedTime': [NOW-120, NOW-5]}), path)
-            with patch.dict(os.environ, {'DASHBOARD_DATA_ROOT': str(root / 'legacy'), 'DASHBOARD_COLLECTOR_DATA_ROOT': str(root)}):
-                item = self.run_query({'data_kind': 'ob_1s', 'exchanges': ['bithumb']}, FakeRedis())['series'][0]
+            pq.write_table(
+                pa.table(
+                    {
+                        'desktopTime': [NOW - 100, NOW],
+                        'serverTime': [NOW - 150, None],
+                        'receivedTime': [NOW - 120, NOW - 5],
+                    }
+                ),
+                path,
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    'DASHBOARD_DATA_ROOT': str(root / 'legacy'),
+                    'DASHBOARD_COLLECTOR_DATA_ROOT': str(root),
+                },
+            ):
+                item = self.run_query(
+                    {'data_kind': 'ob_1s', 'exchanges': ['bithumb']}, FakeRedis()
+                )['series'][0]
             self.assertEqual(item['status'], 'error')
             self.assertIsNone(item['latency_ms'])
 
     def test_bad_inputs_and_redis_endpoint_overrides_are_rejected(self):
-        invalid = [None, [], {'redis_url': 'redis://elsewhere'}, {'data_kind': 'candle'}, {'exchanges': []},
-                   {'exchanges': ['bithumb', 'bithumb']}, {'exchanges': ['../bithumb']}, {'ticker': False},
-                   {'ticker': '../../BTC'}, {'threshold_ms': -1}, {'threshold_ms': True}, {'threshold_ms': float('inf')}]
+        invalid = [
+            None,
+            [],
+            {'redis_url': 'redis://elsewhere'},
+            {'data_kind': 'candle'},
+            {'exchanges': []},
+            {'exchanges': ['bithumb', 'bithumb']},
+            {'exchanges': ['../bithumb']},
+            {'ticker': False},
+            {'ticker': '../../BTC'},
+            {'threshold_ms': -1},
+            {'threshold_ms': True},
+            {'threshold_ms': float('inf')},
+        ]
         for payload in invalid:
             with self.subTest(payload=payload), self.assertRaises(DataError):
                 self.run_query(payload, FakeRedis())
 
     def test_redis_connection_has_bounded_timeouts_without_secret_errors(self):
-        with patch.dict(os.environ, {'DASHBOARD_REDIS_URL': 'redis://user:secret@127.0.0.1:6379/0'}), \
-             patch.object(redis.Redis, 'from_url', return_value=FakeRedis()) as factory:
+        with (
+            patch.dict(os.environ, {'DASHBOARD_REDIS_URL': 'redis://user:secret@127.0.0.1:6379/0'}),
+            patch.object(redis.Redis, 'from_url', return_value=FakeRedis()) as factory,
+        ):
             quality_live._redis_client()
             self.assertEqual(factory.call_args.kwargs['socket_timeout'], 1)
             self.assertEqual(factory.call_args.kwargs['socket_connect_timeout'], 1)
             self.assertEqual(factory.call_args.kwargs['protocol'], 2)
         for url in ['file:///etc/passwd', 'redis://localhost?socket_timeout=999']:
-            with patch.dict(os.environ, {'DASHBOARD_REDIS_URL': url}), self.assertRaises(DataError) as caught:
+            with (
+                patch.dict(os.environ, {'DASHBOARD_REDIS_URL': url}),
+                self.assertRaises(DataError) as caught,
+            ):
                 quality_live._redis_client()
             self.assertNotIn(url, str(caught.exception))

@@ -1,4 +1,5 @@
 """Fixed public exchange WebSocket adapters and normalized best bid/ask."""
+
 from __future__ import annotations
 
 import json
@@ -50,14 +51,25 @@ def parse_quotes(exchange: str, message) -> list[dict]:
         if exchange == "okx":
             arg = item.get("arg") or {}
             instrument = str(arg.get("instId", ""))
-            if arg.get("channel") not in {"books5", "bbo-tbt"} or not instrument.endswith("-USDT-SWAP"):
+            if arg.get("channel") not in {"books5", "bbo-tbt"} or not instrument.endswith(
+                "-USDT-SWAP"
+            ):
                 continue
             for book in item.get("data") or []:
                 try:
                     bid, ask = book["bids"][0], book["asks"][0]
-                    books.append((instrument[:-10], bid[0], ask[0], book["ts"],
-                                  bid[1] if len(bid) > 1 else None, ask[1] if len(ask) > 1 else None,
-                                  _book_levels(book['bids']), _book_levels(book['asks'])))
+                    books.append(
+                        (
+                            instrument[:-10],
+                            bid[0],
+                            ask[0],
+                            book["ts"],
+                            bid[1] if len(bid) > 1 else None,
+                            ask[1] if len(ask) > 1 else None,
+                            _book_levels(book['bids']),
+                            _book_levels(book['asks']),
+                        )
+                    )
                 except (KeyError, IndexError, TypeError):
                     continue
         elif exchange in {"bithumb", "upbit"}:
@@ -69,23 +81,62 @@ def parse_quotes(exchange: str, message) -> list[dict]:
                 stamp = float(item["timestamp"])
                 if exchange == "bithumb" and stamp > 1e14:
                     stamp /= 1000
-                books.append((code[4:], book["bid_price"], book["ask_price"], stamp,
-                              book.get("bid_size"), book.get("ask_size"),
-                              _book_levels([[row.get('bid_price'), row.get('bid_size')] if isinstance(row, dict) else [None, None] for row in item['orderbook_units']]),
-                              _book_levels([[row.get('ask_price'), row.get('ask_size')] if isinstance(row, dict) else [None, None] for row in item['orderbook_units']])))
+                books.append(
+                    (
+                        code[4:],
+                        book["bid_price"],
+                        book["ask_price"],
+                        stamp,
+                        book.get("bid_size"),
+                        book.get("ask_size"),
+                        _book_levels(
+                            [
+                                (
+                                    [row.get('bid_price'), row.get('bid_size')]
+                                    if isinstance(row, dict)
+                                    else [None, None]
+                                )
+                                for row in item['orderbook_units']
+                            ]
+                        ),
+                        _book_levels(
+                            [
+                                (
+                                    [row.get('ask_price'), row.get('ask_size')]
+                                    if isinstance(row, dict)
+                                    else [None, None]
+                                )
+                                for row in item['orderbook_units']
+                            ]
+                        ),
+                    )
+                )
             except (KeyError, IndexError, TypeError, ValueError, OverflowError):
                 continue
         for ticker, raw_bid, raw_ask, raw_stamp, raw_bid_size, raw_ask_size, bids, asks in books:
             try:
                 bid, ask, stamp = float(raw_bid), float(raw_ask), float(raw_stamp)
-                if not all(math.isfinite(v) for v in (bid, ask, stamp)) or bid <= 0 or ask < bid or stamp <= 0:
+                if (
+                    not all(math.isfinite(v) for v in (bid, ask, stamp))
+                    or bid <= 0
+                    or ask < bid
+                    or stamp <= 0
+                ):
                     continue
                 mid = bid / 2 + ask / 2
                 if not math.isfinite(mid):
                     continue
-                quote = {"exchange": exchange, "ticker": ticker, "bid": bid, "ask": ask, "mid": mid, "ts": int(stamp),
-                         'bids': bids, 'asks': asks,
-                         'quantity_basis': 'contracts' if exchange == 'okx' else 'native_base_quantity'}
+                quote = {
+                    "exchange": exchange,
+                    "ticker": ticker,
+                    "bid": bid,
+                    "ask": ask,
+                    "mid": mid,
+                    "ts": int(stamp),
+                    'bids': bids,
+                    'asks': asks,
+                    'quantity_basis': 'contracts' if exchange == 'okx' else 'native_base_quantity',
+                }
                 # Size is optional for existing price consumers. Invalid or absent
                 # quantities must never discard an otherwise valid price snapshot.
                 for name, raw_size in (("bid_size", raw_bid_size), ("ask_size", raw_ask_size)):
@@ -101,13 +152,18 @@ def parse_quotes(exchange: str, message) -> list[dict]:
     return quotes
 
 
-
 def _subscription(exchange, legs):
     tickers = sorted({leg["ticker"] for leg in legs})
     if exchange == "okx":
-        return {"op": "subscribe", "args": [{"channel": "books5", "instId": f"{ticker}-USDT-SWAP"} for ticker in tickers]}
-    return [{"ticket": f"midprice-{uuid.uuid4().hex}"}, {"type": "orderbook", "codes": [f"KRW-{ticker}" for ticker in tickers]}, {"format": "DEFAULT"}]
-
+        return {
+            "op": "subscribe",
+            "args": [{"channel": "books5", "instId": f"{ticker}-USDT-SWAP"} for ticker in tickers],
+        }
+    return [
+        {"ticket": f"midprice-{uuid.uuid4().hex}"},
+        {"type": "orderbook", "codes": [f"KRW-{ticker}" for ticker in tickers]},
+        {"format": "DEFAULT"},
+    ]
 
 
 class PublicQuoteFeed:
@@ -121,7 +177,9 @@ class PublicQuoteFeed:
 
     def start(self):
         for exchange in sorted({leg["exchange"] for leg in self.legs}):
-            thread = threading.Thread(target=self._run, args=(exchange,), name=f"midprice-feed-{exchange}", daemon=True)
+            thread = threading.Thread(
+                target=self._run, args=(exchange,), name=f"midprice-feed-{exchange}", daemon=True
+            )
             self._threads.append(thread)
             thread.start()
 
@@ -139,11 +197,22 @@ class PublicQuoteFeed:
                 contract_values = {}
                 if exchange == 'okx':
                     from .instruments import okx_contract_value
+
                     for leg in legs:
-                        if leg.get('price_basis') in {'buy_vwap', 'sell_vwap'} and leg['ticker'] not in contract_values:
+                        if (
+                            leg.get('price_basis') in {'buy_vwap', 'sell_vwap'}
+                            and leg['ticker'] not in contract_values
+                        ):
                             contract_values[leg['ticker']] = okx_contract_value(leg['ticker'])
-                with self.connector(ENDPOINTS[exchange], open_timeout=8, close_timeout=1,
-                                    ping_interval=20, ping_timeout=20, max_size=2**20, max_queue=16) as socket:
+                with self.connector(
+                    ENDPOINTS[exchange],
+                    open_timeout=8,
+                    close_timeout=1,
+                    ping_interval=20,
+                    ping_timeout=20,
+                    max_size=2**20,
+                    max_queue=16,
+                ) as socket:
                     if self._stop.is_set():
                         break
                     with self._lock:
@@ -173,10 +242,20 @@ class PublicQuoteFeed:
                             message = json.loads(raw)
                         except (ValueError, UnicodeDecodeError, TypeError):
                             continue
-                        if isinstance(message, dict) and (message.get("event") == "error" or message.get("error")):
+                        if isinstance(message, dict) and (
+                            message.get("event") == "error" or message.get("error")
+                        ):
                             error = message.get("error")
-                            detail = error.get("message") if isinstance(error, dict) else message.get("msg") or str(error)
-                            self._status(exchange, "error", str(detail or "거래소가 종목 구독을 거절했습니다.")[:300])
+                            detail = (
+                                error.get("message")
+                                if isinstance(error, dict)
+                                else message.get("msg") or str(error)
+                            )
+                            self._status(
+                                exchange,
+                                "error",
+                                str(detail or "거래소가 종목 구독을 거절했습니다.")[:300],
+                            )
                             return
                         for quote in parse_quotes(exchange, message):
                             ticker = quote["ticker"]
@@ -186,8 +265,18 @@ class PublicQuoteFeed:
                             if ticker in contract_values:
                                 multiplier = contract_values[ticker]
                                 for side in ('bids', 'asks'):
-                                    quote[side] = [[price, size * multiplier if size is not None and math.isfinite(size * multiplier) else None]
-                                                   for price, size in quote[side]]
+                                    quote[side] = [
+                                        [
+                                            price,
+                                            (
+                                                size * multiplier
+                                                if size is not None
+                                                and math.isfinite(size * multiplier)
+                                                else None
+                                            ),
+                                        ]
+                                        for price, size in quote[side]
+                                    ]
                                 for key in ('bid_size', 'ask_size'):
                                     if key in quote:
                                         converted = quote[key] * multiplier
@@ -201,8 +290,18 @@ class PublicQuoteFeed:
                             received = int(time.time() * 1000)
                             for leg in legs:
                                 if leg["ticker"] == ticker and not self._stop.is_set():
-                                    self.on_quote({**quote, "id": leg["id"], "receivedAt": received,
-                                                   "currency": "KRW" if exchange in {"bithumb", "upbit"} else "USDT"})
+                                    self.on_quote(
+                                        {
+                                            **quote,
+                                            "id": leg["id"],
+                                            "receivedAt": received,
+                                            "currency": (
+                                                "KRW"
+                                                if exchange in {"bithumb", "upbit"}
+                                                else "USDT"
+                                            ),
+                                        }
+                                    )
                         self._status(exchange, "connected" if expected <= seen else "connecting")
             except Exception:
                 # Details may contain proxy credentials; expose only a fixed public error.

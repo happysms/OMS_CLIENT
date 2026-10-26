@@ -1,4 +1,5 @@
 """Browser imports must remain reachable through the explicit static allowlist."""
+
 from pathlib import Path
 import posixpath
 import re

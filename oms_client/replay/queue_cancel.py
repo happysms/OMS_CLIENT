@@ -1,4 +1,5 @@
 """Seeded cancellation allocation on one shared FIFO, never synthetic fills."""
+
 from collections import deque
 from decimal import Decimal as D
 import random
@@ -58,7 +59,10 @@ class QueueCancellation:
         weighted = self.weights(nodes)
         weights = {id(node): weight for node, weight in weighted}
         total = sum((weight for _, weight in weighted), ZERO)
-        return {identifier: self._position(nodes, identifier, weights, total) for identifier in identifiers}
+        return {
+            identifier: self._position(nodes, identifier, weights, total)
+            for identifier in identifiers
+        }
 
     def _position(self, nodes, identifier, weights, total):
         ahead = ZERO
@@ -74,8 +78,13 @@ class QueueCancellation:
             else:
                 ahead += node['qty']
                 front_weight += weights.get(id(node), ZERO)
-        return dict(queue_external_ahead=float(ahead), queue_external_behind=float(behind),
-                    queue_front_cancel_probability=float(front_weight / total) if total and self.enabled else None)
+        return dict(
+            queue_external_ahead=float(ahead),
+            queue_external_behind=float(behind),
+            queue_front_cancel_probability=(
+                float(front_weight / total) if total and self.enabled else None
+            ),
+        )
 
     def cancel(self, nodes, quantity):
         """Draw per packet; shortages spill to another weighted segment. Own nodes survive."""
@@ -124,6 +133,13 @@ class QueueCancellation:
         return quantity - remaining
 
     def summary(self):
-        return dict(mode=self.mode, model_version=self.version, seed=self.seed, front_bias=str(self.bias),
-                    chunks=self.chunks, random_draws=self.draws, cancellation_events=self.count,
-                    cancelled_external_quantity=str(self.cancelled))
+        return dict(
+            mode=self.mode,
+            model_version=self.version,
+            seed=self.seed,
+            front_bias=str(self.bias),
+            chunks=self.chunks,
+            random_draws=self.draws,
+            cancellation_events=self.count,
+            cancelled_external_quantity=str(self.cancelled),
+        )

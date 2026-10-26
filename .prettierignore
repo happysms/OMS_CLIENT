@@ -1,0 +1,10 @@
+.git/
+.state/
+.tools/
+.venv/
+node_modules/
+data/
+artifacts/
+*.md
+*.svg
+*.mmd

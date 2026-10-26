@@ -1,4 +1,5 @@
 """Bounded, cash-funded historical simulations using completed quote buckets."""
+
 from __future__ import annotations
 
 import math
@@ -8,12 +9,33 @@ import pandas as pd
 from ..analysis.history import analyze
 from ..analysis.sampling import select_points
 from ..paper_trading.reporting import evaluate_positions, valid_theories
-from ..market_data.validation import (DataError, IDENTIFIER, INTERVALS, MAX_RANGE_DAYS,
-                                      MAX_BUCKETS, integer, number, parse_date)
+from ..market_data.validation import (
+    DataError,
+    IDENTIFIER,
+    INTERVALS,
+    MAX_RANGE_DAYS,
+    MAX_BUCKETS,
+    integer,
+    number,
+    parse_date,
+)
 
 
-KEYS = {"exchange", "ticker", "start", "end", "interval", "strategy", "fast_window",
-        "slow_window", "initial_cash", "fee_bps", "slippage_bps", "max_points", "close_on_end"}
+KEYS = {
+    "exchange",
+    "ticker",
+    "start",
+    "end",
+    "interval",
+    "strategy",
+    "fast_window",
+    "slow_window",
+    "initial_cash",
+    "fee_bps",
+    "slippage_bps",
+    "max_points",
+    "close_on_end",
+}
 MAX_TRADES = 20_000
 
 
@@ -33,8 +55,12 @@ def _config(payload):
     if not isinstance(payload, dict) or set(payload) - KEYS:
         raise DataError("지원하는 백테스트 설정을 JSON 객체로 보내 주세요.")
     exchange, ticker = payload.get("exchange"), payload.get("ticker")
-    if (not isinstance(exchange, str) or not IDENTIFIER.fullmatch(exchange)
-            or not isinstance(ticker, str) or not IDENTIFIER.fullmatch(ticker)):
+    if (
+        not isinstance(exchange, str)
+        or not IDENTIFIER.fullmatch(exchange)
+        or not isinstance(ticker, str)
+        or not IDENTIFIER.fullmatch(ticker)
+    ):
         raise DataError("거래소와 종목을 선택해 주세요.")
     strategy = payload.get("strategy", "ma_cross")
     if not isinstance(strategy, str) or strategy not in {"ma_cross", "buy_hold"}:
@@ -56,13 +82,23 @@ def _config(payload):
     close = payload.get("close_on_end", True)
     if type(close) is not bool:
         raise DataError("close_on_end는 true 또는 false로 입력해 주세요.")
-    return {"exchange": exchange, "ticker": ticker, "start": start.isoformat(), "end": end.isoformat(),
-            "interval": interval, "strategy": strategy, "fast_window": fast, "slow_window": slow,
-            "initial_cash": _amount(payload.get("initial_cash", 1_000_000), "초기 자금", 0.000001, 1e18),
-            "fee_bps": _amount(payload.get("fee_bps", 5), "수수료(bp)", 0, 1000),
-            "slippage_bps": _amount(payload.get("slippage_bps", 2), "슬리피지(bp)", 0, 1000),
-            "max_points": integer(payload.get("max_points", 6000), "차트 최대 점 개수", 2, 6000),
-            "close_on_end": close}
+    return {
+        "exchange": exchange,
+        "ticker": ticker,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "interval": interval,
+        "strategy": strategy,
+        "fast_window": fast,
+        "slow_window": slow,
+        "initial_cash": _amount(
+            payload.get("initial_cash", 1_000_000), "초기 자금", 0.000001, 1e18
+        ),
+        "fee_bps": _amount(payload.get("fee_bps", 5), "수수료(bp)", 0, 1000),
+        "slippage_bps": _amount(payload.get("slippage_bps", 2), "슬리피지(bp)", 0, 1000),
+        "max_points": integer(payload.get("max_points", 6000), "차트 최대 점 개수", 2, 6000),
+        "close_on_end": close,
+    }
 
 
 def _source(result, config):
@@ -78,19 +114,30 @@ def _source(result, config):
     leg = legs[0]
     if not 2 <= len(times) <= MAX_BUCKETS:
         raise DataError("완료된 호가 구간이 최소 2개 필요합니다. 기간과 조회 간격을 확인해 주세요.")
-    if any(not isinstance(leg.get(column), list) or len(leg[column]) != len(times)
-           for column in ("mid", "bid", "ask")):
+    if any(
+        not isinstance(leg.get(column), list) or len(leg[column]) != len(times)
+        for column in ("mid", "bid", "ask")
+    ):
         raise DataError("호가 데이터의 길이가 서로 다릅니다.")
     previous = None
     for index, timestamp in enumerate(times):
-        if (isinstance(timestamp, bool) or not isinstance(timestamp, (int, float))
-                or not math.isfinite(timestamp) or int(timestamp) != timestamp
-                or (previous is not None and timestamp <= previous)):
+        if (
+            isinstance(timestamp, bool)
+            or not isinstance(timestamp, (int, float))
+            or not math.isfinite(timestamp)
+            or int(timestamp) != timestamp
+            or (previous is not None and timestamp <= previous)
+        ):
             raise DataError("호가 시각은 중복 없는 오름차순이어야 합니다.")
         previous = timestamp
         values = [leg[column][index] for column in ("bid", "mid", "ask")]
-        if any(isinstance(value, bool) or not isinstance(value, (int, float))
-               or not math.isfinite(value) or value <= 0 for value in values):
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value <= 0
+            for value in values
+        ):
             raise DataError("유효하지 않은 호가 가격이 있습니다.")
         if not values[0] <= values[1] <= values[2]:
             raise DataError("매수·중간·매도 호가 순서가 올바르지 않습니다.")
@@ -99,11 +146,21 @@ def _source(result, config):
     end = parse_date(config["end"], "종료 시간").value // 1_000_000
     # Partial boundary buckets contain only part of an interval's mean. Exclude
     # them rather than presenting them as fully observed execution perio
-    selected = [i for i, timestamp in enumerate(times) if start <= timestamp and timestamp + step <= end]
+    selected = [
+        i for i, timestamp in enumerate(times) if start <= timestamp and timestamp + step <= end
+    ]
     if len(selected) < 2:
         raise DataError("완료된 호가 구간이 최소 2개 필요합니다. 기간을 늘려 주세요.")
-    return ([int(times[i]) + step for i in selected],
-            {**leg, **{column: [float(leg[column][i]) for i in selected] for column in ("mid", "bid", "ask")}})
+    return (
+        [int(times[i]) + step for i in selected],
+        {
+            **leg,
+            **{
+                column: [float(leg[column][i]) for i in selected]
+                for column in ("mid", "bid", "ask")
+            },
+        },
+    )
 
 
 def _simulate(times, leg, config, strategy, *, record=True, theory_provider=None):
@@ -118,7 +175,9 @@ def _simulate(times, leg, config, strategy, *, record=True, theory_provider=None
     def fill(index, side, reason):
         nonlocal cash, quantity, basis, fees, realized, closed, wins, executions
         if executions >= MAX_TRADES:
-            raise DataError(f"체결 횟수는 최대 {MAX_TRADES:,}회입니다. 기간을 줄이거나 조회 간격을 늘려 주세요.")
+            raise DataError(
+                f"체결 횟수는 최대 {MAX_TRADES:,}회입니다. 기간을 줄이거나 조회 간격을 늘려 주세요."
+            )
         timestamp = times[index]
         pnl = 0.0
         if side == "buy":
@@ -147,24 +206,69 @@ def _simulate(times, leg, config, strategy, *, record=True, theory_provider=None
         executions += 1
         if record:
             pair = (config['exchange'], config['ticker'])
-            theory = theory_provider(timestamp, *pair) if theory_provider else {'price': None, 'reason': '과거 시점의 이론가 공급 모듈이 연결되지 않았습니다.'}
+            theory = (
+                theory_provider(timestamp, *pair)
+                if theory_provider
+                else {
+                    'price': None,
+                    'reason': '과거 시점의 이론가 공급 모듈이 연결되지 않았습니다.',
+                }
+            )
             theories = valid_theories({pair: theory}, timestamp, INTERVALS[config['interval']])
-            positions = [dict(exchange=pair[0], ticker=pair[1], quantity=quantity, avg_price=basis / quantity)] if quantity else []
+            positions = (
+                [
+                    dict(
+                        exchange=pair[0],
+                        ticker=pair[1],
+                        quantity=quantity,
+                        avg_price=basis / quantity,
+                    )
+                ]
+                if quantity
+                else []
+            )
             account, positions = evaluate_positions(
-                dict(initial_cash=config['initial_cash'], cash=cash, realized_pnl=realized, fees_paid=fees),
-                positions, {pair: {'bid': leg['bid'][index], 'ts': timestamp}}, theories)
-            trades.append({"timestamp": timestamp, "side": side, "price": price, "quantity": size,
-                           "fee": fee, "cash": cash, "realized_pnl": pnl, "reason": reason,
-                           'fill_id': f'BT{executions:08d}', 'realized_pnl_cumulative': realized,
-                           'unrealized_pnl': account['unrealized_pnl'],
-                           'theory_unrealized_pnl': account['theory_unrealized_pnl'],
-                           'total_pnl': account['total_pnl'], 'theory_total_pnl': account['theory_total_pnl'],
-                           'equity': account['equity'], 'position_quantity': quantity,
-                           'avg_price': basis / quantity if quantity else None,
-                           'mark_price': leg['bid'][index], 'theory_price': theories[pair].get('price'),
-                           'fees_paid': fees, 'valuation_as_of_ms': timestamp,
-                           'valuation': dict(account=account, positions=positions, theory=theories[pair],
-                                             mark_basis='completed_bucket_mean_bid')})
+                dict(
+                    initial_cash=config['initial_cash'],
+                    cash=cash,
+                    realized_pnl=realized,
+                    fees_paid=fees,
+                ),
+                positions,
+                {pair: {'bid': leg['bid'][index], 'ts': timestamp}},
+                theories,
+            )
+            trades.append(
+                {
+                    "timestamp": timestamp,
+                    "side": side,
+                    "price": price,
+                    "quantity": size,
+                    "fee": fee,
+                    "cash": cash,
+                    "realized_pnl": pnl,
+                    "reason": reason,
+                    'fill_id': f'BT{executions:08d}',
+                    'realized_pnl_cumulative': realized,
+                    'unrealized_pnl': account['unrealized_pnl'],
+                    'theory_unrealized_pnl': account['theory_unrealized_pnl'],
+                    'total_pnl': account['total_pnl'],
+                    'theory_total_pnl': account['theory_total_pnl'],
+                    'equity': account['equity'],
+                    'position_quantity': quantity,
+                    'avg_price': basis / quantity if quantity else None,
+                    'mark_price': leg['bid'][index],
+                    'theory_price': theories[pair].get('price'),
+                    'fees_paid': fees,
+                    'valuation_as_of_ms': timestamp,
+                    'valuation': dict(
+                        account=account,
+                        positions=positions,
+                        theory=theories[pair],
+                        mark_basis='completed_bucket_mean_bid',
+                    ),
+                }
+            )
 
     for i in range(len(times)):
         desired = quantity > 0
@@ -192,13 +296,19 @@ def _simulate(times, leg, config, strategy, *, record=True, theory_provider=None
     for value in equity:
         peak = max(peak, value)
         drawdown = max(drawdown, (peak - value) / peak * 100)
-    metrics = {"initial_cash": config["initial_cash"], "final_equity": equity[-1],
-               "return_pct": (equity[-1] / config["initial_cash"] - 1) * 100,
-               "max_drawdown_pct": drawdown, "trades": executions, "closed_trades": closed,
-               "win_rate_pct": wins / closed * 100 if closed else None,
-               "fees_paid": fees, "realized_pnl": realized,
-               'unrealized_pnl': quantity * leg['bid'][-1] - basis,
-               'total_pnl': equity[-1] - config['initial_cash']}
+    metrics = {
+        "initial_cash": config["initial_cash"],
+        "final_equity": equity[-1],
+        "return_pct": (equity[-1] / config["initial_cash"] - 1) * 100,
+        "max_drawdown_pct": drawdown,
+        "trades": executions,
+        "closed_trades": closed,
+        "win_rate_pct": wins / closed * 100 if closed else None,
+        "fees_paid": fees,
+        "realized_pnl": realized,
+        'unrealized_pnl': quantity * leg['bid'][-1] - basis,
+        'total_pnl': equity[-1] - config['initial_cash'],
+    }
     if any(value is not None and not math.isfinite(value) for value in metrics.values()):
         raise DataError("손익 지표가 계산 범위를 초과합니다. 가격과 자금을 확인해 주세요.")
     return equity, trades, metrics
@@ -208,18 +318,27 @@ def run_backtest(payload, data_provider=None, theory_provider=None):
     """Run a funded long-only strategy; the provider accepts an analyze payload."""
     config = _config(payload)
     request = {key: config[key] for key in ("start", "end", "interval")}
-    request.update(legs=[{"id": "A", "exchange": config["exchange"], "ticker": config["ticker"]}],
-                   formula="A", include_full_data=True, max_points=6000)
+    request.update(
+        legs=[{"id": "A", "exchange": config["exchange"], "ticker": config["ticker"]}],
+        formula="A",
+        include_full_data=True,
+        max_points=6000,
+    )
     source = (data_provider or analyze)(request)
     times, leg = _source(source, config)
-    values, trades, metrics = _simulate(times, leg, config, config["strategy"], theory_provider=theory_provider)
+    values, trades, metrics = _simulate(
+        times, leg, config, config["strategy"], theory_provider=theory_provider
+    )
     benchmark, _, _ = _simulate(times, leg, config, "buy_hold", record=False)
     series = pd.Series(values, dtype=float)
     selection = select_points(series, config["max_points"]).tolist()
     smooth = series.ewm(span=60, adjust=True).mean()
     chart_times = [times[i] for i in selection]
     chart_values = [values[i] for i in selection]
-    sampled_leg = {**leg, **{column: [leg[column][i] for i in selection] for column in ("mid", "bid", "ask")}}
+    sampled_leg = {
+        **leg,
+        **{column: [leg[column][i] for i in selection] for column in ("mid", "bid", "ask")},
+    }
     assumptions = [
         "이전 완료 구간의 중간가 이동평균으로 신호를 만들고 다음 호가 구간에서 체결합니다. 초기 신호 준비 전에는 현금을 보유합니다.",
         "체결가는 다음 구간 전체의 평균 매도호가(매수)·평균 매수호가(매도)입니다. 시각은 구간 종료이며 실제 주문장 체결을 재현하지 않습니다.",
@@ -230,22 +349,59 @@ def run_backtest(payload, data_provider=None, theory_provider=None):
         "누락 구간과 시작·종료의 미완료 구간은 채우지 않습니다. 이동평균 기간은 시간 길이가 아닌 유효한 표본 수입니다.",
     ]
     if config["exchange"] not in {"bithumb", "upbit", "ls"}:
-        assumptions.append("파생상품 호가도 현물과 같은 전액 현금 매수 보유의 가격 참고 자료로만 사용합니다. 실제 선물·파생상품 손익이 아닙니다.")
+        assumptions.append(
+            "파생상품 호가도 현물과 같은 전액 현금 매수 보유의 가격 참고 자료로만 사용합니다. 실제 선물·파생상품 손익이 아닙니다."
+        )
     if config["close_on_end"]:
-        assumptions.append("마지막 완료 구간 평균 매수호가에 비용을 적용해 잔여 보유분을 청산합니다.")
+        assumptions.append(
+            "마지막 완료 구간 평균 매수호가에 비용을 적용해 잔여 보유분을 청산합니다."
+        )
     else:
-        assumptions.append("종료 시 보유분은 청산하지 않고 평균 매수호가로 평가합니다. 미실현 손익은 실현 손익과 구분합니다.")
+        assumptions.append(
+            "종료 시 보유분은 청산하지 않고 평균 매수호가로 평가합니다. 미실현 손익은 실현 손익과 구분합니다."
+        )
     warnings = list(source.get("meta", {}).get("warnings", []))
     if len(selection) < len(times):
         warnings.append("차트는 축소 표시하며 지표와 거래 내역은 전체 완료 구간으로 계산합니다.")
-    stats = {"count": len(times), "first": values[0], "latest": values[-1], "mean": number(series.mean()),
-             "std": number(series.std()), "min": min(values), "max": max(values), "median": number(series.median()),
-             "change_pct": metrics["return_pct"], "latest_time": times[-1]}
-    return {"times": chart_times, "legs": [sampled_leg], "result": chart_values,
-            "ewm": [number(smooth.iloc[i]) for i in selection], "mean": stats["mean"], "stats": stats,
-            "equity": {"times": chart_times, "values": chart_values, "benchmark": [benchmark[i] for i in selection]},
-            "metrics": metrics, "trades": trades, "assumptions": assumptions, "config": config,
-            "meta": {**source.get("meta", {}), "interval": config["interval"], "formula": config["strategy"],
-                     "start": config["start"], "end": config["end"], "aligned_points": len(times),
-                     "returned_points": len(selection), "warnings": warnings, "mode": "backtest",
-                     "execution_model": "next_bucket_mean", "timestamp_basis": "bucket_end"}}
+    stats = {
+        "count": len(times),
+        "first": values[0],
+        "latest": values[-1],
+        "mean": number(series.mean()),
+        "std": number(series.std()),
+        "min": min(values),
+        "max": max(values),
+        "median": number(series.median()),
+        "change_pct": metrics["return_pct"],
+        "latest_time": times[-1],
+    }
+    return {
+        "times": chart_times,
+        "legs": [sampled_leg],
+        "result": chart_values,
+        "ewm": [number(smooth.iloc[i]) for i in selection],
+        "mean": stats["mean"],
+        "stats": stats,
+        "equity": {
+            "times": chart_times,
+            "values": chart_values,
+            "benchmark": [benchmark[i] for i in selection],
+        },
+        "metrics": metrics,
+        "trades": trades,
+        "assumptions": assumptions,
+        "config": config,
+        "meta": {
+            **source.get("meta", {}),
+            "interval": config["interval"],
+            "formula": config["strategy"],
+            "start": config["start"],
+            "end": config["end"],
+            "aligned_points": len(times),
+            "returned_points": len(selection),
+            "warnings": warnings,
+            "mode": "backtest",
+            "execution_model": "next_bucket_mean",
+            "timestamp_basis": "bucket_end",
+        },
+    }

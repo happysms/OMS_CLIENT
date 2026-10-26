@@ -1,4 +1,5 @@
 """Concurrent data readers with short, nonblocking maintenance windows."""
+
 from contextlib import contextmanager
 from functools import wraps
 import threading
@@ -41,6 +42,7 @@ class DataAccessGate:
         def guarded(*args, **kwargs):
             with self.read():
                 return function(*args, **kwargs)
+
         return guarded
 
 

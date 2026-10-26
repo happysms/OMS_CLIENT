@@ -14,8 +14,13 @@ import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from oms_client.collectors.usdt_candles import (
-    CandleFetchError, MINUTE_MS, PublicMinuteCandleClient, RequestLimitExceeded,
-    backfill_exchange, normalize_candle, request_to,
+    CandleFetchError,
+    MINUTE_MS,
+    PublicMinuteCandleClient,
+    RequestLimitExceeded,
+    backfill_exchange,
+    normalize_candle,
+    request_to,
 )
 from oms_client.storage.candle_samples import MinuteCandleStore, candle_path
 from oms_client.storage.orderbook_samples import CollectorAlreadyRunning, OrderbookSampleStore
@@ -24,11 +29,20 @@ END = int(datetime(2026, 10, 25, 8, 17, tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def raw_candle(opened, **changes):
-    row = {"market": "KRW-USDT", "unit": 1,
-           "candle_date_time_utc": datetime.fromtimestamp(opened / 1000, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
-           "opening_price": 1343, "high_price": 1344, "low_price": 1342, "trade_price": 1343,
-           "candle_acc_trade_volume": 14977.42471398, "candle_acc_trade_price": 20103654.31853714,
-           "timestamp": opened + 54193}
+    row = {
+        "market": "KRW-USDT",
+        "unit": 1,
+        "candle_date_time_utc": datetime.fromtimestamp(opened / 1000, timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        ),
+        "opening_price": 1343,
+        "high_price": 1344,
+        "low_price": 1342,
+        "trade_price": 1343,
+        "candle_acc_trade_volume": 14977.42471398,
+        "candle_acc_trade_price": 20103654.31853714,
+        "timestamp": opened + 54193,
+    }
     row.update(changes)
     return row
 
@@ -88,7 +102,9 @@ class BackfillTests(unittest.TestCase):
         client.fetch_page("upbit", END)
         for index, exchange in enumerate(("bithumb", "upbit")):
             query = parse_qs(urlsplit(http.requests[index][0].full_url).query)
-            self.assertEqual(query, {"market": ["KRW-USDT"], "count": ["200"], "to": [request_to(exchange, END)]})
+            self.assertEqual(
+                query, {"market": ["KRW-USDT"], "count": ["200"], "to": [request_to(exchange, END)]}
+            )
 
     def test_close_availability_and_actual_quantity_units(self):
         opened = END - MINUTE_MS
@@ -103,35 +119,62 @@ class BackfillTests(unittest.TestCase):
         self.assertNotIn("bid_size", row)
 
     def test_descending_pagination_deduplicates_and_leaves_no_trade_gaps_empty(self):
-        client = FakePageClient([
-            [raw_candle(END - MINUTE_MS), raw_candle(END - 2 * MINUTE_MS), raw_candle(END - 2 * MINUTE_MS)],
-            [raw_candle(END - 2 * MINUTE_MS), raw_candle(END - 5 * MINUTE_MS), raw_candle(END - 6 * MINUTE_MS)],
-        ])
-        result = backfill_exchange("bithumb", END - 6 * MINUTE_MS, END, client, self.store, clock=lambda: END / 1000)
+        client = FakePageClient(
+            [
+                [
+                    raw_candle(END - MINUTE_MS),
+                    raw_candle(END - 2 * MINUTE_MS),
+                    raw_candle(END - 2 * MINUTE_MS),
+                ],
+                [
+                    raw_candle(END - 2 * MINUTE_MS),
+                    raw_candle(END - 5 * MINUTE_MS),
+                    raw_candle(END - 6 * MINUTE_MS),
+                ],
+            ]
+        )
+        result = backfill_exchange(
+            "bithumb", END - 6 * MINUTE_MS, END, client, self.store, clock=lambda: END / 1000
+        )
         self.assertEqual(client.cursors, [("bithumb", END), ("bithumb", END - 2 * MINUTE_MS)])
         self.assertEqual(result["candles_inserted"], 4)
         rows = pq.read_table(candle_path(self.root, "bithumb", END - MINUTE_MS)).to_pylist()
-        self.assertEqual([row["candleTime"] for row in rows], [END - step * MINUTE_MS for step in (6, 5, 2, 1)])
+        self.assertEqual(
+            [row["candleTime"] for row in rows], [END - step * MINUTE_MS for step in (6, 5, 2, 1)]
+        )
         self.assertEqual(len(rows), 4)  # Minutes 3 and 4 are not fabricated.
 
     def test_current_and_out_of_window_candles_are_excluded(self):
-        client = FakePageClient([[raw_candle(END), raw_candle(END - MINUTE_MS), raw_candle(END - 3 * MINUTE_MS)]])
-        result = backfill_exchange("upbit", END - 2 * MINUTE_MS, END, client, self.store, clock=lambda: (END + 1000) / 1000)
+        client = FakePageClient(
+            [[raw_candle(END), raw_candle(END - MINUTE_MS), raw_candle(END - 3 * MINUTE_MS)]]
+        )
+        result = backfill_exchange(
+            "upbit", END - 2 * MINUTE_MS, END, client, self.store, clock=lambda: (END + 1000) / 1000
+        )
         self.assertEqual(result["candles_inserted"], 1)
         rows = pq.read_table(candle_path(self.root, "upbit", END - MINUTE_MS)).to_pylist()
         self.assertEqual([row["candleTime"] for row in rows], [END - MINUTE_MS])
 
     def test_no_progress_is_fatal_and_empty_history_terminates(self):
         with self.assertRaisesRegex(CandleFetchError, "did not move"):
-            backfill_exchange("upbit", END - MINUTE_MS, END, FakePageClient([[raw_candle(END)]]), self.store)
+            backfill_exchange(
+                "upbit", END - MINUTE_MS, END, FakePageClient([[raw_candle(END)]]), self.store
+            )
         result = backfill_exchange("upbit", END - MINUTE_MS, END, FakePageClient([[]]), self.store)
         self.assertEqual(result["candles_received"], 0)
         self.assertEqual(result["pages"], 1)
 
     def test_invalid_market_interval_ohlc_and_nonfinite_values_fail(self):
-        for changes in ({"market": "KRW-BTC"}, {"unit": 5}, {"high_price": 1340}, {"low_price": 1344},
-                        {"trade_price": float("nan")}, {"opening_price": 0}, {"candle_acc_trade_volume": -1},
-                        {"candle_date_time_utc": "2026-10-25T08:16:00.000001"}):
+        for changes in (
+            {"market": "KRW-BTC"},
+            {"unit": 5},
+            {"high_price": 1340},
+            {"low_price": 1344},
+            {"trade_price": float("nan")},
+            {"opening_price": 0},
+            {"candle_acc_trade_volume": -1},
+            {"candle_date_time_utc": "2026-10-25T08:16:00.000001"},
+        ):
             with self.subTest(changes=changes), self.assertRaises(CandleFetchError):
                 normalize_candle(raw_candle(END - MINUTE_MS, **changes), END)
 
@@ -158,7 +201,9 @@ class BackfillTests(unittest.TestCase):
     def test_request_cap_counts_retries_and_never_logs_network_credentials(self):
         clock = FakeClock()
         http = FakeHttp([URLError("https://user:secret@example.invalid"), []])
-        client = PublicMinuteCandleClient(opener=http, monotonic=clock.now, sleep=clock.sleep, max_requests=1)
+        client = PublicMinuteCandleClient(
+            opener=http, monotonic=clock.now, sleep=clock.sleep, max_requests=1
+        )
         with self.assertRaises(RequestLimitExceeded):
             client.fetch_page("upbit", END)
         self.assertEqual(len(http.requests), 1)
@@ -173,7 +218,9 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(self.store.merge("upbit", [row, row]), 1)
         path = candle_path(self.root, "upbit", row["candleTime"])
         before = path.read_bytes()
-        self.assertEqual(self.store.merge("upbit", [{**row, "close": 1344, "fetchedAt": END + MINUTE_MS}]), 0)
+        self.assertEqual(
+            self.store.merge("upbit", [{**row, "close": 1344, "fetchedAt": END + MINUTE_MS}]), 0
+        )
         self.assertEqual(path.read_bytes(), before)
         self.assertTrue(str(path).endswith("upbit/candles_1m/USDT/2026/10/25.parquet"))
 
@@ -183,7 +230,9 @@ class BackfillTests(unittest.TestCase):
         self.store.merge("upbit", [first])
         path = candle_path(self.root, "upbit", first["candleTime"])
         before = path.read_bytes()
-        with patch("oms_client.storage.candle_samples.os.replace", side_effect=OSError("disk unavailable")):
+        with patch(
+            "oms_client.storage.candle_samples.os.replace", side_effect=OSError("disk unavailable")
+        ):
             with self.assertRaises(OSError):
                 self.store.merge("upbit", [second])
         self.assertEqual(path.read_bytes(), before)
@@ -193,13 +242,19 @@ class BackfillTests(unittest.TestCase):
 
     def test_retry_after_directory_sync_failure_finishes_publication_without_duplicate(self):
         row = normalize_candle(raw_candle(END - MINUTE_MS), END)
-        with patch("oms_client.storage.candle_samples.fsync_directory", side_effect=OSError("sync unavailable")):
+        with patch(
+            "oms_client.storage.candle_samples.fsync_directory",
+            side_effect=OSError("sync unavailable"),
+        ):
             with self.assertRaises(OSError):
                 self.store.merge("upbit", [row])
         path = candle_path(self.root, "upbit", row["candleTime"])
         self.assertTrue(path.exists())
         from oms_client.storage import candle_samples
-        with patch.object(candle_samples, "fsync_directory", wraps=candle_samples.fsync_directory) as synchronize:
+
+        with patch.object(
+            candle_samples, "fsync_directory", wraps=candle_samples.fsync_directory
+        ) as synchronize:
             self.assertEqual(self.store.merge("upbit", [row]), 0)
             synchronize.assert_called_with(path.parent)
         self.assertEqual(len(pq.read_table(path)), 1)

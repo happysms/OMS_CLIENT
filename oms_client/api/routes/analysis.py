@@ -1,4 +1,5 @@
 """Historical/live analysis, exports, presets and run history endpoints."""
+
 import re
 
 from flask import jsonify, request, send_file
@@ -32,7 +33,12 @@ def register(app, jobs, store, live_manager):
         try:
             if jobs.get(run_id).get("kind", "analysis") != "analysis":
                 raise KeyError(run_id)
-            return send_file(jobs.csv(run_id), mimetype="text/csv; charset=utf-8", as_attachment=True, download_name=f"midprice-{run_id}.csv")
+            return send_file(
+                jobs.csv(run_id),
+                mimetype="text/csv; charset=utf-8",
+                as_attachment=True,
+                download_name=f"midprice-{run_id}.csv",
+            )
         except KeyError:
             return jsonify(error="분석 기록을 찾지 못했습니다."), 404
         except ValueError as error:
@@ -49,13 +55,22 @@ def register(app, jobs, store, live_manager):
         if request.method == "GET":
             return jsonify(items=store.presets())
         payload = request.get_json(silent=True)
-        if not isinstance(payload, dict) or not isinstance(payload.get("name"), str) or not 1 <= len(payload["name"].strip()) <= 80:
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("name"), str)
+            or not 1 <= len(payload["name"].strip()) <= 80
+        ):
             return jsonify(error="조합 이름을 1~80자로 입력해 주세요."), 400
-        if payload.get("id") is not None and (not isinstance(payload["id"], str) or not re.fullmatch(r"[a-f0-9]{24}", payload["id"])):
+        if payload.get("id") is not None and (
+            not isinstance(payload["id"], str) or not re.fullmatch(r"[a-f0-9]{24}", payload["id"])
+        ):
             return jsonify(error="저장한 조합 ID를 확인해 주세요."), 400
         config = _query_config(payload.get("config"))
         try:
-            return jsonify(store.save_preset(payload["name"].strip(), config, payload.get("id"))), 201
+            return (
+                jsonify(store.save_preset(payload["name"].strip(), config, payload.get("id"))),
+                201,
+            )
         except KeyError:
             return jsonify(error="저장한 조합을 찾지 못했습니다."), 404
         except ValueError as error:
@@ -73,10 +88,20 @@ def register(app, jobs, store, live_manager):
     def create_live():
         config = _query_config(request.get_json(silent=True))
         referenced = set(formula_ids(config["formula"]))
-        if any(leg.get("data_type") == "funding" and leg.get("id") in referenced for leg in config["legs"]):
-            raise DataError("펀딩비율은 저장된 데이터 조회와 과거 분석에서 사용할 수 있습니다. 과거 분석으로 전환해 주세요.")
-        if any(leg.get("data_type") == "candle" and leg.get("id") in referenced for leg in config["legs"]):
-            raise DataError('1분봉 종가는 저장된 과거 분석에서 사용할 수 있습니다. 과거 분석으로 전환해 주세요.')
+        if any(
+            leg.get("data_type") == "funding" and leg.get("id") in referenced
+            for leg in config["legs"]
+        ):
+            raise DataError(
+                "펀딩비율은 저장된 데이터 조회와 과거 분석에서 사용할 수 있습니다. 과거 분석으로 전환해 주세요."
+            )
+        if any(
+            leg.get("data_type") == "candle" and leg.get("id") in referenced
+            for leg in config["legs"]
+        ):
+            raise DataError(
+                '1분봉 종가는 저장된 과거 분석에서 사용할 수 있습니다. 과거 분석으로 전환해 주세요.'
+            )
         return jsonify(id=live_manager().start(config), status="running"), 202
 
     @app.get("/api/live/<live_id>")

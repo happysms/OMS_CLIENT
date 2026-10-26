@@ -1,4 +1,5 @@
 """Read-only market data discovery, ticks, and stored time bounds."""
+
 import threading
 
 from flask import jsonify, request, send_file
@@ -46,9 +47,14 @@ def register(app, exports):
             return jsonify(error="체결 틱 조회가 진행 중입니다. 잠시 후 다시 시도해 주세요."), 429
         stream = None
         try:
-            stream, name, size = ticks.csv_file(request.get_json(silent=True),
-                max_rows=app.config["DATA_EXPORT_MAX_ROWS"], max_bytes=app.config["DATA_EXPORT_MAX_CSV_BYTES"])
-            response = send_file(stream, mimetype="text/csv; charset=utf-8", as_attachment=True, download_name=name)
+            stream, name, size = ticks.csv_file(
+                request.get_json(silent=True),
+                max_rows=app.config["DATA_EXPORT_MAX_ROWS"],
+                max_bytes=app.config["DATA_EXPORT_MAX_CSV_BYTES"],
+            )
+            response = send_file(
+                stream, mimetype="text/csv; charset=utf-8", as_attachment=True, download_name=name
+            )
             response.content_length = size
             response.call_on_close(stream.close)
             return response
@@ -71,14 +77,24 @@ def register(app, exports):
         try:
             return jsonify(exports.get(export_id))
         except KeyError:
-            return jsonify(error="CSV 내보내기 기록이 없거나 보관 시간이 지났습니다. 다시 내보내 주세요."), 404
+            return (
+                jsonify(
+                    error="CSV 내보내기 기록이 없거나 보관 시간이 지났습니다. 다시 내보내 주세요."
+                ),
+                404,
+            )
 
     @app.get("/api/data/exports/<export_id>/csv")
     def download_data_export(export_id):
         try:
             path, name = exports.csv(export_id)
-            return send_file(path, mimetype="text/csv; charset=utf-8", as_attachment=True, download_name=name)
+            return send_file(
+                path, mimetype="text/csv; charset=utf-8", as_attachment=True, download_name=name
+            )
         except KeyError:
-            return jsonify(error="CSV 보관 시간이 지났거나 기록이 없습니다. 다시 내보내 주세요."), 404
+            return (
+                jsonify(error="CSV 보관 시간이 지났거나 기록이 없습니다. 다시 내보내 주세요."),
+                404,
+            )
         except (ValueError, FileNotFoundError) as error:
             return jsonify(error=str(error)), 410

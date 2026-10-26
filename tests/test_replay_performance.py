@@ -1,4 +1,5 @@
 """Correctness boundaries for cached projections and optimized replay hot paths."""
+
 from dataclasses import replace
 from decimal import Decimal as D, localcontext
 from fractions import Fraction
@@ -28,17 +29,31 @@ class StrategyProjectionTests(unittest.TestCase):
     def test_reuses_immutable_view_and_refreshes_every_changed_input(self):
         projection = StrategyOrderViews()
         order = pending()
-        current, = projection.project([order])
+        (current,) = projection.project([order])
         self.assertIs(projection.project([order])[0], current)
-        for field, value in [('owner', 'mm'), ('side', 'sell'), ('price', D('101')),
-                             ('remaining', D('1')), ('status', 'live'), ('id', 'O2')]:
+        for field, value in [
+            ('owner', 'mm'),
+            ('side', 'sell'),
+            ('price', D('101')),
+            ('remaining', D('1')),
+            ('status', 'live'),
+            ('id', 'O2'),
+        ]:
             with self.subTest(field=field):
                 setattr(order, field, value)
-                changed, = projection.project([order])
+                (changed,) = projection.project([order])
                 self.assertIsNot(changed, current)
-                self.assertEqual((changed.order_id, changed.strategy_id, changed.side,
-                                  changed.price, changed.remaining_qty, changed.phase),
-                                 (order.id, order.owner, order.side, order.price, order.remaining, order.status))
+                self.assertEqual(
+                    (
+                        changed.order_id,
+                        changed.strategy_id,
+                        changed.side,
+                        changed.price,
+                        changed.remaining_qty,
+                        changed.phase,
+                    ),
+                    (order.id, order.owner, order.side, order.price, order.remaining, order.status),
+                )
                 current = changed
         order.status = 'execution_unknown'
         with self.assertRaises(ValueError):
@@ -58,6 +73,7 @@ class StrategyProjectionTests(unittest.TestCase):
 
     def test_gc_still_removes_terminal_order_after_finish_without_due_timer(self):
         from oms_client.replay.engine import ReplayEngine
+
         engine = ReplayEngine(config())
         engine.on_event(book(engine.now, quantity=0))
         identifier = engine.place('buy', '100', '2')
@@ -124,8 +140,15 @@ class ExactSizingTests(unittest.TestCase):
                 quantum = rng.choice([D('1'), D('.01'), D('.00000001')])
                 price = D(rng.randrange(1, 20000)) / 100
                 cash = D(rng.randrange(0, 1000000)) / 100
-                strategy = SimpleMM(replace(cfg, quantity_step=step, maker_fee_bps=fee,
-                                            taker_fee_bps=fee, fee_quantum=quantum))
+                strategy = SimpleMM(
+                    replace(
+                        cfg,
+                        quantity_step=step,
+                        maker_fee_bps=fee,
+                        taker_fee_bps=fee,
+                        fee_quantum=quantum,
+                    )
+                )
                 quantity, reserve = strategy._buy_size(cash, price)
 
                 def required(size):
@@ -143,17 +166,25 @@ class ExactSizingTests(unittest.TestCase):
 class SourceLayoutTests(unittest.TestCase):
     def test_five_level_column_layout_and_source_ids_across_native_files(self):
         import duckdb
+
         cfg = config()
         with tempfile.TemporaryDirectory() as temp:
             paths = []
             con = duckdb.connect()
             try:
                 for index in range(2):
-                    fields = [f"{cfg['start_ms']} AS desktopTime", f"{cfg['start_ms']} AS serverTime"]
+                    fields = [
+                        f"{cfg['start_ms']} AS desktopTime",
+                        f"{cfg['start_ms']} AS serverTime",
+                    ]
                     for level in range(1, 6):
                         suffix = '' if level == 1 else f'_{level}'
-                        fields += [f'{101-level} AS b{level}_p', f'{101+level} AS a{level}_p',
-                                   f'{level+index} AS bid_size{suffix}', f'{10+level+index} AS ask_size{suffix}']
+                        fields += [
+                            f'{101-level} AS b{level}_p',
+                            f'{101+level} AS a{level}_p',
+                            f'{level+index} AS bid_size{suffix}',
+                            f'{10+level+index} AS ask_size{suffix}',
+                        ]
                     path = str(Path(temp) / f'{index}.parquet')
                     con.sql('SELECT ' + ','.join(fields)).write_parquet(path)
                     paths.append(path)
@@ -164,8 +195,12 @@ class SourceLayoutTests(unittest.TestCase):
             try:
                 events = list(source._stream('bithumb', 'book', paths, True, originals))
                 for index, event in enumerate(events):
-                    self.assertEqual([v['quantity'] for v in event['bids']], list(range(1+index, 6+index)))
-                    self.assertEqual([v['quantity'] for v in event['asks']], list(range(11+index, 16+index)))
+                    self.assertEqual(
+                        [v['quantity'] for v in event['bids']], list(range(1 + index, 6 + index))
+                    )
+                    self.assertEqual(
+                        [v['quantity'] for v in event['asks']], list(range(11 + index, 16 + index))
+                    )
                     file_hash = hashlib.sha256(originals[index].encode()).hexdigest()[:12]
                     self.assertEqual(event['source_id'], f'bithumb:book:{file_hash}:0')
                     self.assertEqual(event['_key'][-2:], (index, 0))
@@ -179,11 +214,20 @@ class QueueProjectionTests(unittest.TestCase):
     def test_batch_positions_preserve_rounding_and_refresh_after_cancellation(self):
         for bias in ('0.01', '1', '100'):
             with self.subTest(bias=bias):
-                model = QueueCancellation(dict(queue_cancel_mode='probabilistic', queue_cancel_bias=bias))
-                nodes = [dict(kind='external', qty=D('1.123456789012345678901234567')),
-                         dict(kind='own', id='A'), dict(kind='external', qty=D('1e-27')),
-                         dict(kind='own', id='B'), dict(kind='external', qty=D('3.333333333333333333333333333'))]
-                before = {identifier: model.position(nodes, identifier) for identifier in ('A', 'B', 'missing')}
+                model = QueueCancellation(
+                    dict(queue_cancel_mode='probabilistic', queue_cancel_bias=bias)
+                )
+                nodes = [
+                    dict(kind='external', qty=D('1.123456789012345678901234567')),
+                    dict(kind='own', id='A'),
+                    dict(kind='external', qty=D('1e-27')),
+                    dict(kind='own', id='B'),
+                    dict(kind='external', qty=D('3.333333333333333333333333333')),
+                ]
+                before = {
+                    identifier: model.position(nodes, identifier)
+                    for identifier in ('A', 'B', 'missing')
+                }
                 self.assertEqual(model.positions(nodes, before), before)
                 model.cancel(nodes, D('0.25'))
                 after = {identifier: model.position(nodes, identifier) for identifier in before}

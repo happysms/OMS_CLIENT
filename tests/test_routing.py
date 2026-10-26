@@ -14,10 +14,18 @@ from oms_client.infrastructure import tunnel as routing
 
 class RoutingTests(unittest.TestCase):
     def test_extracts_only_https_quick_tunnel_hostnames(self):
-        self.assertEqual(routing.extract_url('INF | https://quiet-otter-123.trycloudflare.com |'), 'https://quiet-otter-123.trycloudflare.com')
-        for value in ['http://quiet.trycloudflare.com', 'https://example.com',
-                      'https://quiet.trycloudflare.com.evil.test', 'https://quiet.trycloudflare.com:443',
-                      'https://quiet.trycloudflare.com_evil', 'https://-quiet.trycloudflare.com']:
+        self.assertEqual(
+            routing.extract_url('INF | https://quiet-otter-123.trycloudflare.com |'),
+            'https://quiet-otter-123.trycloudflare.com',
+        )
+        for value in [
+            'http://quiet.trycloudflare.com',
+            'https://example.com',
+            'https://quiet.trycloudflare.com.evil.test',
+            'https://quiet.trycloudflare.com:443',
+            'https://quiet.trycloudflare.com_evil',
+            'https://-quiet.trycloudflare.com',
+        ]:
             self.assertIsNone(routing.extract_url(value), value)
 
     def test_origin_is_fixed_to_loopback_and_valid_port(self):
@@ -29,8 +37,12 @@ class RoutingTests(unittest.TestCase):
     def test_state_is_atomic_private_and_stopped_hides_url(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            state = {'manager_pid': 99999999, 'manager_start_ticks': '123',
-                     'status': 'connected', 'url': 'https://quiet.trycloudflare.com'}
+            state = {
+                'manager_pid': 99999999,
+                'manager_start_ticks': '123',
+                'status': 'connected',
+                'url': 'https://quiet.trycloudflare.com',
+            }
             routing.write_state(directory, state)
             self.assertEqual(routing.read_state(directory), state)
             self.assertEqual(stat.S_IMODE((directory / 'routing.json').stat().st_mode), 0o600)
@@ -43,7 +55,9 @@ class RoutingTests(unittest.TestCase):
 
     def test_pid_reuse_does_not_target_unrelated_process(self):
         state = {'manager_pid': 123, 'manager_start_ticks': '10'}
-        with patch.object(routing, 'process_identity', return_value={'pid': 123, 'start_ticks': '11'}):
+        with patch.object(
+            routing, 'process_identity', return_value={'pid': 123, 'start_ticks': '11'}
+        ):
             self.assertFalse(routing.is_manager(state))
         with patch.object(routing, 'process_identity', return_value=None):
             self.assertFalse(routing.is_manager(state))
@@ -53,12 +67,17 @@ class RoutingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             routing.write_state(directory, {'manager_pid': 123, 'manager_start_ticks': '10'})
-            with patch.object(routing, 'process_identity', return_value=None), patch.object(routing.os, 'kill') as kill:
+            with (
+                patch.object(routing, 'process_identity', return_value=None),
+                patch.object(routing.os, 'kill') as kill,
+            ):
                 routing.stop(directory)
                 kill.assert_not_called()
 
     def test_logging_is_bounded_and_tokens_redacted(self):
-        self.assertNotIn('very-secret-token', routing.redact('bad token=very-secret-token', 'very-secret-token'))
+        self.assertNotIn(
+            'very-secret-token', routing.redact('bad token=very-secret-token', 'very-secret-token')
+        )
         self.assertNotIn('abc', routing.redact('token: abc'))
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -95,24 +114,46 @@ class RoutingTests(unittest.TestCase):
         self.assertIn('127.0.0.1:0', command)
 
     def test_supervisor_accepts_legacy_application_health(self):
-        self.test_supervisor_persists_url_and_cleans_state_after_child_exits(health_service="midprice-lab")
+        self.test_supervisor_persists_url_and_cleans_state_after_child_exits(
+            health_service="midprice-lab"
+        )
 
-    def test_supervisor_persists_url_and_cleans_state_after_child_exits(self, health_service="oms-client"):
+    def test_supervisor_persists_url_and_cleans_state_after_child_exits(
+        self, health_service="oms-client"
+    ):
         class Child:
             pid = 54321
-            stdout = io.StringIO('INF https://quiet-otter.trycloudflare.com\nINF Registered tunnel connection\n')
+            stdout = io.StringIO(
+                'INF https://quiet-otter.trycloudflare.com\nINF Registered tunnel connection\n'
+            )
+
             def poll(self):
                 return 0
+
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             binary = directory / 'cloudflared'
             binary.write_text('fake executable')
             binary.chmod(0o700)
-            with (patch.dict(os.environ, {'DASHBOARD_STATE_DIR': str(directory), 'DASHBOARD_CLOUDFLARED': str(binary)}),
-                  patch.object(routing, 'process_identity', return_value={'pid': os.getpid(), 'start_ticks': '123'}),
-                  patch.object(routing, 'urlopen', return_value=io.StringIO(json.dumps({"ok": True, "service": health_service}))),
-                  patch.object(routing.subprocess, 'Popen', return_value=Child()) as popen,
-                  patch.object(routing.signal, 'signal'), patch('sys.stdout', new_callable=io.StringIO) as stdout):
+            with (
+                patch.dict(
+                    os.environ,
+                    {'DASHBOARD_STATE_DIR': str(directory), 'DASHBOARD_CLOUDFLARED': str(binary)},
+                ),
+                patch.object(
+                    routing,
+                    'process_identity',
+                    return_value={'pid': os.getpid(), 'start_ticks': '123'},
+                ),
+                patch.object(
+                    routing,
+                    'urlopen',
+                    return_value=io.StringIO(json.dumps({"ok": True, "service": health_service})),
+                ),
+                patch.object(routing.subprocess, 'Popen', return_value=Child()) as popen,
+                patch.object(routing.signal, 'signal'),
+                patch('sys.stdout', new_callable=io.StringIO) as stdout,
+            ):
                 routing.run('quick', 8765)
                 self.assertIn('https://quiet-otter.trycloudflare.com', stdout.getvalue())
                 self.assertIn('http://127.0.0.1:8765', popen.call_args.args[0])

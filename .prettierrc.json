@@ -1,0 +1,16 @@
+{
+    "tabWidth": 4,
+    "useTabs": false,
+    "printWidth": 100,
+    "singleQuote": true,
+    "htmlWhitespaceSensitivity": "strict",
+    "embeddedLanguageFormatting": "off",
+    "overrides": [
+        {
+            "files": "*.html",
+            "options": {
+                "embeddedLanguageFormatting": "auto"
+            }
+        }
+    ]
+}

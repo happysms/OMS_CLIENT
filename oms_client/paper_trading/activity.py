@@ -1,4 +1,5 @@
 """Execution-only turnover and volume; never counts orders, balances or marks."""
+
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -37,7 +38,9 @@ class ExecutedTrade:
         if self.quantity <= 0 or self.price <= 0:
             raise ValueError('체결 수량·가격은 양수여야 합니다.')
         rate = self.krw_per_usdt
-        if rate is not None and (not isinstance(rate, Decimal) or not rate.is_finite() or rate <= 0):
+        if rate is not None and (
+            not isinstance(rate, Decimal) or not rate.is_finite() or rate <= 0
+        ):
             raise ValueError('체결 당시 환율을 확인하세요.')
 
 
@@ -61,13 +64,19 @@ class SideTotals:
         self.count += 1
 
     def state(self):
-        return {name: value if name == 'count' else str(value) if value is not None else None
-                for name, value in vars(self).items()}
+        return {
+            name: value if name == 'count' else str(value) if value is not None else None
+            for name, value in vars(self).items()
+        }
 
     @classmethod
     def restore(cls, state):
-        return cls(**{name: value if name == 'count' else decimal(value) if value is not None else None
-                      for name, value in state.items()})
+        return cls(
+            **{
+                name: value if name == 'count' else decimal(value) if value is not None else None
+                for name, value in state.items()
+            }
+        )
 
 
 @dataclass
@@ -78,19 +87,30 @@ class MarketActivity:
 
 class TradingActivity:
     """Account-owned Decimal accumulators, bounded by traded market count."""
+
     def __init__(self, state=None):
         self.markets = {}
         for market in (state or {}).get('markets', []):
             self.markets[(market['exchange'], market['ticker'])] = MarketActivity(
-                SideTotals.restore(market['buy']), SideTotals.restore(market['sell']))
+                SideTotals.restore(market['buy']), SideTotals.restore(market['sell'])
+            )
 
     def record(self, trade: ExecutedTrade):
         market = self.markets.setdefault((trade.exchange, trade.ticker), MarketActivity())
         getattr(market, trade.side).add(trade)
 
     def state(self):
-        return dict(markets=[dict(exchange=exchange, ticker=ticker, buy=market.buy.state(), sell=market.sell.state())
-                             for (exchange, ticker), market in sorted(self.markets.items())])
+        return dict(
+            markets=[
+                dict(
+                    exchange=exchange,
+                    ticker=ticker,
+                    buy=market.buy.state(),
+                    sell=market.sell.state(),
+                )
+                for (exchange, ticker), market in sorted(self.markets.items())
+            ]
+        )
 
     @staticmethod
     def _totals(markets, unit):
@@ -98,11 +118,19 @@ class TradingActivity:
         fee = 'fee' if unit == 'KRW' else 'usdt_fee'
         buy = nullable_sum(getattr(m.buy, notional) for m in markets)
         sell = nullable_sum(getattr(m.sell, notional) for m in markets)
-        return dict(buy_turnover=number(buy), sell_turnover=number(sell),
-                    turnover=number(nullable_sum((buy, sell))),
-                    fees_paid=number(nullable_sum(getattr(getattr(m, side), fee) for m in markets for side in ('buy', 'sell'))),
-                    buy_fill_count=sum(m.buy.count for m in markets), sell_fill_count=sum(m.sell.count for m in markets),
-                    fill_count=sum(m.buy.count + m.sell.count for m in markets))
+        return dict(
+            buy_turnover=number(buy),
+            sell_turnover=number(sell),
+            turnover=number(nullable_sum((buy, sell))),
+            fees_paid=number(
+                nullable_sum(
+                    getattr(getattr(m, side), fee) for m in markets for side in ('buy', 'sell')
+                )
+            ),
+            buy_fill_count=sum(m.buy.count for m in markets),
+            sell_fill_count=sum(m.sell.count for m in markets),
+            fill_count=sum(m.buy.count + m.sell.count for m in markets),
+        )
 
     def report(self):
         result = {}
@@ -110,17 +138,30 @@ class TradingActivity:
             markets = []
             for (exchange, ticker), market in sorted(self.markets.items()):
                 field_name = 'notional' if unit == 'KRW' else 'usdt_notional'
-                row = dict(exchange=exchange, ticker=ticker, **self._totals([market], unit),
-                           buy_quantity=float(market.buy.quantity), sell_quantity=float(market.sell.quantity),
-                           traded_quantity=float(market.buy.quantity + market.sell.quantity))
+                row = dict(
+                    exchange=exchange,
+                    ticker=ticker,
+                    **self._totals([market], unit),
+                    buy_quantity=float(market.buy.quantity),
+                    sell_quantity=float(market.sell.quantity),
+                    traded_quantity=float(market.buy.quantity + market.sell.quantity),
+                )
                 for side in ('buy', 'sell'):
                     totals = getattr(market, side)
                     value = getattr(totals, field_name)
-                    row[side + '_vwap'] = number(value / totals.quantity) if value is not None and totals.quantity else None
+                    row[side + '_vwap'] = (
+                        number(value / totals.quantity)
+                        if value is not None and totals.quantity
+                        else None
+                    )
                 markets.append(row)
             totals = self._totals(list(self.markets.values()), unit)
-            result[unit] = dict(quote_currency=unit, **totals, markets=markets,
-                                status='complete' if totals['turnover'] is not None else 'missing_historical_fx')
+            result[unit] = dict(
+                quote_currency=unit,
+                **totals,
+                markets=markets,
+                status='complete' if totals['turnover'] is not None else 'missing_historical_fx',
+            )
         return result
 
 
@@ -128,14 +169,29 @@ def saved_trade(fill, report=None):
     """Reconstruct only from the execution and its frozen FX, never today's quote."""
     fx = (((report or {}).get('usdt') or {}).get('fill') or {}).get('fx') or {}
     rate = fx.get('rate_decimal', fx.get('krw_per_usdt'))
-    return ExecutedTrade(fill['exchange'], fill['ticker'], fill['side'], decimal(fill['quantity']),
-                         decimal(fill['price']), decimal(fill['fee']), decimal(rate) if rate is not None else None)
+    return ExecutedTrade(
+        fill['exchange'],
+        fill['ticker'],
+        fill['side'],
+        decimal(fill['quantity']),
+        decimal(fill['price']),
+        decimal(fill['fee']),
+        decimal(rate) if rate is not None else None,
+    )
 
 
-ACTIVITY_FIELDS = ('turnover', 'buy_turnover', 'sell_turnover', 'fees_paid',
-                   'fill_count', 'buy_fill_count', 'sell_fill_count')
+ACTIVITY_FIELDS = (
+    'turnover',
+    'buy_turnover',
+    'sell_turnover',
+    'fees_paid',
+    'fill_count',
+    'buy_fill_count',
+    'sell_fill_count',
+)
 ACTIVITY_CSV_FIELDS = ['fill_notional_krw', 'fill_notional_usdt'] + [
-    f'activity_{unit.lower()}_{key}' for unit in ('KRW', 'USDT') for key in ACTIVITY_FIELDS]
+    f'activity_{unit.lower()}_{key}' for unit in ('KRW', 'USDT') for key in ACTIVITY_FIELDS
+]
 
 
 def activity_csv_values(report):
@@ -144,4 +200,5 @@ def activity_csv_values(report):
     usdt_fill = (report.get('usdt') or {}).get('fill') or {}
     activity = report.get('activity') or {}
     return [float(notional), usdt_fill.get('notional')] + [
-        (activity.get(unit) or {}).get(key) for unit in ('KRW', 'USDT') for key in ACTIVITY_FIELDS]
+        (activity.get(unit) or {}).get(key) for unit in ('KRW', 'USDT') for key in ACTIVITY_FIELDS
+    ]

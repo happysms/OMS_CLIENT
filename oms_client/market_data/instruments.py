@@ -1,4 +1,5 @@
 """Bounded public instrument metadata needed to interpret contract quantities."""
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,9 @@ from .validation import DataError, IDENTIFIER
 MAX_RESPONSE_BYTES = 1024 * 1024
 OKX_INSTRUMENTS_URL = "https://www.okx.com/api/v5/public/instruments"
 TICKER = re.compile(r"[A-Z0-9]{1,35}")
-LOOKUP_ERROR = "OKX 계약 단위를 확인하지 못했습니다. 확인되지 않은 수량으로 평균 체결가를 계산하지 않습니다."
+LOOKUP_ERROR = (
+    "OKX 계약 단위를 확인하지 못했습니다. 확인되지 않은 수량으로 평균 체결가를 계산하지 않습니다."
+)
 
 
 def _positive_number(value):
@@ -33,14 +36,21 @@ def okx_contract_value(ticker: str, opener=urlopen) -> float:
     ctVal. Unfamiliar multipliers fail closed instead of assuming one.
     https://www.okx.com/docs-v5/en/#public-data-rest-api-get-instruments
     """
-    if (not isinstance(ticker, str) or not IDENTIFIER.fullmatch(ticker)
-            or not TICKER.fullmatch(ticker)):
+    if (
+        not isinstance(ticker, str)
+        or not IDENTIFIER.fullmatch(ticker)
+        or not TICKER.fullmatch(ticker)
+    ):
         raise DataError("OKX 계약 단위를 확인할 종목을 다시 선택해 주세요.")
     instrument_id = f"{ticker}-USDT-SWAP"
     query = urlencode({"instType": "SWAP", "instId": instrument_id})
-    request = Request(f"{OKX_INSTRUMENTS_URL}?{query}", headers={
-        "Accept": "application/json", "User-Agent": "OMS-Client-Instruments/1.0",
-    })
+    request = Request(
+        f"{OKX_INSTRUMENTS_URL}?{query}",
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "OMS-Client-Instruments/1.0",
+        },
+    )
     try:
         with opener(request, timeout=8) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
@@ -53,9 +63,14 @@ def okx_contract_value(ticker: str, opener=urlopen) -> float:
         if not isinstance(records, list) or len(records) != 1:
             raise ValueError("Ambiguous instrument response")
         instrument = records[0]
-        if (not isinstance(instrument, dict) or instrument.get("instId") != instrument_id
-                or instrument.get("instType") != "SWAP" or instrument.get("ctType") != "linear"
-                or instrument.get("ctValCcy") != ticker or instrument.get("settleCcy") != "USDT"):
+        if (
+            not isinstance(instrument, dict)
+            or instrument.get("instId") != instrument_id
+            or instrument.get("instType") != "SWAP"
+            or instrument.get("ctType") != "linear"
+            or instrument.get("ctValCcy") != ticker
+            or instrument.get("settleCcy") != "USDT"
+        ):
             raise ValueError("Unsupported contract units")
         contract_value = _positive_number(instrument.get("ctVal"))
         if _positive_number(instrument.get("ctMult")) != 1:

@@ -1,4 +1,5 @@
 """Bounded background jobs, result retention and persisted run metadata."""
+
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import logging
@@ -13,11 +14,25 @@ from ..storage.state import utc_now
 from ..storage.access import DATA_ACCESS
 from .exports import _write_csv, _write_trades_csv
 
+
 class AnalysisJobs:
-    def __init__(self, store, analyzer, *, backtester=None, workers=1, max_pending=8, max_cached=16, ttl=3600, max_csv_bytes=256 * 1024 * 1024):
+    def __init__(
+        self,
+        store,
+        analyzer,
+        *,
+        backtester=None,
+        workers=1,
+        max_pending=8,
+        max_cached=16,
+        ttl=3600,
+        max_csv_bytes=256 * 1024 * 1024,
+    ):
         self.store, self.analyzer = store, analyzer
         self.backtester = backtester
-        self.executor = ThreadPoolExecutor(max_workers=max(1, min(2, workers)), thread_name_prefix="analysis")
+        self.executor = ThreadPoolExecutor(
+            max_workers=max(1, min(2, workers)), thread_name_prefix="analysis"
+        )
         self.slots = threading.BoundedSemaphore(max_pending)
         self.jobs = OrderedDict()
         self.lock = threading.RLock()
@@ -36,11 +51,17 @@ class AnalysisJobs:
 
     @staticmethod
     def metadata(job):
-        return {key: value for key, value in job.items() if key not in {"result", "future", "csv_path", "finished_monotonic"}}
+        return {
+            key: value
+            for key, value in job.items()
+            if key not in {"result", "future", "csv_path", "finished_monotonic"}
+        }
 
     def _prune(self):
         now = time.monotonic()
-        completed = [(key, job) for key, job in self.jobs.items() if job["status"] in {"complete", "failed"}]
+        completed = [
+            (key, job) for key, job in self.jobs.items() if job["status"] in {"complete", "failed"}
+        ]
         byte_count = sum(job.get("csv_bytes", 0) for _, job in completed)
         for key, job in completed:
             expired = now - job.get("finished_monotonic", now) >= self.ttl
@@ -59,7 +80,18 @@ class AnalysisJobs:
             raise OverflowError("조회 요청이 많습니다. 현재 분석이 끝난 뒤 다시 실행해 주세요.")
         run_id = secrets.token_hex(16)
         now = utc_now()
-        job = {"id": run_id, "kind": kind, "status": "queued", "config": config, "created_at": now, "started_at": None, "completed_at": None, "error": None, "result_available": False, "progress": 0}
+        job = {
+            "id": run_id,
+            "kind": kind,
+            "status": "queued",
+            "config": config,
+            "created_at": now,
+            "started_at": None,
+            "completed_at": None,
+            "error": None,
+            "result_available": False,
+            "progress": 0,
+        }
         with self.lock:
             self._prune()
             self.jobs[run_id] = job
@@ -88,6 +120,7 @@ class AnalysisJobs:
                 backtester = self.backtester
                 if backtester is None:
                     from ..backtesting.engine import run_backtest
+
                     backtester = run_backtest
                 result = backtester(config)
             else:
@@ -101,17 +134,37 @@ class AnalysisJobs:
                 _write_csv(csv_path, result, config.get("unit", ""))
             result.pop("full", None)
             with self.lock:
-                job.update(status="complete", completed_at=utc_now(), result=result, result_available=True, progress=1, csv_path=str(csv_path), csv_bytes=csv_path.stat().st_size, finished_monotonic=time.monotonic())
+                job.update(
+                    status="complete",
+                    completed_at=utc_now(),
+                    result=result,
+                    result_available=True,
+                    progress=1,
+                    csv_path=str(csv_path),
+                    csv_bytes=csv_path.stat().st_size,
+                    finished_monotonic=time.monotonic(),
+                )
                 self.store.save_run(self.metadata(job))
                 self._prune()
         except Exception as exc:
-            message = str(exc) if isinstance(exc, (data_service.DataError, ValueError)) else "분석 중 오류가 발생했습니다. 서버 로그를 확인해 주세요."
+            message = (
+                str(exc)
+                if isinstance(exc, (data_service.DataError, ValueError))
+                else "분석 중 오류가 발생했습니다. 서버 로그를 확인해 주세요."
+            )
             if not isinstance(exc, (data_service.DataError, ValueError)):
                 logging.getLogger(__name__).exception("Analysis job failed: %s", run_id)
             with self.lock:
                 job = self.jobs.get(run_id)
                 if job:
-                    job.update(status="failed", completed_at=utc_now(), error=message, result_available=False, progress=1, finished_monotonic=time.monotonic())
+                    job.update(
+                        status="failed",
+                        completed_at=utc_now(),
+                        error=message,
+                        result_available=False,
+                        progress=1,
+                        finished_monotonic=time.monotonic(),
+                    )
                     self.store.save_run(self.metadata(job))
                     self._prune()
         finally:
@@ -130,7 +183,10 @@ class AnalysisJobs:
         if metadata:
             metadata["result_available"] = False
             if metadata["status"] in {"queued", "running"}:
-                metadata.update(status="failed", error="서버가 재시작되어 분석이 중단됐습니다. 같은 조건으로 다시 실행해 주세요.")
+                metadata.update(
+                    status="failed",
+                    error="서버가 재시작되어 분석이 중단됐습니다. 같은 조건으로 다시 실행해 주세요.",
+                )
             return metadata
         raise KeyError(run_id)
 
@@ -143,7 +199,9 @@ class AnalysisJobs:
                 if path.is_file():
                     return path
         if self.store.run(run_id):
-            raise ValueError("결과 보관 시간이 지났거나 분석이 끝나지 않았습니다. 다시 분석한 뒤 내보내 주세요.")
+            raise ValueError(
+                "결과 보관 시간이 지났거나 분석이 끝나지 않았습니다. 다시 분석한 뒤 내보내 주세요."
+            )
         raise KeyError(run_id)
 
     def history(self):

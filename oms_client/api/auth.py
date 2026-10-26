@@ -1,4 +1,5 @@
 """Login, session protection, CSRF, origin checks and private response headers."""
+
 from collections import OrderedDict, deque
 import hashlib
 import hmac
@@ -11,11 +12,13 @@ from flask import jsonify, redirect, render_template, request, session
 from flask.sessions import SecureCookieSessionInterface
 from werkzeug.security import check_password_hash, generate_password_hash
 
+
 class TransportAwareSessionInterface(SecureCookieSessionInterface):
     """Keep tunnel cookies HTTPS-only while retaining direct localhost access."""
 
     def get_cookie_secure(self, app):
         return bool(app.config["SESSION_COOKIE_SECURE"] or request.is_secure)
+
 
 class LoginLimiter:
     def __init__(self, attempts=8, window=600):
@@ -61,7 +64,9 @@ def configure_auth(app, store):
     app.extensions["login_limiter"] = limiter
 
     def authenticated():
-        return session.get("user") == "admin" and hmac.compare_digest(session.get("auth_version", ""), auth_version)
+        return session.get("user") == "admin" and hmac.compare_digest(
+            session.get("auth_version", ""), auth_version
+        )
 
     def csrf_token():
         if "csrf_token" not in session:
@@ -94,7 +99,10 @@ def configure_auth(app, store):
                 if not valid_origin:
                     return jsonify(error="같은 사이트에서 다시 요청해 주세요."), 403
             if not valid_csrf():
-                return jsonify(error="로그인 정보가 갱신됐습니다. 새로고침 후 다시 시도해 주세요."), 403
+                return (
+                    jsonify(error="로그인 정보가 갱신됐습니다. 새로고침 후 다시 시도해 주세요."),
+                    403,
+                )
 
     @app.after_request
     def private_headers(response):
@@ -102,7 +110,9 @@ def configure_auth(app, store):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+        )
         return response
 
     @app.route("/login", methods=["GET", "POST"])
@@ -123,7 +133,9 @@ def configure_auth(app, store):
             else:
                 limiter.clear(address)
                 session.clear()
-                session.update(user="admin", auth_version=auth_version, csrf_token=secrets.token_urlsafe(32))
+                session.update(
+                    user="admin", auth_version=auth_version, csrf_token=secrets.token_urlsafe(32)
+                )
                 session.permanent = True
                 return redirect("/")
         return render_template("login.html", error=error, csrf=token, action="/login"), code

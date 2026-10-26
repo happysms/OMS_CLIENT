@@ -1,4 +1,5 @@
 """Shared quote types, request bounds and JSON-safe value conversion."""
+
 from __future__ import annotations
 
 import math
@@ -17,15 +18,12 @@ class DataError(ValueError):
     """A user-correctable request or source-data error."""
 
 
-
 class QueryTimeout(DataError):
     """A bounded analytical query exceeded its configured time budget."""
 
 
-
 def iso_timestamp(ms: int) -> str:
     return pd.Timestamp(ms, unit="ms", tz="UTC").tz_convert(KST).isoformat()
-
 
 
 def parse_date(value, label: str) -> pd.Timestamp:
@@ -39,8 +37,9 @@ def parse_date(value, label: str) -> pd.Timestamp:
         _ = parsed.value  # Validate the nanosecond range used by query conversion.
         return parsed
     except (ValueError, TypeError, OverflowError) as exc:
-        raise DataError(f"{label} 형식이 올바르지 않습니다. 한국 시간 기준 날짜·시간을 입력해 주세요.") from exc
-
+        raise DataError(
+            f"{label} 형식이 올바르지 않습니다. 한국 시간 기준 날짜·시간을 입력해 주세요."
+        ) from exc
 
 
 def integer(value, name: str, low: int, high: int) -> int:
@@ -55,10 +54,12 @@ def integer(value, name: str, low: int, high: int) -> int:
         raise DataError(f"{name}은 {low}~{high} 사이 정수로 입력해 주세요.") from exc
 
 
-
 def number(value):
-    return float(value) if value is not None and pd.notna(value) and math.isfinite(float(value)) else None
-
+    return (
+        float(value)
+        if value is not None and pd.notna(value) and math.isfinite(float(value))
+        else None
+    )
 
 
 def array(series: pd.Series) -> list:

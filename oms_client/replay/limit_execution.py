@@ -1,4 +1,5 @@
 """Explicit synthetic spot execution profile; not a native exchange rule claim."""
+
 from dataclasses import dataclass
 from decimal import Decimal as D
 import json
@@ -12,15 +13,37 @@ STPS = ('cancel_taker', 'cancel_maker', 'cancel_both')
 
 
 def capabilities():
-    cases=json.loads(Path(__file__).with_name('limit_case_matrix.json').read_text())
-    return dict(profile='spot-limit-v1',execution_venues=['bithumb'],tifs=list(TIFS),stp=list(STPS),
-                amendments='cancel_confirm_then_new',notifications='synchronous_truth',
-                unsupported=['okx_execution','futures','reduce_only','native_amend','stop_limit','oco','iceberg','auction','liquidation','delayed_notifications'],
-                counts={status:sum(c['status']==status for c in cases) for status in ('implemented','model_assumption','partial','unsupported')},cases=cases)
+    cases = json.loads(Path(__file__).with_name('limit_case_matrix.json').read_text())
+    return dict(
+        profile='spot-limit-v1',
+        execution_venues=['bithumb'],
+        tifs=list(TIFS),
+        stp=list(STPS),
+        amendments='cancel_confirm_then_new',
+        notifications='synchronous_truth',
+        unsupported=[
+            'okx_execution',
+            'futures',
+            'reduce_only',
+            'native_amend',
+            'stop_limit',
+            'oco',
+            'iceberg',
+            'auction',
+            'liquidation',
+            'delayed_notifications',
+        ],
+        counts={
+            status: sum(c['status'] == status for c in cases)
+            for status in ('implemented', 'model_assumption', 'partial', 'unsupported')
+        },
+        cases=cases,
+    )
 
 
 class ExecutionDepth:
     """Counterfactual self consumption survives repeated/increased raw snapshots."""
+
     def __init__(self):
         self.self_debt = {}
         self.public_debt = {}
@@ -33,7 +56,9 @@ class ExecutionDepth:
         if raw is None:
             return None
         key = (side, price)
-        return max(D(0), D(str(raw)) - self.self_debt.get(key, D(0)) - self.public_debt.get(key, D(0)))
+        return max(
+            D(0), D(str(raw)) - self.self_debt.get(key, D(0)) - self.public_debt.get(key, D(0))
+        )
 
     def consume(self, side, price, quantity, role):
         debt = self.self_debt if role == 'taker' else self.public_debt
@@ -67,22 +92,28 @@ class ExecutionPlan:
 class LimitOrderPlanner:
     quantity_step: D
 
-    def plan(self, order: ReplayOrder, book: dict, depth: ExecutionDepth,
-             working: list[ReplayOrder]) -> ExecutionPlan:
+    def plan(
+        self, order: ReplayOrder, book: dict, depth: ExecutionDepth, working: list[ReplayOrder]
+    ) -> ExecutionPlan:
         """Pure dry run: FOK can decide before any ledger, STP, or depth mutation."""
         step = self.quantity_step
         buy = order.side == 'buy'
         opposite = 'sell' if buy else 'buy'
         levels = book['asks' if buy else 'bids']
         limit = order.price
+
         def crosses(price: D) -> bool:
             return price <= limit if buy else price >= limit
 
         raw = {D(str(level['price'])): level['quantity'] for level in levels}
         makers = {}
         for other in working:
-            if (other.id != order.id and other.side == opposite and other.active_at is not None
-                    and other.status in {'live', 'cancel_pending'}):
+            if (
+                other.id != order.id
+                and other.side == opposite
+                and other.active_at is not None
+                and other.status in {'live', 'cancel_pending'}
+            ):
                 makers.setdefault(other.price, []).append(other.id)
         if order.tif == 'post_only':
             if crosses(D(str(levels[0]['price']))):

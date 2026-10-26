@@ -1,4 +1,5 @@
 """Manual spot command boundary. Public data never creates an order intent."""
+
 import threading
 import time
 
@@ -35,7 +36,9 @@ class ManualTradingService:
     def delete_key(self, identifier):
         with self.lock:
             if self.journal.has_open(identifier):
-                raise ValueError('미종결·미확인 주문이 있어 키를 삭제할 수 없습니다. 주문 상태를 확인하세요.')
+                raise ValueError(
+                    '미종결·미확인 주문이 있어 키를 삭제할 수 없습니다. 주문 상태를 확인하세요.'
+                )
             self.vault.delete(identifier)
 
     def submit(self, payload) -> OrderReport:
@@ -46,7 +49,10 @@ class ManualTradingService:
                 key = self.vault.get(intent.key_id)
                 if key.exchange != intent.exchange:
                     raise ValueError('키와 주문 거래소가 다릅니다.')
-                if not any(item['id'] == key.identifier and item['verified_ms'] for item in self.vault.list()):
+                if not any(
+                    item['id'] == key.identifier and item['verified_ms']
+                    for item in self.vault.list()
+                ):
                     raise ValueError('잔고 조회로 API 키 연결을 먼저 확인하세요.')
                 try:
                     existing = self.journal.get(key.identifier, intent.client_order_id)
@@ -65,7 +71,10 @@ class ManualTradingService:
             except ExchangeRejected as error:
                 changes = dict(status='rejected', error=str(error))
             except Exception:
-                changes = dict(status='unknown', error='접수 여부 미확인. 같은 주문을 새 ID로 다시 보내지 말고 상태 조회를 실행하세요.')
+                changes = dict(
+                    status='unknown',
+                    error='접수 여부 미확인. 같은 주문을 새 ID로 다시 보내지 말고 상태 조회를 실행하세요.',
+                )
             return self.journal.update(key.identifier, intent.client_order_id, changes)
 
     def order_action(self, key_id, client_id, action) -> OrderReport:
@@ -73,7 +82,9 @@ class ManualTradingService:
             raise ValueError('주문 작업을 확인하세요.')
         with self.lock:
             order = self.journal.get(key_id, client_id)
-            if order['status'] in {'filled', 'completed', 'cancelled'} or (action == 'cancel' and order['status'] == 'rejected'):
+            if order['status'] in {'filled', 'completed', 'cancelled'} or (
+                action == 'cancel' and order['status'] == 'rejected'
+            ):
                 return order
             key = self.vault.get(key_id)
             try:
@@ -86,7 +97,9 @@ class ManualTradingService:
                     changes = self.broker.cancel(key, order)
                 changes['error'] = None
             except Exception:
-                changes = dict(error='거래소 상태를 확인하지 못했습니다. 상태 조회를 다시 실행하세요.')
+                changes = dict(
+                    error='거래소 상태를 확인하지 못했습니다. 상태 조회를 다시 실행하세요.'
+                )
                 if action == 'cancel':
                     changes['status'] = 'unknown'
             return self.journal.update(key_id, client_id, changes)
@@ -94,7 +107,11 @@ class ManualTradingService:
     def snapshot(self, exchange):
         if exchange not in ('bithumb', 'okx'):
             raise ValueError('거래소를 선택하세요.')
-        return dict(keys=self.vault.list(), market=self.market.snapshot(exchange), orders=self.journal.list())
+        return dict(
+            keys=self.vault.list(),
+            market=self.market.snapshot(exchange),
+            orders=self.journal.list(),
+        )
 
     def close(self):
         self.market.close()

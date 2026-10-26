@@ -3,6 +3,7 @@
 A candle's close becomes available at its end, never at its opening timestamp.
 Order-book prices and sizes cannot be inferred from OHLCV records.
 """
+
 from __future__ import annotations
 
 import duckdb
@@ -24,8 +25,11 @@ def _files(exchange):
     root = parquet.collector_data_root()
     if not parquet.within_root(directory, root):
         return []
-    return sorted(path for path in directory.glob('*/*/*.parquet')
-                  if path.is_file() and parquet.within_root(path, directory))
+    return sorted(
+        path
+        for path in directory.glob('*/*/*.parquet')
+        if path.is_file() and parquet.within_root(path, directory)
+    )
 
 
 def list_symbols():
@@ -34,8 +38,12 @@ def list_symbols():
 
 def validate_symbol(exchange, ticker, available=None):
     available = list_symbols() if available is None else available
-    if (isinstance(exchange, str) and isinstance(ticker, str)
-            and exchange in available and ticker.strip().upper() in available[exchange]):
+    if (
+        isinstance(exchange, str)
+        and isinstance(ticker, str)
+        and exchange in available
+        and ticker.strip().upper() in available[exchange]
+    ):
         return exchange, ticker.strip().upper()
     raise DataError('선택한 거래소·종목의 1분봉 데이터가 없습니다.')
 
@@ -45,17 +53,25 @@ def bounds(exchange, ticker):
     con = parquet.connection()
     try:
         with parquet.query_deadline(con):
-            start, end = con.execute('SELECT min(availableTime), max(availableTime) FROM read_parquet(?, union_by_name=true)',
-                                     [[str(path) for path in _files(exchange)]]).fetchone()
+            start, end = con.execute(
+                'SELECT min(availableTime), max(availableTime) FROM read_parquet(?, union_by_name=true)',
+                [[str(path) for path in _files(exchange)]],
+            ).fetchone()
     except duckdb.Error as error:
         raise DataError('1분봉 파일의 시간 범위를 읽지 못했습니다.') from error
     finally:
         con.close()
     if start is None or end is None:
         raise DataError('저장된 1분봉이 없습니다.')
-    return {'exchange': exchange, 'ticker': ticker, 'data_type': 'candle',
-            'start': iso_timestamp(int(start)), 'end': iso_timestamp(int(end)),
-            'time_basis': 'candle_end', 'candle_interval_ms': MINUTE_MS}
+    return {
+        'exchange': exchange,
+        'ticker': ticker,
+        'data_type': 'candle',
+        'start': iso_timestamp(int(start)),
+        'end': iso_timestamp(int(end)),
+        'time_basis': 'candle_end',
+        'candle_interval_ms': MINUTE_MS,
+    }
 
 
 def files_for_range(exchange, ticker, start, end):
@@ -74,7 +90,9 @@ def files_for_range(exchange, ticker, start, end):
 
 def read_buckets(exchange, ticker, start, end, step, *, price_mode='mean'):
     if step < MINUTE_MS:
-        raise DataError('1분봉은 1분 이상 간격으로 조회해 주세요. 1초 틱이나 호가 데이터가 아닙니다.')
+        raise DataError(
+            '1분봉은 1분 이상 간격으로 조회해 주세요. 1초 틱이나 호가 데이터가 아닙니다.'
+        )
     if price_mode not in {'last', 'mean'}:
         raise DataError('조회 방식은 마지막 종가 또는 종가 평균으로 선택해 주세요.')
     paths = files_for_range(exchange, ticker, start, end)
@@ -109,8 +127,15 @@ def read_buckets(exchange, ticker, start, end, step, *, price_mode='mean'):
     con = parquet.connection()
     try:
         with parquet.query_deadline(con):
-            frame = con.execute(query, {'paths': paths, 'start': int(start.value // 1_000_000),
-                                       'end': int(end.value // 1_000_000), 'step': step}).df()
+            frame = con.execute(
+                query,
+                {
+                    'paths': paths,
+                    'start': int(start.value // 1_000_000),
+                    'end': int(end.value // 1_000_000),
+                    'step': step,
+                },
+            ).df()
     except duckdb.Error as error:
         raise DataError('1분봉 파일을 읽지 못했습니다. 저장 스키마를 확인해 주세요.') from error
     finally:

@@ -1,4 +1,5 @@
 """Collector liveness reports stale heartbeats instead of a stale running state."""
+
 import json
 from pathlib import Path
 import tempfile
@@ -14,9 +15,16 @@ class CollectorStatusTests(unittest.TestCase):
         self.directory = Path(self.temporary.name)
 
     def write(self, **values):
-        status = {'heartbeat_ms': 100_000, 'state': 'running', 'collector_id': 'usdt',
-                  'data_root': '/private/path', 'state_dir': '/private/state',
-                  'exchanges': {'bithumb': {'connected': True, 'rows_committed': 3, 'private_key': 'hidden'}}}
+        status = {
+            'heartbeat_ms': 100_000,
+            'state': 'running',
+            'collector_id': 'usdt',
+            'data_root': '/private/path',
+            'state_dir': '/private/state',
+            'exchanges': {
+                'bithumb': {'connected': True, 'rows_committed': 3, 'private_key': 'hidden'}
+            },
+        }
         status.update(values)
         (self.directory / 'status.json').write_text(json.dumps(status))
 
@@ -31,7 +39,11 @@ class CollectorStatusTests(unittest.TestCase):
         self.assertNotIn('private_key', result['exchanges']['bithumb'])
 
     def test_old_future_and_stopped_heartbeats_are_inactive(self):
-        for now, state, expected in [(116_000, 'running', 'stale'), (99_000, 'running', 'stale'), (105_000, 'stopped', 'stopped')]:
+        for now, state, expected in [
+            (116_000, 'running', 'stale'),
+            (99_000, 'running', 'stale'),
+            (105_000, 'stopped', 'stopped'),
+        ]:
             with self.subTest(now=now, state=state):
                 self.write(state=state)
                 result = read_status(self.directory, now_ms=now)
@@ -40,7 +52,13 @@ class CollectorStatusTests(unittest.TestCase):
 
     def test_missing_corrupt_and_oversized_status_do_not_break_dashboard(self):
         self.assertEqual(read_status(self.directory)['state'], 'not_started')
-        for raw in ('{', '[]', '{"heartbeat_ms":true}', '{"heartbeat_ms":NaN}', 'x' * (MAX_STATUS_BYTES + 1)):
+        for raw in (
+            '{',
+            '[]',
+            '{"heartbeat_ms":true}',
+            '{"heartbeat_ms":NaN}',
+            'x' * (MAX_STATUS_BYTES + 1),
+        ):
             with self.subTest(raw=raw[:30]):
                 (self.directory / 'status.json').write_text(raw)
                 result = read_status(self.directory)

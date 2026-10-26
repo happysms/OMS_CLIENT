@@ -1,4 +1,5 @@
 """Historical candle prices retain their own provenance and close availability."""
+
 import csv
 import io
 import json
@@ -21,34 +22,55 @@ class CandleTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        environment = patch.dict(os.environ, {'DASHBOARD_DATA_ROOT': str(self.root / 'legacy'),
-                                              'DASHBOARD_COLLECTOR_DATA_ROOT': str(self.root / 'market')})
+        environment = patch.dict(
+            os.environ,
+            {
+                'DASHBOARD_DATA_ROOT': str(self.root / 'legacy'),
+                'DASHBOARD_COLLECTOR_DATA_ROOT': str(self.root / 'market'),
+            },
+        )
         environment.start()
         self.addCleanup(environment.stop)
         self.origin = int(pd.Timestamp('2026-10-25T00:00:00Z').timestamp() * 1000)
-        self.frame = pd.DataFrame({
-            'candleTime': [self.origin + minutes * 60_000 for minutes in [0, 1, 3]],
-            'availableTime': [self.origin + minutes * 60_000 for minutes in [1, 2, 4]],
-            'open': [1342., 1343., 1345.], 'high': [1344., 1345., 1347.],
-            'low': [1341., 1342., 1344.], 'close': [1343., 1344., 1346.],
-            'volume': [.125, 12.5, 0.], 'trade_value': [167.875, 16800., 0.],
-            'fetchedAt': [self.origin + 3600_000] * 3, 'market': ['KRW-USDT'] * 3,
-            'price_unit': ['KRW'] * 3, 'quantity_unit': ['USDT'] * 3,
-            'candle_interval_ms': [60_000] * 3, 'source': ['rest_1m'] * 3,
-        })
+        self.frame = pd.DataFrame(
+            {
+                'candleTime': [self.origin + minutes * 60_000 for minutes in [0, 1, 3]],
+                'availableTime': [self.origin + minutes * 60_000 for minutes in [1, 2, 4]],
+                'open': [1342.0, 1343.0, 1345.0],
+                'high': [1344.0, 1345.0, 1347.0],
+                'low': [1341.0, 1342.0, 1344.0],
+                'close': [1343.0, 1344.0, 1346.0],
+                'volume': [0.125, 12.5, 0.0],
+                'trade_value': [167.875, 16800.0, 0.0],
+                'fetchedAt': [self.origin + 3600_000] * 3,
+                'market': ['KRW-USDT'] * 3,
+                'price_unit': ['KRW'] * 3,
+                'quantity_unit': ['USDT'] * 3,
+                'candle_interval_ms': [60_000] * 3,
+                'source': ['rest_1m'] * 3,
+            }
+        )
         self.write()
 
     def write(self, exchange='bithumb', frame=None):
         frame = self.frame if frame is None else frame
-        for day, chunk in frame.groupby(pd.to_datetime(frame['candleTime'], unit='ms', utc=True).dt.strftime('%Y/%m/%d')):
+        for day, chunk in frame.groupby(
+            pd.to_datetime(frame['candleTime'], unit='ms', utc=True).dt.strftime('%Y/%m/%d')
+        ):
             path = self.root / 'market' / exchange / 'candles_1m/USDT' / f'{day}.parquet'
             path.parent.mkdir(parents=True, exist_ok=True)
             chunk.to_parquet(path, index=False)
 
     def query(self, **overrides):
-        payload = {'legs': [{'id': 'A', 'exchange': 'bithumb', 'ticker': 'usdt', 'data_type': 'candle'}],
-                   'formula': 'A', 'interval': '1min', 'price_mode': 'last', 'ewm_span': 1,
-                   'start': '2026-10-25T00:00:00Z', 'end': '2026-10-25T00:05:00Z'}
+        payload = {
+            'legs': [{'id': 'A', 'exchange': 'bithumb', 'ticker': 'usdt', 'data_type': 'candle'}],
+            'formula': 'A',
+            'interval': '1min',
+            'price_mode': 'last',
+            'ewm_span': 1,
+            'start': '2026-10-25T00:00:00Z',
+            'end': '2026-10-25T00:05:00Z',
+        }
         payload.update(overrides)
         return analyze(payload)
 
@@ -63,7 +85,7 @@ class CandleTests(unittest.TestCase):
         leg = result['legs'][0]
         self.assertEqual(result['result'], [1343, 1344, 1346])
         self.assertEqual(result['times'], [self.origin + minutes * 60_000 for minutes in [1, 2, 4]])
-        self.assertEqual(leg['volume'], [.125, 12.5, 0])
+        self.assertEqual(leg['volume'], [0.125, 12.5, 0])
         self.assertEqual(leg['quantity_unit'], 'USDT')
         self.assertEqual(leg['source_kind'], 'rest_1m')
         self.assertFalse(set(leg) & {'bid', 'ask', 'mid', 'bid_size', 'ask_size', 'quote_times'})
@@ -105,7 +127,12 @@ class CandleTests(unittest.TestCase):
 
     def test_latest_fetched_duplicate_keeps_one_consistent_candle(self):
         duplicate = self.frame.iloc[:1].copy()
-        duplicate['close'], duplicate['high'], duplicate['volume'], duplicate['fetchedAt'] = 1350., 1351., 4.5, self.origin + 7200_000
+        duplicate['close'], duplicate['high'], duplicate['volume'], duplicate['fetchedAt'] = (
+            1350.0,
+            1351.0,
+            4.5,
+            self.origin + 7200_000,
+        )
         self.write(frame=pd.concat([self.frame, duplicate]))
         result = self.query()
         self.assertEqual(result['meta']['rows_read'], 3)
@@ -114,9 +141,16 @@ class CandleTests(unittest.TestCase):
         self.assertEqual(result['legs'][0]['volume'][0], 4.5)
 
     def test_invalid_units_clock_or_prices_are_excluded(self):
-        for field, value in [('price_unit', 'USDT'), ('quantity_unit', 'KRW'), ('source', 'tick'),
-                             ('availableTime', self.origin), ('close', float('nan')),
-                             ('volume', -1), ('high', 1), ('candle_interval_ms', 1000)]:
+        for field, value in [
+            ('price_unit', 'USDT'),
+            ('quantity_unit', 'KRW'),
+            ('source', 'tick'),
+            ('availableTime', self.origin),
+            ('close', float('nan')),
+            ('volume', -1),
+            ('high', 1),
+            ('candle_interval_ms', 1000),
+        ]:
             with self.subTest(field=field):
                 frame = self.frame.copy()
                 frame[field] = value
@@ -128,13 +162,19 @@ class CandleTests(unittest.TestCase):
         other = self.frame.copy()
         other[['open', 'high', 'low', 'close']] += 2
         self.write('upbit', other)
-        result = self.query(legs=[{'id': 'A', 'exchange': 'bithumb', 'ticker': 'USDT', 'data_type': 'candle'},
-                                  {'id': 'B', 'exchange': 'upbit', 'ticker': 'USDT', 'data_type': 'candle'}],
-                            formula='A - B', max_points=2, include_full_data=True)
+        result = self.query(
+            legs=[
+                {'id': 'A', 'exchange': 'bithumb', 'ticker': 'USDT', 'data_type': 'candle'},
+                {'id': 'B', 'exchange': 'upbit', 'ticker': 'USDT', 'data_type': 'candle'},
+            ],
+            formula='A - B',
+            max_points=2,
+            include_full_data=True,
+        )
         self.assertEqual(result['result'], [-2, -2])
         self.assertEqual(result['full']['result'], [-2, -2, -2])
-        self.assertEqual(result['legs'][0]['volume'], [.125, 0])
-        self.assertEqual(result['full']['legs'][0]['volume'], [.125, 12.5, 0])
+        self.assertEqual(result['legs'][0]['volume'], [0.125, 0])
+        self.assertEqual(result['full']['legs'][0]['volume'], [0.125, 12.5, 0])
 
     def test_full_csv_labels_candle_value_last_metadata_and_mode_without_fake_quotes(self):
         for mode in ('last', 'mean'):
@@ -152,7 +192,11 @@ class CandleTests(unittest.TestCase):
                 self.assertNotIn('A_ask', rows[0])
 
     def test_source_and_symlink_paths_cannot_escape_the_candle_store(self):
-        for exchange, ticker in [('../bithumb', 'USDT'), ('bithumb', '../../USDT'), ('bithumb', 'BTC')]:
+        for exchange, ticker in [
+            ('../bithumb', 'USDT'),
+            ('bithumb', '../../USDT'),
+            ('bithumb', 'BTC'),
+        ]:
             with self.subTest(exchange=exchange, ticker=ticker), self.assertRaises(DataError):
                 candles.bounds(exchange, ticker)
         path = self.root / 'market/bithumb/candles_1m/USDT/2026/10/25.parquet'

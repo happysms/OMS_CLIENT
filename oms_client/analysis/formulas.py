@@ -1,4 +1,5 @@
 """Safe AST formula validation and aligned-series evaluation."""
+
 from __future__ import annotations
 
 import ast
@@ -17,7 +18,11 @@ FUNCTIONS = [
     {"name": "EMA", "syntax": "EMA(A, 60)", "description": "span=n 지수이동평균 (adjust=True)"},
     {"name": "DIFF", "syntax": "DIFF(A, 1)", "description": "n개 표본 전 대비 차이"},
     {"name": "RET", "syntax": "RET(A, 1)", "description": "n개 표본 전 대비 수익률 (%)"},
-    {"name": "ZSCORE", "syntax": "ZSCORE(A, 60)", "description": "최근 n개 표본의 평균·표본 표준편차 기준 z-score"},
+    {
+        "name": "ZSCORE",
+        "syntax": "ZSCORE(A, 60)",
+        "description": "최근 n개 표본의 평균·표본 표준편차 기준 z-score",
+    },
     {"name": "ABS", "syntax": "ABS(A - B)", "description": "절댓값"},
 ]
 FUNCTION_NAMES = {item["name"] for item in FUNCTIONS}
@@ -36,7 +41,9 @@ def parse_formula(formula, ids: set[str]):
     def validate(node):
         if isinstance(node, ast.Expression):
             validate(node.body)
-        elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
+        elif isinstance(node, ast.BinOp) and isinstance(
+            node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)
+        ):
             validate(node.left)
             validate(node.right)
         elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
@@ -44,13 +51,23 @@ def parse_formula(formula, ids: set[str]):
         elif isinstance(node, ast.Name) and node.id in ids:
             return
         elif isinstance(node, ast.Call):
-            if (not isinstance(node.func, ast.Name) or node.func.id not in FUNCTION_NAMES
-                    or node.keywords or len(node.args) != (1 if node.func.id == "ABS" else 2)):
-                raise DataError("지원하는 함수는 MA, EMA, DIFF, RET, ZSCORE, ABS입니다. 함수의 인자도 확인해 주세요.")
+            if (
+                not isinstance(node.func, ast.Name)
+                or node.func.id not in FUNCTION_NAMES
+                or node.keywords
+                or len(node.args) != (1 if node.func.id == "ABS" else 2)
+            ):
+                raise DataError(
+                    "지원하는 함수는 MA, EMA, DIFF, RET, ZSCORE, ABS입니다. 함수의 인자도 확인해 주세요."
+                )
             validate(node.args[0])
             if node.func.id != "ABS":
                 window = node.args[1]
-                if not isinstance(window, ast.Constant) or type(window.value) is not int or not 1 <= window.value <= 1_000_000:
+                if (
+                    not isinstance(window, ast.Constant)
+                    or type(window.value) is not int
+                    or not 1 <= window.value <= 1_000_000
+                ):
                     raise DataError("함수 기간은 1~1,000,000 사이의 정수 상수로 지정해 주세요.")
         elif isinstance(node, ast.Constant) and type(node.value) in (int, float):
             try:
@@ -59,7 +76,9 @@ def parse_formula(formula, ids: set[str]):
             except (ValueError, OverflowError) as exc:
                 raise DataError("조합식의 숫자가 너무 큽니다.") from exc
         else:
-            raise DataError("조합식은 추가한 A~Z 소스와 숫자, 사칙연산, 괄호 및 지원하는 함수만 사용할 수 있습니다.")
+            raise DataError(
+                "조합식은 추가한 A~Z 소스와 숫자, 사칙연산, 괄호 및 지원하는 함수만 사용할 수 있습니다."
+            )
 
     validate(tree)
     if not any(isinstance(node, ast.Name) and node.id in ids for node in ast.walk(tree)):
@@ -67,13 +86,16 @@ def parse_formula(formula, ids: set[str]):
     return tree
 
 
-
 def formula_ids(formula: str) -> list[str]:
     """Validate a safe formula and list its source IDs, excluding function names."""
     tree = parse_formula(formula, SOURCE_ID_SET)
-    return sorted({node.id for node in ast.walk(tree)
-                   if isinstance(node, ast.Name) and node.id in SOURCE_ID_SET})
-
+    return sorted(
+        {
+            node.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id in SOURCE_ID_SET
+        }
+    )
 
 
 def evaluate(tree, values: dict[str, pd.Series], index: pd.Index) -> pd.Series:

@@ -1,4 +1,5 @@
 """Select chart points while preserving endpoints and global extrema."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -23,6 +24,8 @@ def select_points(result: pd.Series, limit: int) -> np.ndarray:
         # and the global extrema. Full data is retained separately for exports.
         ordered = sorted(selected)
         positions = {value: pos for pos, value in enumerate(ordered)}
-        remove = min(choices, key=lambda i: min(i - ordered[positions[i] - 1], ordered[positions[i] + 1] - i))
+        remove = min(
+            choices, key=lambda i: min(i - ordered[positions[i] - 1], ordered[positions[i] + 1] - i)
+        )
         selected.remove(remove)
     return np.array(sorted(selected), dtype=int)

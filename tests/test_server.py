@@ -1,4 +1,5 @@
 """Server boundary tests: authentication, real jobs, full exports and persistence."""
+
 from __future__ import annotations
 
 import csv
@@ -24,12 +25,47 @@ from waitress.proxy_headers import proxy_headers_middleware
 
 
 def result_fixture(payload):
-    result = {"times": [1000, 3000], "result": [2.0, 4.0], "ewm": [2.0, 3.0], "mean": 3.0,
-              "legs": [{"id": "A", "exchange": "bithumb", "ticker": "CT", "currency": "KRW", "mid": [2.0, 4.0], "bid": [1.5, 3.5], "ask": [2.5, 4.5]}],
-              "stats": {"count": 3, "mean": 3.0, "std": 1.0, "min": 2.0, "max": 4.0, "latest": 4.0},
-              "meta": {"aligned_points": 3, "returned_points": 2, "formula": payload["formula"], "interval": "1s", "warnings": []}}
-    result["full"] = {"times": [1000, 2000, 3000], "result": [2.0, 3.0, 4.0], "ewm": [2.0, 2.5, 3.0],
-                      "legs": [{"id": "A", "exchange": "bithumb", "ticker": "CT", "currency": "KRW", "mid": [2.0, 3.0, 4.0], "bid": [1.5, 2.5, 3.5], "ask": [2.5, 3.5, 4.5]}]}
+    result = {
+        "times": [1000, 3000],
+        "result": [2.0, 4.0],
+        "ewm": [2.0, 3.0],
+        "mean": 3.0,
+        "legs": [
+            {
+                "id": "A",
+                "exchange": "bithumb",
+                "ticker": "CT",
+                "currency": "KRW",
+                "mid": [2.0, 4.0],
+                "bid": [1.5, 3.5],
+                "ask": [2.5, 4.5],
+            }
+        ],
+        "stats": {"count": 3, "mean": 3.0, "std": 1.0, "min": 2.0, "max": 4.0, "latest": 4.0},
+        "meta": {
+            "aligned_points": 3,
+            "returned_points": 2,
+            "formula": payload["formula"],
+            "interval": "1s",
+            "warnings": [],
+        },
+    }
+    result["full"] = {
+        "times": [1000, 2000, 3000],
+        "result": [2.0, 3.0, 4.0],
+        "ewm": [2.0, 2.5, 3.0],
+        "legs": [
+            {
+                "id": "A",
+                "exchange": "bithumb",
+                "ticker": "CT",
+                "currency": "KRW",
+                "mid": [2.0, 3.0, 4.0],
+                "bid": [1.5, 2.5, 3.5],
+                "ask": [2.5, 3.5, 4.5],
+            }
+        ],
+    }
     return result
 
 
@@ -38,13 +74,54 @@ def funding_result_fixture(payload):
     full_legs = []
     for leg in payload["legs"]:
         if leg.get("data_type") == "funding":
-            full_legs.append({**leg, "unit": "%", "values": [0.0, -0.02, 0.01], "funding_rate": [0.0, -0.0002, 0.0001], "source_times": [1499, 2499, 3499], "server_times": [1489, None, 3489], "next_funding_in_seconds": [60, None, -1]})
+            full_legs.append(
+                {
+                    **leg,
+                    "unit": "%",
+                    "values": [0.0, -0.02, 0.01],
+                    "funding_rate": [0.0, -0.0002, 0.0001],
+                    "source_times": [1499, 2499, 3499],
+                    "server_times": [1489, None, 3489],
+                    "next_funding_in_seconds": [60, None, -1],
+                }
+            )
         else:
-            full_legs.append({**leg, "currency": "USDT", "mid": [100, 110, 120], "bid": [99, 109, 119], "ask": [101, 111, 121], "quote_times": [1499, 2499, 3499]})
+            full_legs.append(
+                {
+                    **leg,
+                    "currency": "USDT",
+                    "mid": [100, 110, 120],
+                    "bid": [99, 109, 119],
+                    "ask": [101, 111, 121],
+                    "quote_times": [1499, 2499, 3499],
+                }
+            )
     values = full_legs[0]["values"] if len(full_legs) == 1 else [0.0, -0.022, 0.012]
     selected = [0, 2]
-    legs = [{key: [value[index] for index in selected] if isinstance(value, list) else value for key, value in leg.items()} for leg in full_legs]
-    return {"times": [times[index] for index in selected], "legs": legs, "result": [values[index] for index in selected], "ewm": [values[index] for index in selected], "mean": sum(values) / 3, "stats": {"count": 3}, "meta": {"formula": payload["formula"], "price_mode": payload.get("price_mode", "mean"), "interval": payload.get("interval", "1s"), "aligned_points": 3, "rows_read": 3 * len(full_legs), "warnings": []}, "full": {"times": times, "legs": full_legs, "result": values, "ewm": values}}
+    legs = [
+        {
+            key: [value[index] for index in selected] if isinstance(value, list) else value
+            for key, value in leg.items()
+        }
+        for leg in full_legs
+    ]
+    return {
+        "times": [times[index] for index in selected],
+        "legs": legs,
+        "result": [values[index] for index in selected],
+        "ewm": [values[index] for index in selected],
+        "mean": sum(values) / 3,
+        "stats": {"count": 3},
+        "meta": {
+            "formula": payload["formula"],
+            "price_mode": payload.get("price_mode", "mean"),
+            "interval": payload.get("interval", "1s"),
+            "aligned_points": 3,
+            "rows_read": 3 * len(full_legs),
+            "warnings": [],
+        },
+        "full": {"times": times, "legs": full_legs, "result": values, "ewm": values},
+    }
 
 
 class FakeLive:
@@ -53,7 +130,15 @@ class FakeLive:
         self.closed = False
 
     def start(self, payload):
-        self.items["live-1"] = {"id": "live-1", "status": "running", "result": None, "quotes": [], "connections": [], "missing": [], "error": None}
+        self.items["live-1"] = {
+            "id": "live-1",
+            "status": "running",
+            "result": None,
+            "quotes": [],
+            "connections": [],
+            "missing": [],
+            "error": None,
+        }
         return "live-1"
 
     def get(self, live_id):
@@ -102,18 +187,56 @@ class ServerTests(unittest.TestCase):
         def export_data(payload, path):
             self.export_calls.append(payload)
             columns = ["desktopTime", "serverTime", "b1_p", "a1_p", "b5_q"]
-            values = [[1792886400000 + i * 1000, 1792886399999 + i * 1000, 100 + i, 102 + i, 5] for i in range(3)]
+            values = [
+                [1792886400000 + i * 1000, 1792886399999 + i * 1000, 100 + i, 102 + i, 5]
+                for i in range(3)
+            ]
             if payload["mode"] == "aggregated":
-                columns = ["time_kst", "exchange", "ticker", "currency", "mid", "bid", "ask", "spread", "source_rows"]
-                values = [[f"2026-10-25T09:00:{i * 10:02d}+09:00", payload["exchange"], payload["ticker"], "KRW", 101 + i, 100 + i, 102 + i, 2, 4] for i in range(3)]
+                columns = [
+                    "time_kst",
+                    "exchange",
+                    "ticker",
+                    "currency",
+                    "mid",
+                    "bid",
+                    "ask",
+                    "spread",
+                    "source_rows",
+                ]
+                values = [
+                    [
+                        f"2026-10-25T09:00:{i * 10:02d}+09:00",
+                        payload["exchange"],
+                        payload["ticker"],
+                        "KRW",
+                        101 + i,
+                        100 + i,
+                        102 + i,
+                        2,
+                        4,
+                    ]
+                    for i in range(3)
+                ]
             with path.open("w", encoding="utf-8-sig", newline="") as stream:
                 writer = csv.writer(stream)
                 writer.writerow(columns)
                 writer.writerows(values)
             path.chmod(0o600)
-            return {"rows": len(values), "columns": columns, "source_rows": 12 if payload["mode"] == "aggregated" else 3}
+            return {
+                "rows": len(values),
+                "columns": columns,
+                "source_rows": 12 if payload["mode"] == "aggregated" else 3,
+            }
 
-        self.config = {"TESTING": True, "STATE_DIR": self.temp.name, "PASSWORD": "valid-password", "ANALYZER": analyze, "LIVE_MANAGER": self.live, "PAPER_SERVICE": self.paper, "DATA_EXPORTER": export_data}
+        self.config = {
+            "TESTING": True,
+            "STATE_DIR": self.temp.name,
+            "PASSWORD": "valid-password",
+            "ANALYZER": analyze,
+            "LIVE_MANAGER": self.live,
+            "PAPER_SERVICE": self.paper,
+            "DATA_EXPORTER": export_data,
+        }
         self.app = create_app(self.config)
         self.addCleanup(lambda: self.app.extensions["close_services"]())
         self.client = self.app.test_client()
@@ -131,7 +254,15 @@ class ServerTests(unittest.TestCase):
         return {"X-CSRF-Token": self.token}
 
     def query(self):
-        return {"legs": [{"id": "A", "exchange": "bithumb", "ticker": "CT"}], "formula": "A", "start": "2026-10-25T09:00", "end": "2026-10-25T10:00", "interval": "1s", "unit": "KRW", "max_points": 2}
+        return {
+            "legs": [{"id": "A", "exchange": "bithumb", "ticker": "CT"}],
+            "formula": "A",
+            "start": "2026-10-25T09:00",
+            "end": "2026-10-25T10:00",
+            "interval": "1s",
+            "unit": "KRW",
+            "max_points": 2,
+        }
 
     def submit(self):
         response = self.client.post("/api/analyses", json=self.query(), headers=self.headers())
@@ -148,10 +279,19 @@ class ServerTests(unittest.TestCase):
         self.fail("worker did not finish")
 
     def export_query(self, **overrides):
-        return {"exchange": "bithumb", "ticker": "BTC", "start": "2026-10-25T09:00", "end": "2026-10-25T10:00", "mode": "raw", **overrides}
+        return {
+            "exchange": "bithumb",
+            "ticker": "BTC",
+            "start": "2026-10-25T09:00",
+            "end": "2026-10-25T10:00",
+            "mode": "raw",
+            **overrides,
+        }
 
     def submit_export(self, **overrides):
-        response = self.client.post("/api/data/exports", json=self.export_query(**overrides), headers=self.headers())
+        response = self.client.post(
+            "/api/data/exports", json=self.export_query(**overrides), headers=self.headers()
+        )
         self.assertEqual(response.status_code, 202, response.get_data(as_text=True))
         return response.json["id"]
 
@@ -166,13 +306,22 @@ class ServerTests(unittest.TestCase):
         self.fail("CSV export worker did not finish")
 
     def test_data_exports_require_authentication_and_csrf(self):
-        self.assertEqual(self.client.post("/api/data/exports", json=self.export_query()).status_code, 401)
+        self.assertEqual(
+            self.client.post("/api/data/exports", json=self.export_query()).status_code, 401
+        )
         self.assertEqual(self.client.get("/api/data/exports/unknown").status_code, 401)
         self.assertEqual(self.client.get("/api/data/exports/unknown/csv").status_code, 401)
         self.login()
-        self.assertEqual(self.client.post("/api/data/exports", json=self.export_query()).status_code, 403)
+        self.assertEqual(
+            self.client.post("/api/data/exports", json=self.export_query()).status_code, 403
+        )
         headers = {**self.headers(), "Origin": "https://untrusted.example"}
-        self.assertEqual(self.client.post("/api/data/exports", json=self.export_query(), headers=headers).status_code, 403)
+        self.assertEqual(
+            self.client.post(
+                "/api/data/exports", json=self.export_query(), headers=headers
+            ).status_code,
+            403,
+        )
         self.assertEqual(self.client.get("/api/data/exports/unknown").status_code, 404)
         self.assertEqual(self.export_calls, [])
 
@@ -215,25 +364,37 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             rows = list(csv.DictReader(io.StringIO(response.get_data().decode("utf-8-sig"))))
             self.assertTrue(all(row["time_kst"].endswith("+09:00") for row in rows))
-            self.assertTrue(all(row["exchange"] == "bithumb" and row["ticker"] == "BTC" for row in rows))
+            self.assertTrue(
+                all(row["exchange"] == "bithumb" and row["ticker"] == "BTC" for row in rows)
+            )
             self.assertEqual([float(row["spread"]) for row in rows], [2, 2, 2])
 
     def test_data_export_rejects_unsafe_paths_unknown_options_and_invalid_range(self):
         self.login()
-        invalid = [[], self.export_query(exchange="../private"), self.export_query(ticker="../../secret"),
-                   self.export_query(mode="unknown"), self.export_query(path="/etc/passwd"),
-                   self.export_query(end="2026-10-25T08:00"), self.export_query(end="2026-11-26T10:00"),
-                   self.export_query(mode="aggregated", interval="invalid")]
+        invalid = [
+            [],
+            self.export_query(exchange="../private"),
+            self.export_query(ticker="../../secret"),
+            self.export_query(mode="unknown"),
+            self.export_query(path="/etc/passwd"),
+            self.export_query(end="2026-10-25T08:00"),
+            self.export_query(end="2026-11-26T10:00"),
+            self.export_query(mode="aggregated", interval="invalid"),
+        ]
         for payload in invalid:
             with self.subTest(payload=payload):
-                response = self.client.post("/api/data/exports", json=payload, headers=self.headers())
+                response = self.client.post(
+                    "/api/data/exports", json=payload, headers=self.headers()
+                )
                 self.assertEqual(response.status_code, 400, response.get_data(as_text=True))
         self.assertEqual(self.export_calls, [])
 
     def test_data_export_failure_reports_reason_without_download(self):
         self.login()
+
         def fail(payload, path):
             raise data_service.DataError("선택한 기간에 호가 파일이 없습니다.")
+
         self.app.extensions["data_export_jobs"].exporter = fail
         result = self.wait_export(self.submit_export())
         self.assertEqual(result["status"], "failed")
@@ -247,10 +408,12 @@ class ServerTests(unittest.TestCase):
         self.login()
         entered, release = threading.Event(), threading.Event()
         original = self.app.extensions["data_export_jobs"].exporter
+
         def blocking(payload, path):
             entered.set()
             release.wait(5)
             return original(payload, path)
+
         jobs = self.app.extensions["data_export_jobs"]
         jobs.exporter = blocking
         jobs.slots = threading.BoundedSemaphore(1)
@@ -258,7 +421,9 @@ class ServerTests(unittest.TestCase):
         export_id = self.submit_export()
         self.assertTrue(entered.wait(2))
         self.assertEqual(self.client.get("/api/session").status_code, 200)
-        response = self.client.post("/api/data/exports", json=self.export_query(), headers=self.headers())
+        response = self.client.post(
+            "/api/data/exports", json=self.export_query(), headers=self.headers()
+        )
         self.assertEqual(response.status_code, 429)
         release.set()
         self.assertEqual(self.wait_export(export_id)["status"], "complete")
@@ -283,8 +448,11 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/collectors/usdt').json['state'], 'not_started')
         directory = Path(self.temp.name) / 'collectors' / 'usdt'
         directory.mkdir(parents=True)
-        (directory / 'status.json').write_text(json.dumps({'heartbeat_ms': int(time.time() * 1000),
-                                                        'state': 'running', 'pending_rows': 2}))
+        (directory / 'status.json').write_text(
+            json.dumps(
+                {'heartbeat_ms': int(time.time() * 1000), 'state': 'running', 'pending_rows': 2}
+            )
+        )
         response = self.client.get('/api/collectors/usdt')
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json['active'])
@@ -298,15 +466,31 @@ class ServerTests(unittest.TestCase):
         self.login()
         for path in ('/api/quality/history', '/api/quality/live'):
             self.assertEqual(self.client.post(path, json={}).status_code, 403)
-            self.assertEqual(self.client.post(path, json={}, headers={**self.headers(), 'Origin':'https://elsewhere.invalid'}).status_code, 403)
+            self.assertEqual(
+                self.client.post(
+                    path, json={}, headers={**self.headers(), 'Origin': 'https://elsewhere.invalid'}
+                ).status_code,
+                403,
+            )
         history_calls, live_calls = [], []
-        self.app.config['QUALITY_HISTORY_ANALYZER'] = lambda payload: (history_calls.append(payload) or {'mode':'history','series':[],'meta':{'unit':'ms'}})
-        self.app.config['QUALITY_LIVE_ANALYZER'] = lambda payload: (live_calls.append(payload) or {'mode':'live','series':[],'meta':{'unit':'ms'}})
-        history = {'data_kind':'tick','start':'2026-10-25T09:00','end':'2026-10-25T10:00','interval':'1min','threshold_ms':1000}
+        self.app.config['QUALITY_HISTORY_ANALYZER'] = lambda payload: (
+            history_calls.append(payload)
+            or {'mode': 'history', 'series': [], 'meta': {'unit': 'ms'}}
+        )
+        self.app.config['QUALITY_LIVE_ANALYZER'] = lambda payload: (
+            live_calls.append(payload) or {'mode': 'live', 'series': [], 'meta': {'unit': 'ms'}}
+        )
+        history = {
+            'data_kind': 'tick',
+            'start': '2026-10-25T09:00',
+            'end': '2026-10-25T10:00',
+            'interval': '1min',
+            'threshold_ms': 1000,
+        }
         response = self.client.post('/api/quality/history', json=history, headers=self.headers())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json['mode'], 'history')
-        current = {'data_kind':'ob','exchanges':['bithumb'],'threshold_ms':50}
+        current = {'data_kind': 'ob', 'exchanges': ['bithumb'], 'threshold_ms': 50}
         response = self.client.post('/api/quality/live', json=current, headers=self.headers())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(live_calls, [current])
@@ -316,53 +500,103 @@ class ServerTests(unittest.TestCase):
 
     def test_invalid_quality_live_requests_fail_before_reading_external_state(self):
         self.login()
-        self.assertEqual(self.client.post('/api/quality/live', json={'redis_url':'redis://not-allowed'}, headers=self.headers()).status_code, 400)
-        self.assertEqual(self.client.post('/api/quality/history', json={'path':'/etc/passwd'}, headers=self.headers()).status_code, 400)
+        self.assertEqual(
+            self.client.post(
+                '/api/quality/live',
+                json={'redis_url': 'redis://not-allowed'},
+                headers=self.headers(),
+            ).status_code,
+            400,
+        )
+        self.assertEqual(
+            self.client.post(
+                '/api/quality/history', json={'path': '/etc/passwd'}, headers=self.headers()
+            ).status_code,
+            400,
+        )
 
     def test_market_file_browser_auth_metadata_and_file_range_analysis(self):
         self.assertEqual(self.client.get('/api/data/files').status_code, 401)
         self.assertEqual(self.client.get('/api/data/files/info?node=invalid').status_code, 401)
         self.login()
         import pandas as pd
+
         root = Path(self.temp.name) / 'market'
         path = root / 'bithumb/ob/BTC/2026/10/25/00.parquet'
         path.parent.mkdir(parents=True)
-        pd.DataFrame({'desktopTime': [1792886400000, 1792886460000],
-                      'b1_p': [100, 102], 'a1_p': [102, 104]}).to_parquet(path, index=False)
-        with patch.dict(os.environ, {'DASHBOARD_DATA_ROOT': str(root), 'DASHBOARD_COLLECTOR_DATA_ROOT': str(Path(self.temp.name) / 'collector')}):
+        pd.DataFrame(
+            {'desktopTime': [1792886400000, 1792886460000], 'b1_p': [100, 102], 'a1_p': [102, 104]}
+        ).to_parquet(path, index=False)
+        with patch.dict(
+            os.environ,
+            {
+                'DASHBOARD_DATA_ROOT': str(root),
+                'DASHBOARD_COLLECTOR_DATA_ROOT': str(Path(self.temp.name) / 'collector'),
+            },
+        ):
             node = None
             for name in ['bithumb', 'ob', 'BTC', '2026', '10', '25', '00.parquet']:
-                response = self.client.get('/api/data/files', query_string={'node': node} if node else {})
+                response = self.client.get(
+                    '/api/data/files', query_string={'node': node} if node else {}
+                )
                 self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
                 node = next(item['id'] for item in response.json['items'] if item['name'] == name)
             info = self.client.get('/api/data/files/info', query_string={'node': node})
             self.assertEqual(info.status_code, 200, info.get_data(as_text=True))
             self.assertEqual(info.json['rows'], 2)
-            self.assertEqual([column['name'] for column in info.json['columns']], ['desktopTime', 'b1_p', 'a1_p'])
+            self.assertEqual(
+                [column['name'] for column in info.json['columns']], ['desktopTime', 'b1_p', 'a1_p']
+            )
             query = info.json['query']
             self.assertEqual(query['data_type'], 'price')
             self.assertEqual(query['start'], '2026-10-25T00:00:00Z')
             self.assertEqual(query['end'], '2026-10-25T01:00:00Z')
             self.app.extensions['analysis_jobs'].analyzer = data_service.analyze
-            payload = {'legs': [{'id': 'A', 'exchange': query['exchange'], 'ticker': query['ticker'], 'data_type': query['data_type']}],
-                       'start': query['start'], 'end': query['end'], 'interval': query['interval'],
-                       'formula': 'A', 'unit': 'KRW', 'price_mode': 'last'}
+            payload = {
+                'legs': [
+                    {
+                        'id': 'A',
+                        'exchange': query['exchange'],
+                        'ticker': query['ticker'],
+                        'data_type': query['data_type'],
+                    }
+                ],
+                'start': query['start'],
+                'end': query['end'],
+                'interval': query['interval'],
+                'formula': 'A',
+                'unit': 'KRW',
+                'price_mode': 'last',
+            }
             created = self.client.post('/api/analyses', json=payload, headers=self.headers())
             self.assertEqual(created.status_code, 202, created.get_data(as_text=True))
             result = self.wait(created.json['id'])
             self.assertEqual(result['status'], 'complete', result)
             self.assertEqual(result['result']['legs'][0]['mid'], [101, 103])
-            self.assertEqual(self.client.get('/api/data/files/info?node=../../.state/dashboard.sqlite3').status_code, 400)
+            self.assertEqual(
+                self.client.get(
+                    '/api/data/files/info?node=../../.state/dashboard.sqlite3'
+                ).status_code,
+                400,
+            )
             self.assertEqual(self.client.get('/api/data/files?limit=1000').status_code, 400)
-            self.assertEqual(self.client.get('/data/bithumb/ob/BTC/2026/10/25/00.parquet').status_code, 404)
+            self.assertEqual(
+                self.client.get('/data/bithumb/ob/BTC/2026/10/25/00.parquet').status_code, 404
+            )
 
     def test_full_usdt_query_csv_preserves_native_quantities_and_unit(self):
         self.login()
+
         def analyze(payload):
             result = result_fixture(payload)
-            result['legs'][0].update(bid_size=[.125, 23.456789], ask_size=[40.25, 0], quantity_unit='USDT')
-            result['full']['legs'][0].update(bid_size=[.125, 1.5, 23.456789], ask_size=[40.25, 2.5, 0], quantity_unit='USDT')
+            result['legs'][0].update(
+                bid_size=[0.125, 23.456789], ask_size=[40.25, 0], quantity_unit='USDT'
+            )
+            result['full']['legs'][0].update(
+                bid_size=[0.125, 1.5, 23.456789], ask_size=[40.25, 2.5, 0], quantity_unit='USDT'
+            )
             return result
+
         self.app.extensions['analysis_jobs'].analyzer = analyze
         identifier = self.submit()
         self.assertEqual(self.wait(identifier)['status'], 'complete')
@@ -370,19 +604,21 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             rows = list(csv.DictReader(io.StringIO(response.get_data().decode('utf-8-sig'))))
         self.assertEqual(len(rows), 3)
-        self.assertEqual([float(row['A_bid_size']) for row in rows], [.125, 1.5, 23.456789])
+        self.assertEqual([float(row['A_bid_size']) for row in rows], [0.125, 1.5, 23.456789])
         self.assertEqual([float(row['A_ask_size']) for row in rows], [40.25, 2.5, 0])
         self.assertEqual([row['A_quantity_unit'] for row in rows], ['USDT'] * 3)
         self.assertEqual([row['price_mode'] for row in rows], ['mean'] * 3)
 
     def test_price_selection_config_survives_jobs_full_csv_and_saved_presets(self):
         self.login()
+
         def analyze(payload):
             result = result_fixture(payload)
             result['meta']['price_mode'] = payload['price_mode']
             result['legs'][0].update(**payload['legs'][0], values=[10, 30])
             result['full']['legs'][0].update(**payload['legs'][0], values=[10, 20, 30])
             return result
+
         self.app.extensions['analysis_jobs'].analyzer = analyze
         config = {**self.query(), 'price_mode': 'mean'}
         config['legs'][0].update(price_basis='ask', book_level=2)
@@ -394,31 +630,58 @@ class ServerTests(unittest.TestCase):
         with self.client.get(f"/api/analyses/{created.json['id']}/csv") as response:
             rows = list(csv.DictReader(io.StringIO(response.get_data().decode('utf-8-sig'))))
         self.assertEqual([float(row['A_selected_price']) for row in rows], [10, 20, 30])
-        self.assertTrue(all(row['A_price_basis'] == 'ask' and row['A_book_level'] == '2' for row in rows))
+        self.assertTrue(
+            all(row['A_price_basis'] == 'ask' and row['A_book_level'] == '2' for row in rows)
+        )
         self.assertTrue(all(row['price_mode'] == 'mean' for row in rows))
-        saved = self.client.post('/api/presets', json={'name': 'N호가 조합', 'config': config}, headers=self.headers())
+        saved = self.client.post(
+            '/api/presets', json={'name': 'N호가 조합', 'config': config}, headers=self.headers()
+        )
         self.assertEqual(saved.status_code, 201)
-        self.assertEqual(self.client.get('/api/presets').json['items'][0]['config']['legs'], config['legs'])
+        self.assertEqual(
+            self.client.get('/api/presets').json['items'][0]['config']['legs'], config['legs']
+        )
 
     def test_price_option_validation_applies_to_referenced_sources(self):
         self.login()
-        for options in ({'price_basis': 'other'}, {'price_basis': 'bid', 'book_level': 0},
-                        {'price_basis': 'ask', 'book_level': 6}, {'price_basis': 'buy_vwap', 'liquidity_amount': 0},
-                        {'price_basis': 'sell_vwap', 'liquidity_amount': None}):
+        for options in (
+            {'price_basis': 'other'},
+            {'price_basis': 'bid', 'book_level': 0},
+            {'price_basis': 'ask', 'book_level': 6},
+            {'price_basis': 'buy_vwap', 'liquidity_amount': 0},
+            {'price_basis': 'sell_vwap', 'liquidity_amount': None},
+        ):
             with self.subTest(options=options):
                 config = self.query()
                 config['legs'][0].update(options)
-                self.assertEqual(self.client.post('/api/analyses', json=config, headers=self.headers()).status_code, 400)
+                self.assertEqual(
+                    self.client.post(
+                        '/api/analyses', json=config, headers=self.headers()
+                    ).status_code,
+                    400,
+                )
         config = self.query()
-        config['legs'].append({'id': 'B', 'exchange': 'bithumb', 'ticker': 'BTC', 'price_basis': 'buy_vwap', 'liquidity_amount': None})
+        config['legs'].append(
+            {
+                'id': 'B',
+                'exchange': 'bithumb',
+                'ticker': 'BTC',
+                'price_basis': 'buy_vwap',
+                'liquidity_amount': None,
+            }
+        )
         created = self.client.post('/api/analyses', json=config, headers=self.headers())
         self.assertEqual(created.status_code, 202, created.get_data(as_text=True))
         self.assertEqual(self.wait(created.json['id'])['status'], 'complete')
         config['formula'] = 'A + B'
-        self.assertEqual(self.client.post('/api/analyses', json=config, headers=self.headers()).status_code, 400)
+        self.assertEqual(
+            self.client.post('/api/analyses', json=config, headers=self.headers()).status_code, 400
+        )
 
     def test_login_csrf_logout_and_cookie_boundary(self):
-        self.assertEqual(self.client.post("/login", data={"password": "valid-password"}).status_code, 403)
+        self.assertEqual(
+            self.client.post("/login", data={"password": "valid-password"}).status_code, 403
+        )
         self.assertEqual(self.login("wrong-password").status_code, 401)
         self.assertEqual(self.login().status_code, 302)
         session = self.client.get("/api/session").json
@@ -426,7 +689,9 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(session["user"], "admin")
         response = self.client.post("/logout", json={})
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(self.client.post("/logout", json={}, headers=self.headers()).status_code, 200)
+        self.assertEqual(
+            self.client.post("/logout", json={}, headers=self.headers()).status_code, 200
+        )
         self.assertTrue(self.live.closed)
         self.assertEqual(self.client.get("/api/session").status_code, 401)
 
@@ -449,9 +714,15 @@ class ServerTests(unittest.TestCase):
         self.assertIn("/features/paper_trading/controller.js", visited)
         with self.client.get("/styles.css") as response:
             self.assertEqual(response.status_code, 200)
-        for path in ["/README.md", "/package.json", "/scripts/check.mjs",
-                     "/features/oms/README.md", "/.state/dashboard.sqlite3",
-                     "/oms_client/api/app.py", "/shared/%2e%2e/%2e%2e/server.py"]:
+        for path in [
+            "/README.md",
+            "/package.json",
+            "/scripts/check.mjs",
+            "/features/oms/README.md",
+            "/.state/dashboard.sqlite3",
+            "/oms_client/api/app.py",
+            "/shared/%2e%2e/%2e%2e/server.py",
+        ]:
             with self.subTest(private=path), self.client.get(path) as response:
                 self.assertEqual(response.status_code, 404)
 
@@ -459,9 +730,13 @@ class ServerTests(unittest.TestCase):
         self.login()
         self.assertEqual(self.client.post("/api/analyses", json=self.query()).status_code, 403)
         headers = {**self.headers(), "Origin": "https://untrusted.example"}
-        self.assertEqual(self.client.post("/api/analyses", json=self.query(), headers=headers).status_code, 403)
+        self.assertEqual(
+            self.client.post("/api/analyses", json=self.query(), headers=headers).status_code, 403
+        )
         headers = {**self.headers(), "Origin": "http://localhost"}
-        self.assertEqual(self.client.post("/api/analyses", json=self.query(), headers=headers).status_code, 202)
+        self.assertEqual(
+            self.client.post("/api/analyses", json=self.query(), headers=headers).status_code, 202
+        )
 
     def test_job_runs_server_side_and_full_csv_is_not_chart_sample(self):
         self.login()
@@ -488,8 +763,10 @@ class ServerTests(unittest.TestCase):
 
     def test_failed_query_is_reported_without_server_trace(self):
         self.login()
+
         def fail(payload):
             raise data_service.DataError("테스트 기간에 호가가 없습니다.")
+
         self.app.extensions["analysis_jobs"].analyzer = fail
         result = self.wait(self.submit())
         self.assertEqual(result["status"], "failed")
@@ -498,6 +775,7 @@ class ServerTests(unittest.TestCase):
 
     def test_last_quote_mode_and_original_times_survive_full_csv_and_history(self):
         self.login()
+
         def last_quotes(payload):
             self.assertEqual(payload["price_mode"], "last")
             self.assertTrue(payload["include_full_data"])
@@ -507,6 +785,7 @@ class ServerTests(unittest.TestCase):
                 for leg in output["legs"]:
                     leg["quote_times"] = [timestamp + 499 for timestamp in output["times"]]
             return result
+
         self.app.extensions["analysis_jobs"].analyzer = last_quotes
         config = {**self.query(), "price_mode": "last"}
         response = self.client.post("/api/analyses", json=config, headers=self.headers())
@@ -522,7 +801,10 @@ class ServerTests(unittest.TestCase):
             rows = list(csv.DictReader(io.StringIO(response.get_data().decode("utf-8-sig"))))
             self.assertEqual(len(rows), 3)
             self.assertEqual([row["price_mode"] for row in rows], ["last"] * 3)
-            self.assertEqual([row["A_quote_time_kst"] for row in rows], [f"1970-01-01T09:00:0{i}.499+09:00" for i in [1, 2, 3]])
+            self.assertEqual(
+                [row["A_quote_time_kst"] for row in rows],
+                [f"1970-01-01T09:00:0{i}.499+09:00" for i in [1, 2, 3]],
+            )
         history = self.client.get("/api/history").json["items"]
         self.assertEqual(history[0]["config"]["price_mode"], "last")
 
@@ -530,14 +812,23 @@ class ServerTests(unittest.TestCase):
         self.login()
         for price_mode in [None, False, [], "rounded", 1]:
             with self.subTest(price_mode=price_mode):
-                response = self.client.post("/api/analyses", json={**self.query(), "price_mode": price_mode}, headers=self.headers())
+                response = self.client.post(
+                    "/api/analyses",
+                    json={**self.query(), "price_mode": price_mode},
+                    headers=self.headers(),
+                )
                 self.assertEqual(response.status_code, 400)
         self.assertEqual(self.calls, [])
 
     def test_funding_analysis_exports_percent_raw_rate_times_without_fake_quotes(self):
         self.login()
         self.app.extensions["analysis_jobs"].analyzer = funding_result_fixture
-        config = {**self.query(), "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": "funding"}], "unit": "%", "price_mode": "last"}
+        config = {
+            **self.query(),
+            "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": "funding"}],
+            "unit": "%",
+            "price_mode": "last",
+        }
         response = self.client.post("/api/analyses", json=config, headers=self.headers())
         self.assertEqual(response.status_code, 202, response.get_data(as_text=True))
         result = self.wait(response.json["id"])
@@ -551,8 +842,12 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             rows = list(csv.DictReader(io.StringIO(response.get_data().decode("utf-8-sig"))))
             self.assertEqual(len(rows), 3)
-            self.assertEqual([float(row["A_okx_BTC_funding_rate_pct"]) for row in rows], [0, -0.02, 0.01])
-            self.assertEqual([float(row["A_funding_rate_ratio"]) for row in rows], [0, -0.0002, 0.0001])
+            self.assertEqual(
+                [float(row["A_okx_BTC_funding_rate_pct"]) for row in rows], [0, -0.02, 0.01]
+            )
+            self.assertEqual(
+                [float(row["A_funding_rate_ratio"]) for row in rows], [0, -0.0002, 0.0001]
+            )
             self.assertTrue(all(row["A_source_time_kst"].endswith("+09:00") for row in rows))
             self.assertEqual(rows[1]["A_server_time_kst"], "")
             self.assertEqual(rows[1]["A_next_funding_in_seconds"], "")
@@ -572,7 +867,16 @@ class ServerTests(unittest.TestCase):
     def test_mixed_price_funding_analysis_and_presets_preserve_source_types(self):
         self.login()
         self.app.extensions["analysis_jobs"].analyzer = funding_result_fixture
-        config = {**self.query(), "formula": "A * (B / 100)", "unit": "USDT", "price_mode": "last", "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC"}, {"id": "B", "exchange": "okx", "ticker": "BTC", "data_type": "funding"}]}
+        config = {
+            **self.query(),
+            "formula": "A * (B / 100)",
+            "unit": "USDT",
+            "price_mode": "last",
+            "legs": [
+                {"id": "A", "exchange": "okx", "ticker": "BTC"},
+                {"id": "B", "exchange": "okx", "ticker": "BTC", "data_type": "funding"},
+            ],
+        }
         created = self.client.post("/api/analyses", json=config, headers=self.headers())
         self.assertEqual(created.status_code, 202, created.get_data(as_text=True))
         result = self.wait(created.json["id"])
@@ -584,17 +888,32 @@ class ServerTests(unittest.TestCase):
             self.assertIn("A_quote_time_kst", rows[0])
             self.assertNotIn("B_bid", rows[0])
             self.assertEqual([float(row["result"]) for row in rows], [0, -0.022, 0.012])
-        saved = self.client.post("/api/presets", json={"name": "Price and funding sources", "config": config}, headers=self.headers())
+        saved = self.client.post(
+            "/api/presets",
+            json={"name": "Price and funding sources", "config": config},
+            headers=self.headers(),
+        )
         self.assertEqual(saved.status_code, 201)
-        self.assertEqual(self.client.get("/api/presets").json["items"][0]["config"]["legs"], config["legs"])
-        self.assertEqual(self.client.get("/api/history").json["items"][0]["config"]["legs"], config["legs"])
+        self.assertEqual(
+            self.client.get("/api/presets").json["items"][0]["config"]["legs"], config["legs"]
+        )
+        self.assertEqual(
+            self.client.get("/api/history").json["items"][0]["config"]["legs"], config["legs"]
+        )
 
     def test_extended_sources_keep_ids_through_jobs_full_csv_presets_and_history(self):
         self.login()
         self.app.extensions["analysis_jobs"].analyzer = funding_result_fixture
-        config = {**self.query(), "formula": "+".join(SOURCE_IDS), "unit": "%", "price_mode": "last",
-                  "legs": [{"id": identifier, "exchange": "okx", "ticker": "BTC", "data_type": "funding"}
-                           for identifier in SOURCE_IDS]}
+        config = {
+            **self.query(),
+            "formula": "+".join(SOURCE_IDS),
+            "unit": "%",
+            "price_mode": "last",
+            "legs": [
+                {"id": identifier, "exchange": "okx", "ticker": "BTC", "data_type": "funding"}
+                for identifier in SOURCE_IDS
+            ],
+        }
         created = self.client.post('/api/analyses', json=config, headers=self.headers())
         self.assertEqual(created.status_code, 202, created.get_data(as_text=True))
         result = self.wait(created.json['id'])
@@ -607,10 +926,12 @@ class ServerTests(unittest.TestCase):
             rows = list(csv.DictReader(io.StringIO(response.get_data().decode('utf-8-sig'))))
             self.assertEqual(len(rows), 3)
             for identifier in ('E', 'M', 'Z'):
-                self.assertEqual(float(rows[1][f'{identifier}_funding_rate_ratio']), -.0002)
+                self.assertEqual(float(rows[1][f'{identifier}_funding_rate_ratio']), -0.0002)
                 self.assertIn(f'{identifier}_okx_BTC_funding_rate_pct', rows[0])
                 self.assertNotIn(f'{identifier}_bid', rows[0])
-        saved = self.client.post('/api/presets', json={'name':'26개 소스', 'config':config}, headers=self.headers())
+        saved = self.client.post(
+            '/api/presets', json={'name': '26개 소스', 'config': config}, headers=self.headers()
+        )
         self.assertEqual(saved.status_code, 201, saved.get_data(as_text=True))
         self.assertEqual(self.client.get('/api/presets').json['items'][0]['config'], config)
         self.assertEqual(self.client.get('/api/history').json['items'][0]['config'], config)
@@ -618,16 +939,23 @@ class ServerTests(unittest.TestCase):
     def test_source_id_validation_precedes_queue_preset_writes_and_live_sessions(self):
         self.login()
         variants = [
-            {**self.query(), 'formula':'E'},
-            {**self.query(), 'formula':'E', 'legs':[{'id':'E'}, {'id':'E'}]},
-            {**self.query(), 'formula':'AA', 'legs':[{'id':'AA'}]},
-            {**self.query(), 'legs':[{'id':identifier} for identifier in [*SOURCE_IDS, 'AA']]},
+            {**self.query(), 'formula': 'E'},
+            {**self.query(), 'formula': 'E', 'legs': [{'id': 'E'}, {'id': 'E'}]},
+            {**self.query(), 'formula': 'AA', 'legs': [{'id': 'AA'}]},
+            {**self.query(), 'legs': [{'id': identifier} for identifier in [*SOURCE_IDS, 'AA']]},
         ]
         for config in variants:
             for path in ('/api/analyses', '/api/live', '/api/presets'):
-                payload = {'name':'거부될 조합', 'config':config} if path.endswith('presets') else config
+                payload = (
+                    {'name': '거부될 조합', 'config': config}
+                    if path.endswith('presets')
+                    else config
+                )
                 with self.subTest(path=path, config=config):
-                    self.assertEqual(self.client.post(path, json=payload, headers=self.headers()).status_code, 400)
+                    self.assertEqual(
+                        self.client.post(path, json=payload, headers=self.headers()).status_code,
+                        400,
+                    )
         self.assertEqual(self.calls, [])
         self.assertEqual(self.live.items, {})
         self.assertEqual(self.client.get('/api/presets').json['items'], [])
@@ -635,10 +963,24 @@ class ServerTests(unittest.TestCase):
     def test_funding_catalog_bounds_are_typed_and_paths_are_restricted(self):
         self.login()
         import pandas as pd
+
         directory = Path(self.temp.name) / "market/okx/funding/BTC/2026/10/25"
         directory.mkdir(parents=True)
-        pd.DataFrame({"desktopTime": [1792886400000, 1792886460000], "serverTime": [1792886399990, 1792886459990], "fundingRate": [0, -0.0001], "nextFundingTime": [60, 0]}).to_parquet(directory / "00.parquet", index=False)
-        with patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": str(Path(self.temp.name) / "market"), "DASHBOARD_COLLECTOR_DATA_ROOT": str(Path(self.temp.name) / "collector")}):
+        pd.DataFrame(
+            {
+                "desktopTime": [1792886400000, 1792886460000],
+                "serverTime": [1792886399990, 1792886459990],
+                "fundingRate": [0, -0.0001],
+                "nextFundingTime": [60, 0],
+            }
+        ).to_parquet(directory / "00.parquet", index=False)
+        with patch.dict(
+            os.environ,
+            {
+                "DASHBOARD_DATA_ROOT": str(Path(self.temp.name) / "market"),
+                "DASHBOARD_COLLECTOR_DATA_ROOT": str(Path(self.temp.name) / "collector"),
+            },
+        ):
             catalog = self.client.get("/api/catalog")
             self.assertEqual(catalog.status_code, 200)
             self.assertEqual(catalog.json["funding_exchanges"], {"okx": ["BTC"]})
@@ -646,40 +988,79 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
             self.assertEqual(response.json["data_type"], "funding")
             self.assertEqual(response.json["start"], "2026-10-25T09:00:00+09:00")
-            self.assertEqual(self.client.get("/api/bounds?data_type=other&exchange=okx&ticker=BTC").status_code, 400)
-            self.assertEqual(self.client.get("/api/bounds?data_type=funding&exchange=okx&ticker=../../private").status_code, 400)
+            self.assertEqual(
+                self.client.get("/api/bounds?data_type=other&exchange=okx&ticker=BTC").status_code,
+                400,
+            )
+            self.assertEqual(
+                self.client.get(
+                    "/api/bounds?data_type=funding&exchange=okx&ticker=../../private"
+                ).status_code,
+                400,
+            )
 
     def test_unsupported_source_types_and_live_funding_fail_before_subscription(self):
         self.login()
         for data_type in ["other", None, [], False]:
-            config = {**self.query(), "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": data_type}]}
-            self.assertEqual(self.client.post("/api/analyses", json=config, headers=self.headers()).status_code, 400)
-        config = {**self.query(), "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": "funding"}]}
+            config = {
+                **self.query(),
+                "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": data_type}],
+            }
+            self.assertEqual(
+                self.client.post("/api/analyses", json=config, headers=self.headers()).status_code,
+                400,
+            )
+        config = {
+            **self.query(),
+            "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": "funding"}],
+        }
         response = self.client.post("/api/live", json=config, headers=self.headers())
         self.assertEqual(response.status_code, 400)
         self.assertIn("과거", response.json["error"])
         self.assertEqual(self.live.items, {})
         config["legs"].insert(0, {"id": "B", "exchange": "bithumb", "ticker": "BTC"})
         config["formula"] = "B"
-        self.assertEqual(self.client.post("/api/live", json=config, headers=self.headers()).status_code, 202)
+        self.assertEqual(
+            self.client.post("/api/live", json=config, headers=self.headers()).status_code, 202
+        )
 
     def test_candle_analysis_full_csv_presets_and_live_restriction(self):
         self.login()
+
         def candle_result(payload):
             result = result_fixture(payload)
             result['meta']['price_mode'] = payload['price_mode']
-            full = {**payload['legs'][0], 'values': [1343, 1344, 1346],
-                    'open': [1342, 1343, 1345], 'high': [1344, 1345, 1347],
-                    'low': [1341, 1342, 1344], 'close': [1343, 1344, 1346],
-                    'volume': [.125, 12.5, 0], 'trade_value': [167.875, 16800, 0],
-                    'candle_times': [0, 60_000, 180_000], 'available_times': [60_000, 120_000, 240_000],
-                    'quantity_unit': 'USDT', 'unit': 'KRW', 'source_kind': 'rest_1m'}
+            full = {
+                **payload['legs'][0],
+                'values': [1343, 1344, 1346],
+                'open': [1342, 1343, 1345],
+                'high': [1344, 1345, 1347],
+                'low': [1341, 1342, 1344],
+                'close': [1343, 1344, 1346],
+                'volume': [0.125, 12.5, 0],
+                'trade_value': [167.875, 16800, 0],
+                'candle_times': [0, 60_000, 180_000],
+                'available_times': [60_000, 120_000, 240_000],
+                'quantity_unit': 'USDT',
+                'unit': 'KRW',
+                'source_kind': 'rest_1m',
+            }
             result['full']['legs'] = [full]
-            result['legs'] = [{key: [value[0], value[2]] if isinstance(value, list) else value for key, value in full.items()}]
+            result['legs'] = [
+                {
+                    key: [value[0], value[2]] if isinstance(value, list) else value
+                    for key, value in full.items()
+                }
+            ]
             return result
+
         self.app.extensions['analysis_jobs'].analyzer = candle_result
-        config = {**self.query(), 'price_mode': 'mean', 'interval': '1min',
-                  'legs': [{'id': 'A', 'exchange': 'bithumb', 'ticker': 'USDT', 'data_type': 'candle'}]}
+        config = {
+            **self.query(),
+            'price_mode': 'mean',
+            'interval': '1min',
+            'legs': [{'id': 'A', 'exchange': 'bithumb', 'ticker': 'USDT', 'data_type': 'candle'}],
+        }
         created = self.client.post('/api/analyses', json=config, headers=self.headers())
         self.assertEqual(created.status_code, 202)
         result = self.wait(created.json['id'])
@@ -687,28 +1068,38 @@ class ServerTests(unittest.TestCase):
         with self.client.get(f"/api/analyses/{created.json['id']}/csv") as response:
             rows = list(csv.DictReader(io.StringIO(response.get_data().decode('utf-8-sig'))))
         self.assertEqual(len(rows), 3)
-        self.assertTrue(all(row['price_mode'] == 'mean' and row['A_source_kind'] == 'rest_1m' for row in rows))
+        self.assertTrue(
+            all(row['price_mode'] == 'mean' and row['A_source_kind'] == 'rest_1m' for row in rows)
+        )
         self.assertEqual(rows[0]['A_last_candle_volume_usdt'], '0.125')
         self.assertNotIn('A_bid', rows[0])
         self.assertNotIn('A_ask', rows[0])
-        saved = self.client.post('/api/presets', json={'name': '분봉 조합', 'config': config}, headers=self.headers())
+        saved = self.client.post(
+            '/api/presets', json={'name': '분봉 조합', 'config': config}, headers=self.headers()
+        )
         self.assertEqual(saved.status_code, 201)
-        self.assertEqual(self.client.get('/api/presets').json['items'][0]['config']['legs'], config['legs'])
+        self.assertEqual(
+            self.client.get('/api/presets').json['items'][0]['config']['legs'], config['legs']
+        )
         blocked = self.client.post('/api/live', json=config, headers=self.headers())
         self.assertEqual(blocked.status_code, 400)
         self.assertIn('1분봉', blocked.json['error'])
         self.assertEqual(self.live.items, {})
         config['legs'].append({'id': 'B', 'exchange': 'bithumb', 'ticker': 'BTC'})
         config['formula'] = 'B'
-        self.assertEqual(self.client.post('/api/live', json=config, headers=self.headers()).status_code, 202)
+        self.assertEqual(
+            self.client.post('/api/live', json=config, headers=self.headers()).status_code, 202
+        )
 
     def test_queue_is_bounded_and_web_remains_responsive(self):
         self.login()
         entered, release = threading.Event(), threading.Event()
+
         def blocking(payload):
             entered.set()
             release.wait(5)
             return result_fixture(payload)
+
         jobs = self.app.extensions["analysis_jobs"]
         jobs.analyzer = blocking
         jobs.slots = threading.BoundedSemaphore(1)
@@ -728,12 +1119,18 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         preset_id = response.json["id"]
         from oms_client.storage.state import StateStore
+
         reopened = StateStore(self.temp.name)
         self.assertEqual(reopened.presets()[0]["config"], self.query())
         payload.update(id=preset_id, name="Renamed")
-        self.assertEqual(self.client.post("/api/presets", json=payload, headers=self.headers()).json["name"], "Renamed")
+        self.assertEqual(
+            self.client.post("/api/presets", json=payload, headers=self.headers()).json["name"],
+            "Renamed",
+        )
         self.assertEqual(len(self.client.get("/api/presets").json["items"]), 1)
-        self.assertEqual(self.client.delete(f"/api/presets/{preset_id}", headers=self.headers()).status_code, 200)
+        self.assertEqual(
+            self.client.delete(f"/api/presets/{preset_id}", headers=self.headers()).status_code, 200
+        )
         self.assertEqual(self.client.get("/api/presets").json["items"], [])
 
     def test_expired_result_keeps_history_but_does_not_claim_csv_exists(self):
@@ -754,7 +1151,9 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         live_id = response.json["id"]
         self.assertEqual(self.client.get(f"/api/live/{live_id}").json["status"], "running")
-        self.assertEqual(self.client.delete(f"/api/live/{live_id}", headers=self.headers()).status_code, 200)
+        self.assertEqual(
+            self.client.delete(f"/api/live/{live_id}", headers=self.headers()).status_code, 200
+        )
         self.assertEqual(self.client.get(f"/api/live/{live_id}").json["status"], "stopped")
         self.assertEqual(self.client.get("/api/live/unknown").status_code, 404)
 
@@ -762,11 +1161,16 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/modules").status_code, 401)
         self.login()
         modules = self.client.get("/api/modules").json["items"]
-        self.assertEqual([item["id"] for item in modules], ["data", "quality", "analysis", "backtest", "strategies", "paper", "oms"])
+        self.assertEqual(
+            [item["id"] for item in modules],
+            ["data", "quality", "analysis", "backtest", "strategies", "paper", "oms"],
+        )
         self.assertEqual(modules[-1]["status"], "planned")
         self.assertFalse(self.client.get("/api/oms/status").json["live_orders"])
         self.assertFalse(self.client.get("/api/session").json["capabilities"]["manual_spot_orders"])
-        self.assertEqual(self.client.post("/api/oms/orders", json={}, headers=self.headers()).status_code, 405)
+        self.assertEqual(
+            self.client.post("/api/oms/orders", json={}, headers=self.headers()).status_code, 405
+        )
 
     def test_application_version_requires_auth_and_reports_deployed_revision(self):
         self.assertEqual(self.client.get("/api/version").status_code, 401)
@@ -777,18 +1181,39 @@ class ServerTests(unittest.TestCase):
             version = self.client.get("/api/version").json
             self.assertEqual(version["application"], "OMS_CLIENT")
             self.assertEqual(version["revision"], "ab12cd3")
-            self.assertEqual([item["id"] for item in version["modules"]], ["data", "quality", "analysis", "backtest", "strategies", "paper", "oms"])
-            self.assertEqual(self.app.test_client().get("/api/health").json,
-                             {"ok": True, "service": "oms-client", "revision": "ab12cd3"})
+            self.assertEqual(
+                [item["id"] for item in version["modules"]],
+                ["data", "quality", "analysis", "backtest", "strategies", "paper", "oms"],
+            )
+            self.assertEqual(
+                self.app.test_client().get("/api/health").json,
+                {"ok": True, "service": "oms-client", "revision": "ab12cd3"},
+            )
 
     def test_backtest_uses_shared_jobs_and_exports_ledger(self):
         self.login()
         calls = []
+
         def backtest(payload):
             calls.append(payload)
-            return {"times": [1000], "result": [1.0], "ewm": [1.0], "legs": [],
-                    "metrics": {"return_pct": 1},
-                    "trades": [{"timestamp": 1000, "side": "buy", "price": 12, "quantity": 2, "fee": 0.1, "reason": "=untrusted"}]}
+            return {
+                "times": [1000],
+                "result": [1.0],
+                "ewm": [1.0],
+                "legs": [],
+                "metrics": {"return_pct": 1},
+                "trades": [
+                    {
+                        "timestamp": 1000,
+                        "side": "buy",
+                        "price": 12,
+                        "quantity": 2,
+                        "fee": 0.1,
+                        "reason": "=untrusted",
+                    }
+                ],
+            }
+
         self.app.extensions["analysis_jobs"].backtester = backtest
         payload = {"exchange": "bithumb", "ticker": "BTC", "strategy": "buy_hold"}
         response = self.client.post("/api/backtests", json=payload, headers=self.headers())
@@ -823,12 +1248,29 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertTrue(response.json["simulation"])
         self.assertEqual(len(self.client.get("/api/paper").json["orders"]), 1)
-        self.assertEqual(self.client.post("/api/paper/orders", json={**order, "side": "invalid"}, headers=self.headers()).status_code, 400)
-        self.assertEqual(self.client.post("/api/paper/orders", json={**order, "quantity": 999}, headers=self.headers()).status_code, 409)
+        self.assertEqual(
+            self.client.post(
+                "/api/paper/orders", json={**order, "side": "invalid"}, headers=self.headers()
+            ).status_code,
+            400,
+        )
+        self.assertEqual(
+            self.client.post(
+                "/api/paper/orders", json={**order, "quantity": 999}, headers=self.headers()
+            ).status_code,
+            409,
+        )
         for endpoint in ("/api/paper/orders", "/api/paper/reset", "/api/backtests"):
             with self.subTest(endpoint=endpoint):
-                self.assertEqual(self.client.post(endpoint, json=[], headers=self.headers()).status_code, 400)
-                self.assertEqual(self.client.post(endpoint, json={"quantity": float("nan")}, headers=self.headers()).status_code, 400)
+                self.assertEqual(
+                    self.client.post(endpoint, json=[], headers=self.headers()).status_code, 400
+                )
+                self.assertEqual(
+                    self.client.post(
+                        endpoint, json={"quantity": float("nan")}, headers=self.headers()
+                    ).status_code,
+                    400,
+                )
         response = self.client.post("/api/paper/reset", json={}, headers=self.headers())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["orders"], [])
@@ -840,9 +1282,20 @@ class ServerTests(unittest.TestCase):
 
     def test_rejects_malformed_or_executable_requests_before_queue(self):
         self.login()
-        for payload in [[], {}, {**self.query(), "sql": "DROP TABLE x"}, {**self.query(), "formula": "A" * 257}, {**self.query(), "unit": ["KRW"]}]:
+        for payload in [
+            [],
+            {},
+            {**self.query(), "sql": "DROP TABLE x"},
+            {**self.query(), "formula": "A" * 257},
+            {**self.query(), "unit": ["KRW"]},
+        ]:
             with self.subTest(payload=payload):
-                self.assertEqual(self.client.post("/api/analyses", json=payload, headers=self.headers()).status_code, 400)
+                self.assertEqual(
+                    self.client.post(
+                        "/api/analyses", json=payload, headers=self.headers()
+                    ).status_code,
+                    400,
+                )
         self.assertEqual(self.calls, [])
 
     def test_private_headers_and_state_file_permissions(self):
@@ -855,7 +1308,9 @@ class ServerTests(unittest.TestCase):
         path = Path(self.temp.name)
         self.assertEqual(path.stat().st_mode & 0o777, 0o700)
         self.assertEqual((path / "dashboard.sqlite3").stat().st_mode & 0o777, 0o600)
-        self.assertNotIn("valid-password", (path / "dashboard.sqlite3").read_bytes().decode("latin1"))
+        self.assertNotIn(
+            "valid-password", (path / "dashboard.sqlite3").read_bytes().decode("latin1")
+        )
 
     def proxy_app(self, **config):
         app = create_app({**self.config, "BEHIND_PROXY": True, **config})
@@ -884,7 +1339,9 @@ class ServerTests(unittest.TestCase):
 
     def test_forwarded_headers_are_not_implicitly_trusted_by_flask(self):
         self.app.config["BEHIND_PROXY"] = True
-        response = self.client.get("/login", headers={"X-Forwarded-Proto": "https", "X-Forwarded-For": "198.51.100.42"})
+        response = self.client.get(
+            "/login", headers={"X-Forwarded-Proto": "https", "X-Forwarded-For": "198.51.100.42"}
+        )
         self.assertNotIn("; Secure", response.headers["Set-Cookie"])
 
     def test_tunnel_proxy_trusts_only_loopback_and_rightmost_client_hop(self):
@@ -892,18 +1349,32 @@ class ServerTests(unittest.TestCase):
         peer = {"REMOTE_ADDR": "127.0.0.1"}
         headers = {"X-Forwarded-Proto": "https", "X-Forwarded-For": "198.51.100.9, 203.0.113.42"}
         client = app.test_client()
-        response = client.get("/login", base_url="http://qa.trycloudflare.com", headers=headers, environ_overrides=peer)
+        response = client.get(
+            "/login",
+            base_url="http://qa.trycloudflare.com",
+            headers=headers,
+            environ_overrides=peer,
+        )
         self.assertIn("; Secure", response.headers["Set-Cookie"])
         csrf = re.search(r'name="csrf_token" value="([^"]+)"', response.get_data(as_text=True))[1]
         # Login over the effective HTTPS scheme to have the test cookie jar send
         # the Secure cookie, just as a browser does through the public endpoint.
-        response = client.post("/login", base_url="https://qa.trycloudflare.com", headers=headers,
-                               environ_overrides=peer, data={"csrf_token": csrf, "password": "wrong-password"})
+        response = client.post(
+            "/login",
+            base_url="https://qa.trycloudflare.com",
+            headers=headers,
+            environ_overrides=peer,
+            data={"csrf_token": csrf, "password": "wrong-password"},
+        )
         self.assertEqual(response.status_code, 401)
         limiter = app.extensions["login_limiter"]
         self.assertEqual(list(limiter.failures), ["203.0.113.42"])
-        untrusted = app.test_client().get("/login", base_url="http://qa.trycloudflare.com", headers=headers,
-                                          environ_overrides={"REMOTE_ADDR": "192.0.2.25"})
+        untrusted = app.test_client().get(
+            "/login",
+            base_url="http://qa.trycloudflare.com",
+            headers=headers,
+            environ_overrides={"REMOTE_ADDR": "192.0.2.25"},
+        )
         self.assertNotIn("; Secure", untrusted.headers["Set-Cookie"])
         self.assertEqual(_waitress_proxy_options(False), {})
 
@@ -915,30 +1386,72 @@ class ServerTests(unittest.TestCase):
         proxy = {"X-Forwarded-Proto": "https", "X-Forwarded-For": "203.0.113.42"}
         page = client.get("/login", base_url=base, headers=proxy, environ_overrides=peer)
         csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.get_data(as_text=True))[1]
-        login = client.post("/login", base_url=base, headers=proxy, environ_overrides=peer,
-                            data={"csrf_token": csrf, "password": "valid-password"})
+        login = client.post(
+            "/login",
+            base_url=base,
+            headers=proxy,
+            environ_overrides=peer,
+            data={"csrf_token": csrf, "password": "valid-password"},
+        )
         self.assertEqual(login.status_code, 302)
-        token = client.get("/api/session", base_url=base, headers=proxy, environ_overrides=peer).json["csrf_token"]
+        token = client.get(
+            "/api/session", base_url=base, headers=proxy, environ_overrides=peer
+        ).json["csrf_token"]
         headers = {**proxy, "X-CSRF-Token": token, "Origin": base}
-        response = client.post("/api/analyses", base_url=base, headers=headers, environ_overrides=peer, json=self.query())
+        response = client.post(
+            "/api/analyses",
+            base_url=base,
+            headers=headers,
+            environ_overrides=peer,
+            json=self.query(),
+        )
         self.assertEqual(response.status_code, 202)
-        for origin in ("http://qa.trycloudflare.com", "https://other.trycloudflare.com", "null", "http://["):
+        for origin in (
+            "http://qa.trycloudflare.com",
+            "https://other.trycloudflare.com",
+            "null",
+            "http://[",
+        ):
             with self.subTest(origin=origin):
-                response = client.post("/api/analyses", base_url=base, headers={**headers, "Origin": origin},
-                                       environ_overrides=peer, json=self.query())
+                response = client.post(
+                    "/api/analyses",
+                    base_url=base,
+                    headers={**headers, "Origin": origin},
+                    environ_overrides=peer,
+                    json=self.query(),
+                )
                 self.assertEqual(response.status_code, 403)
         for path in ("/login", "/api/health", "/api/session"):
             with self.subTest(path=path):
-                response = app.test_client().get(path, base_url="https://untrusted.example", headers=proxy, environ_overrides=peer)
+                response = app.test_client().get(
+                    path,
+                    base_url="https://untrusted.example",
+                    headers=proxy,
+                    environ_overrides=peer,
+                )
                 self.assertEqual(response.status_code, 400)
 
     def test_custom_trusted_hosts_override_quick_tunnel_default(self):
-        with patch.dict(os.environ, {"DASHBOARD_BEHIND_PROXY": "1", "DASHBOARD_TRUSTED_HOSTS": " localhost,127.0.0.1, analysis.example.test "}):
+        with patch.dict(
+            os.environ,
+            {
+                "DASHBOARD_BEHIND_PROXY": "1",
+                "DASHBOARD_TRUSTED_HOSTS": " localhost,127.0.0.1, analysis.example.test ",
+            },
+        ):
             app = create_app({**self.config})
         self.addCleanup(lambda: app.extensions["close_services"]())
-        self.assertEqual(app.config["TRUSTED_HOSTS"], ["localhost", "127.0.0.1", "analysis.example.test"])
-        self.assertEqual(app.test_client().get("/login", base_url="https://analysis.example.test").status_code, 200)
-        self.assertEqual(app.test_client().get("/login", base_url="https://qa.trycloudflare.com").status_code, 400)
+        self.assertEqual(
+            app.config["TRUSTED_HOSTS"], ["localhost", "127.0.0.1", "analysis.example.test"]
+        )
+        self.assertEqual(
+            app.test_client().get("/login", base_url="https://analysis.example.test").status_code,
+            200,
+        )
+        self.assertEqual(
+            app.test_client().get("/login", base_url="https://qa.trycloudflare.com").status_code,
+            400,
+        )
 
 
 if __name__ == "__main__":

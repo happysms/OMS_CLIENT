@@ -1,4 +1,5 @@
 """Typed order state and per-run identity ownership, independent of the replay loop."""
+
 from dataclasses import dataclass, fields
 from decimal import Decimal
 from types import MappingProxyType
@@ -92,8 +93,13 @@ class ReplayOrder:
 
     def record_fill(self, quantity: Decimal, notional: Decimal, fee: Decimal, role: str) -> None:
         """Called by SpotLedger after validating the whole settlement."""
-        if (quantity <= 0 or quantity > self.remaining or notional <= 0 or fee < 0
-                or self.status not in {'in_flight', 'live', 'cancel_pending'}):
+        if (
+            quantity <= 0
+            or quantity > self.remaining
+            or notional <= 0
+            or fee < 0
+            or self.status not in {'in_flight', 'live', 'cancel_pending'}
+        ):
             raise ValueError('체결 수량·대금·비용·주문 상태를 확인하세요.')
         self.role_totals(role)
         self.remaining -= quantity
@@ -110,9 +116,12 @@ class ReplayOrder:
 
     def quantity_state(self) -> dict:
         remaining = float(self.remaining)
-        flying = self.status == 'in_flight' or (self.status == 'cancel_pending' and self.active_at is None)
+        flying = self.status == 'in_flight' or (
+            self.status == 'cancel_pending' and self.active_at is None
+        )
         return dict(
-            filled=float(self.filled), in_flight=remaining if flying else 0,
+            filled=float(self.filled),
+            in_flight=remaining if flying else 0,
             live=remaining if self.status in {'live', 'cancel_pending'} and not flying else 0,
             cancelled=remaining if self.status == 'cancelled' else 0,
             rejected=remaining if self.status == 'rejected' else 0,
@@ -146,6 +155,7 @@ class ReplacementRequest:
 
 class OrderBook:
     """Own order IDs, retry identity, completed IDs and pending replacements."""
+
     def __init__(self):
         self._orders: dict[str, ReplayOrder] = {}
         self.orders: Mapping[str, ReplayOrder] = MappingProxyType(self._orders)
@@ -163,13 +173,37 @@ class OrderBook:
             raise ValueError('동일 클라이언트 주문 ID의 요청 내용이 다릅니다.')
         return previous[1]
 
-    def submit(self, *, side: str, price: Decimal, quantity: Decimal, owner: str,
-               tif: str, stp: str, expires_at_ms: int | None, client_order_id: str | None,
-               reserve_cash: Decimal, now: int, fingerprint: tuple) -> ReplayOrder:
+    def submit(
+        self,
+        *,
+        side: str,
+        price: Decimal,
+        quantity: Decimal,
+        owner: str,
+        tif: str,
+        stp: str,
+        expires_at_ms: int | None,
+        client_order_id: str | None,
+        reserve_cash: Decimal,
+        now: int,
+        fingerprint: tuple,
+    ) -> ReplayOrder:
         self.sequence += 1
         identifier = f'O{self.sequence:08d}'
-        order = ReplayOrder(identifier, owner, side, price, quantity, quantity, reserve_cash, now,
-                            tif=tif, stp=stp, expires_at_ms=expires_at_ms, client_order_id=client_order_id)
+        order = ReplayOrder(
+            identifier,
+            owner,
+            side,
+            price,
+            quantity,
+            quantity,
+            reserve_cash,
+            now,
+            tif=tif,
+            stp=stp,
+            expires_at_ms=expires_at_ms,
+            client_order_id=client_order_id,
+        )
         self._orders[identifier] = order
         if client_order_id is not None:
             self._requests[client_order_id] = (fingerprint, identifier)

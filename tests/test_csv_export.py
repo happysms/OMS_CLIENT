@@ -1,4 +1,5 @@
 """CSV exports preserve complete raw rows and enforce independent disk/job bounds."""
+
 import csv
 import io
 import os
@@ -24,17 +25,33 @@ class CsvConversionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        env = patch.dict(os.environ, {"DASHBOARD_DATA_ROOT": str(self.root / "data"), "DASHBOARD_COLLECTOR_DATA_ROOT": str(self.root / "collector")})
+        env = patch.dict(
+            os.environ,
+            {
+                "DASHBOARD_DATA_ROOT": str(self.root / "data"),
+                "DASHBOARD_COLLECTOR_DATA_ROOT": str(self.root / "collector"),
+            },
+        )
         env.start()
         self.addCleanup(env.stop)
         self.origin = int(pd.Timestamp("2026-10-25T00:00:00Z").timestamp() * 1000)
-        self.write("00", {
-            "desktopTime": [self.origin + 2000, self.origin, self.origin + 1000, self.origin + 1000, self.origin + 5000],
-            "serverTime": [self.origin + value for value in [2000, 0, 1000, 1001, 5000]],
-            "b1_p": [18.0, 10.0, 0.0, 25.0, 50.0], "a1_p": [22.0, 12.0, 20.0, 24.0, 51.0],
-            "b5_q": [-2.0, 2.0, 3.0, 4.0, 5.0],
-            "note": ["=SUM(1,2)", "한글", "+cmd", "@formula", "boundary"],
-        })
+        self.write(
+            "00",
+            {
+                "desktopTime": [
+                    self.origin + 2000,
+                    self.origin,
+                    self.origin + 1000,
+                    self.origin + 1000,
+                    self.origin + 5000,
+                ],
+                "serverTime": [self.origin + value for value in [2000, 0, 1000, 1001, 5000]],
+                "b1_p": [18.0, 10.0, 0.0, 25.0, 50.0],
+                "a1_p": [22.0, 12.0, 20.0, 24.0, 51.0],
+                "b5_q": [-2.0, 2.0, 3.0, 4.0, 5.0],
+                "note": ["=SUM(1,2)", "한글", "+cmd", "@formula", "boundary"],
+            },
+        )
         self.output = self.root / "out.csv"
 
     def write(self, hour, values):
@@ -43,7 +60,14 @@ class CsvConversionTests(unittest.TestCase):
         pd.DataFrame(values).to_parquet(path, index=False)
 
     def config(self, **changes):
-        return {"exchange": "bithumb", "ticker": "btc", "start": "2026-10-25T09:00:00", "end": "2026-10-25T09:00:05", "mode": "raw", **changes}
+        return {
+            "exchange": "bithumb",
+            "ticker": "btc",
+            "start": "2026-10-25T09:00:00",
+            "end": "2026-10-25T09:00:05",
+            "mode": "raw",
+            **changes,
+        }
 
     def read(self):
         content = self.output.read_bytes()
@@ -55,8 +79,13 @@ class CsvConversionTests(unittest.TestCase):
         rows = self.read()
         self.assertEqual(result["rows"], 4)
         self.assertEqual(result["source_rows"], 4)
-        self.assertEqual(result["columns"], ["desktopTime", "serverTime", "b1_p", "a1_p", "b5_q", "note"])
-        self.assertEqual([int(row["desktopTime"]) for row in rows], [self.origin, self.origin + 1000, self.origin + 1000, self.origin + 2000])
+        self.assertEqual(
+            result["columns"], ["desktopTime", "serverTime", "b1_p", "a1_p", "b5_q", "note"]
+        )
+        self.assertEqual(
+            [int(row["desktopTime"]) for row in rows],
+            [self.origin, self.origin + 1000, self.origin + 1000, self.origin + 2000],
+        )
         self.assertEqual([float(row["b1_p"]) for row in rows], [10, 0, 25, 18])
         self.assertEqual(rows[0]["note"], "한글")
         self.assertEqual(rows[-1]["note"], "'=SUM(1,2)")
@@ -65,7 +94,16 @@ class CsvConversionTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(self.output.stat().st_mode), 0o600)
 
     def test_raw_unions_schema_changes_across_hour_files(self):
-        self.write("01", {"desktopTime": [self.origin + 3600000], "serverTime": [1], "b1_p": [2], "a1_p": [3], "extra": ["new"]})
+        self.write(
+            "01",
+            {
+                "desktopTime": [self.origin + 3600000],
+                "serverTime": [1],
+                "b1_p": [2],
+                "a1_p": [3],
+                "extra": ["new"],
+            },
+        )
         result = export_csv(self.config(end="2026-10-25T10:00:01"), self.output)
         rows = self.read()
         self.assertEqual(result["rows"], 6)
@@ -87,7 +125,10 @@ class CsvConversionTests(unittest.TestCase):
 
     def test_raw_is_not_limited_to_chart_samples_or_fetch_batch(self):
         count = 7001
-        self.write("00", {"desktopTime": [self.origin + i for i in range(count)], "value": list(range(count))})
+        self.write(
+            "00",
+            {"desktopTime": [self.origin + i for i in range(count)], "value": list(range(count))},
+        )
         result = export_csv(self.config(end="2026-10-25T09:00:10"), self.output)
         self.assertEqual(result["rows"], count)
         self.assertEqual(len(self.read()), count)
@@ -100,13 +141,24 @@ class CsvConversionTests(unittest.TestCase):
             self.assertEqual(list(self.root.glob(".csv-*.tmp")), [])
 
     def test_empty_range_missing_source_and_unsafe_selection_fail(self):
-        for changes in [{"start": "2026-10-25T09:00:06", "end": "2026-10-25T09:00:07"}, {"ticker": "MISSING"}, {"ticker": "../../private"}]:
+        for changes in [
+            {"start": "2026-10-25T09:00:06", "end": "2026-10-25T09:00:07"},
+            {"ticker": "MISSING"},
+            {"ticker": "../../private"},
+        ]:
             with self.subTest(changes=changes), self.assertRaises(DataError):
                 export_csv(self.config(**changes), self.output)
             self.assertFalse(self.output.exists())
 
     def test_request_limits_reject_unknown_fields_and_excessive_work(self):
-        for changes in [{"path": "/private"}, {"mode": "other"}, {"interval": "0s"}, {"end": "2026-12-01T09:00"}, {"start": "bad"}, {"mode": "aggregated", "interval": "1s", "end": "2026-10-29T09:00"}]:
+        for changes in [
+            {"path": "/private"},
+            {"mode": "other"},
+            {"interval": "0s"},
+            {"end": "2026-12-01T09:00"},
+            {"start": "bad"},
+            {"mode": "aggregated", "interval": "1s", "end": "2026-10-29T09:00"},
+        ]:
             with self.subTest(changes=changes), self.assertRaises(DataError):
                 normalize_config(self.config(**changes))
 
@@ -121,7 +173,12 @@ class CsvJobTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.config = {"exchange": "bithumb", "ticker": "BTC", "start": "2026-10-25T09:00", "end": "2026-10-25T10:00"}
+        self.config = {
+            "exchange": "bithumb",
+            "ticker": "BTC",
+            "start": "2026-10-25T09:00",
+            "end": "2026-10-25T10:00",
+        }
 
     def jobs(self, **kwargs):
         service = DataExportJobs(self.temp.name, **kwargs)
@@ -162,6 +219,7 @@ class CsvJobTests(unittest.TestCase):
         def broken(config, path):
             path.write_text("partial")
             raise DataError("테스트 실패")
+
         service = self.jobs(exporter=broken)
         identifier = service.submit(self.config)["id"]
         result = self.wait(service, identifier)
@@ -175,9 +233,11 @@ class CsvJobTests(unittest.TestCase):
     def test_queue_rejects_overload_and_does_not_offer_running_csv(self):
         release = threading.Event()
         self.addCleanup(release.set)
+
         def blocking(config, path):
             release.wait(3)
             return self.exporter(config, path)
+
         service = self.jobs(exporter=blocking, max_pending=1)
         identifier = service.submit(self.config)["id"]
         with self.assertRaises(OverflowError):

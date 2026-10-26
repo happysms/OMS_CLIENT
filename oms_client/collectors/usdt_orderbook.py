@@ -1,4 +1,5 @@
 """Collect Bithumb/Upbit KRW-USDT top-of-book snapshots once per second."""
+
 from __future__ import annotations
 
 import argparse
@@ -15,12 +16,20 @@ import time
 
 from oms_client.market_data.quotes import PublicQuoteFeed
 from oms_client.storage.orderbook_samples import (
-    CollectorAlreadyRunning, DEPTH_COLUMNS, EXCHANGES, OrderbookSampleStore, SpoolFull,
-    default_data_root, default_state_dir, fsync_directory,
+    CollectorAlreadyRunning,
+    DEPTH_COLUMNS,
+    EXCHANGES,
+    OrderbookSampleStore,
+    SpoolFull,
+    default_data_root,
+    default_state_dir,
+    fsync_directory,
 )
 
-LEGS = [{"id": "A", "exchange": "bithumb", "ticker": "USDT"},
-        {"id": "B", "exchange": "upbit", "ticker": "USDT"}]
+LEGS = [
+    {"id": "A", "exchange": "bithumb", "ticker": "USDT"},
+    {"id": "B", "exchange": "upbit", "ticker": "USDT"},
+]
 SAMPLE_INTERVAL_MS = 1000
 MAX_QUOTE_AGE_MS = 10_000
 MAX_FUTURE_MS = 5_000
@@ -51,9 +60,16 @@ def write_status_file(path: Path, status: dict) -> None:
 
 
 class UsdtOrderbookCollector:
-    def __init__(self, store: OrderbookSampleStore, *, feed_factory=PublicQuoteFeed,
-                 clock=time.time, monotonic=time.monotonic, flush_seconds=5,
-                 max_quote_age_ms=MAX_QUOTE_AGE_MS):
+    def __init__(
+        self,
+        store: OrderbookSampleStore,
+        *,
+        feed_factory=PublicQuoteFeed,
+        clock=time.time,
+        monotonic=time.monotonic,
+        flush_seconds=5,
+        max_quote_age_ms=MAX_QUOTE_AGE_MS,
+    ):
         if not math.isfinite(flush_seconds) or flush_seconds <= 0:
             raise ValueError("flush_seconds must be positive")
         self.store, self.clock, self.monotonic = store, clock, monotonic
@@ -71,17 +87,35 @@ class UsdtOrderbookCollector:
         self.errors = Counter()
         self.last_error = None
         self.missed_slots = 0
-        self.exchanges = {exchange: {"state": "starting", "connected": False, "last_quote": None,
-                                    "last_sample_ms": None, "rows_committed": 0, "quotes_received": 0,
-                                    "skipped_samples": 0, "skip_reasons": Counter()} for exchange in EXCHANGES}
+        self.exchanges = {
+            exchange: {
+                "state": "starting",
+                "connected": False,
+                "last_quote": None,
+                "last_sample_ms": None,
+                "rows_committed": 0,
+                "quotes_received": 0,
+                "skipped_samples": 0,
+                "skip_reasons": Counter(),
+            }
+            for exchange in EXCHANGES
+        }
 
     def on_quote(self, quote):
         exchange = quote.get("exchange")
         if exchange not in EXCHANGES or quote.get("ticker") != "USDT":
             return
-        normalized = {name: _finite(quote.get(source)) for name, source in
-                      (("bid", "bid"), ("ask", "ask"), ("bid_size", "bid_size"), ("ask_size", "ask_size"),
-                       ("serverTime", "ts"), ("receivedTime", "receivedAt"))}
+        normalized = {
+            name: _finite(quote.get(source))
+            for name, source in (
+                ("bid", "bid"),
+                ("ask", "ask"),
+                ("bid_size", "bid_size"),
+                ("ask_size", "ask_size"),
+                ("serverTime", "ts"),
+                ("receivedTime", "receivedAt"),
+            )
+        }
         for side, price_key, size_key in (('bids', 'bid', 'bid_size'), ('asks', 'ask', 'ask_size')):
             normalized[side] = [[normalized[price_key], normalized[size_key]]]
             source_book = quote.get(side)
@@ -96,15 +130,26 @@ class UsdtOrderbookCollector:
                 try:
                     price, size = _finite(item[0]), _finite(item[1])
                     previous = normalized[side][-1][0]
-                    if (price is None or size is None or price <= 0 or size < 0 or previous is None
-                            or (side == 'bids' and price > previous) or (side == 'asks' and price < previous)):
+                    if (
+                        price is None
+                        or size is None
+                        or price <= 0
+                        or size < 0
+                        or previous is None
+                        or (side == 'bids' and price > previous)
+                        or (side == 'asks' and price < previous)
+                    ):
                         break
                     normalized[side].append([price, size])
                 except (TypeError, IndexError):
                     break
         with self.lock:
             previous = self.latest.get(exchange)
-            if previous and normalized["serverTime"] is not None and previous["serverTime"] is not None:
+            if (
+                previous
+                and normalized["serverTime"] is not None
+                and previous["serverTime"] is not None
+            ):
                 if normalized["serverTime"] < previous["serverTime"]:
                     return
             self.latest[exchange] = normalized
@@ -118,7 +163,11 @@ class UsdtOrderbookCollector:
             return
         with self.lock:
             record = self.exchanges[exchange]
-            record["state"] = state if state in {"connecting", "connected", "reconnecting", "error", "stopped"} else "error"
+            record["state"] = (
+                state
+                if state in {"connecting", "connected", "reconnecting", "error", "stopped"}
+                else "error"
+            )
             record["connected"] = state == "connected"
             if state != "connected":
                 self.latest.pop(exchange, None)
@@ -154,13 +203,26 @@ class UsdtOrderbookCollector:
             for level, (price, size) in enumerate(quote[side][1:5], start=2):
                 depth[f'{prefix}{level}_p'] = price
                 depth[f'{size_key}_{level}'] = size
-        return {"exchange": exchange, "sampleTime": slot, **depth,
-                # desktopTime is the actual observation time. The separate grid
-                # key must not make a late snapshot appear earlier in backtests.
-                "desktopTime": now_ms, "sampledAt": now_ms, "serverTime": int(source), "receivedTime": int(received),
-                "b1_p": bid, "a1_p": ask, "bid_size": bid_size, "ask_size": ask_size,
-                "quote_age_ms": int(age), "price_unit": "KRW", "quantity_unit": "USDT",
-                "sample_interval_ms": SAMPLE_INTERVAL_MS, "market": "KRW-USDT"}, None
+        return {
+            "exchange": exchange,
+            "sampleTime": slot,
+            **depth,
+            # desktopTime is the actual observation time. The separate grid
+            # key must not make a late snapshot appear earlier in backtests.
+            "desktopTime": now_ms,
+            "sampledAt": now_ms,
+            "serverTime": int(source),
+            "receivedTime": int(received),
+            "b1_p": bid,
+            "a1_p": ask,
+            "bid_size": bid_size,
+            "ask_size": ask_size,
+            "quote_age_ms": int(age),
+            "price_unit": "KRW",
+            "quantity_unit": "USDT",
+            "sample_interval_ms": SAMPLE_INTERVAL_MS,
+            "market": "KRW-USDT",
+        }, None
 
     def sample_once(self, now_ms=None) -> list[dict]:
         rows = []
@@ -195,22 +257,41 @@ class UsdtOrderbookCollector:
     def status(self) -> dict:
         now_ms = int(self.clock() * 1000)
         with self.lock:
-            exchanges = {exchange: {**record, "skip_reasons": dict(record["skip_reasons"])}
-                         for exchange, record in self.exchanges.items()}
+            exchanges = {
+                exchange: {**record, "skip_reasons": dict(record["skip_reasons"])}
+                for exchange, record in self.exchanges.items()
+            }
             for record in exchanges.values():
                 quote = record["last_quote"]
-                record["quote_age_ms"] = int(now_ms - quote["serverTime"]) if quote and quote["serverTime"] else None
+                record["quote_age_ms"] = (
+                    int(now_ms - quote["serverTime"]) if quote and quote["serverTime"] else None
+                )
             errors, last_error = dict(self.errors), self.last_error
         counts = self.store.counters()
-        return {"version": 1, "collector_id": "usdt", "market": "KRW-USDT", "state": self.state,
-                "price_unit": "KRW", "quantity_unit": "USDT", "sample_interval_ms": SAMPLE_INTERVAL_MS,
-                "max_quote_age_ms": self.max_quote_age_ms, "heartbeat_ms": now_ms,
-                "started_at_ms": self.started_at_ms, "uptime_seconds": round(max(0, self.monotonic() - self.started_monotonic), 3),
-                "data_root": str(self.store.data_root), "state_dir": str(self.store.state_dir),
-                "last_sample_ms": self.last_sample_ms, "last_flush_ms": self.last_flush_ms,
-                "rows_committed": counts.get("samples_committed", 0), "rows_flushed": counts.get("samples_flushed", 0),
-                "pending_rows": self.store.pending_rows, "missed_slots": self.missed_slots,
-                "errors": errors, "last_error": last_error, "exchanges": exchanges}
+        return {
+            "version": 1,
+            "collector_id": "usdt",
+            "market": "KRW-USDT",
+            "state": self.state,
+            "price_unit": "KRW",
+            "quantity_unit": "USDT",
+            "sample_interval_ms": SAMPLE_INTERVAL_MS,
+            "max_quote_age_ms": self.max_quote_age_ms,
+            "heartbeat_ms": now_ms,
+            "started_at_ms": self.started_at_ms,
+            "uptime_seconds": round(max(0, self.monotonic() - self.started_monotonic), 3),
+            "data_root": str(self.store.data_root),
+            "state_dir": str(self.store.state_dir),
+            "last_sample_ms": self.last_sample_ms,
+            "last_flush_ms": self.last_flush_ms,
+            "rows_committed": counts.get("samples_committed", 0),
+            "rows_flushed": counts.get("samples_flushed", 0),
+            "pending_rows": self.store.pending_rows,
+            "missed_slots": self.missed_slots,
+            "errors": errors,
+            "last_error": last_error,
+            "exchanges": exchanges,
+        }
 
     def write_status(self):
         write_status_file(self.store.state_dir / "status.json", self.status())
@@ -295,7 +376,13 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "status":
         try:
-            print(json.dumps(json.loads((args.state_dir / "status.json").read_text(encoding="utf-8")), ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    json.loads((args.state_dir / "status.json").read_text(encoding="utf-8")),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             return 0
         except FileNotFoundError:
             print("Collector status is not available yet.", file=sys.stderr)

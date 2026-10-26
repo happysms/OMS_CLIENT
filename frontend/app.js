@@ -1,3 +1,3 @@
-import {boot} from './shell/bootstrap.js';
+import { boot } from './shell/bootstrap.js';
 
 boot();

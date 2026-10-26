@@ -1,4 +1,5 @@
 """Shared price selection from native top-of-book/depth snapshots."""
+
 from __future__ import annotations
 
 import math
@@ -14,7 +15,9 @@ def normalize_price_options(leg: dict) -> dict:
         raise DataError("가격 소스 옵션을 확인해 주세요.")
     basis = leg.get("price_basis", "mid")
     if not isinstance(basis, str) or basis not in PRICE_BASES:
-        raise DataError("가격 기준은 중간가·매수호가·매도호가·매수 VWAP·매도 VWAP 중에서 선택해 주세요.")
+        raise DataError(
+            "가격 기준은 중간가·매수호가·매도호가·매수 VWAP·매도 VWAP 중에서 선택해 주세요."
+        )
     level = integer(leg.get("book_level", 1), "호가 단계", 1, MAX_BOOK_DEPTH)
     if basis == "mid" and level != 1:
         raise DataError("중간가는 매수·매도 1호가를 기준으로 계산합니다.")
@@ -57,9 +60,16 @@ def select_quote_price(quote: dict, options: dict) -> dict:
     multipliers and historical quote-notional conversion belong to adapters.
     """
     options = normalize_price_options(options)
-    basis, level, target = (options[name] for name in ("price_basis", "book_level", "liquidity_amount"))
-    result = {"value": None, "liquidity_available_notional": None,
-              "liquidity_filled_quantity": None, "liquidity_levels_used": None, "reason": None}
+    basis, level, target = (
+        options[name] for name in ("price_basis", "book_level", "liquidity_amount")
+    )
+    result = {
+        "value": None,
+        "liquidity_available_notional": None,
+        "liquidity_filled_quantity": None,
+        "liquidity_levels_used": None,
+        "reason": None,
+    }
     bids, asks = _levels(quote, "bid"), _levels(quote, "ask")
     try:
         bid, ask = _number(bids[0][0]), _number(asks[0][0])
@@ -81,13 +91,17 @@ def select_quote_price(quote: dict, options: dict) -> dict:
         except (IndexError, TypeError):
             depth_error = "missing_depth"
             break
-        if basis in {"buy_vwap", "sell_vwap"} and ((price is None and size is None) or (price == 0 and size == 0)):
+        if basis in {"buy_vwap", "sell_vwap"} and (
+            (price is None and size is None) or (price == 0 and size == 0)
+        ):
             depth_error = "missing_depth"
             break
         if price is None or price <= 0:
             depth_error = "invalid_depth"
             break
-        if previous is not None and ((side == "ask" and price <= previous) or (side == "bid" and price >= previous)):
+        if previous is not None and (
+            (side == "ask" and price <= previous) or (side == "bid" and price >= previous)
+        ):
             depth_error = "unordered_depth"
             break
         if basis in {"buy_vwap", "sell_vwap"}:
@@ -119,10 +133,16 @@ def select_quote_price(quote: dict, options: dict) -> dict:
         filled_quantity = math.fsum(size for _, size in fills)
     except OverflowError:
         return {**result, "reason": "invalid_quantity"}
-    result.update(liquidity_available_notional=available, liquidity_filled_quantity=filled_quantity,
-                  liquidity_levels_used=used)
+    result.update(
+        liquidity_available_notional=available,
+        liquidity_filled_quantity=filled_quantity,
+        liquidity_levels_used=used,
+    )
     if available < target or not filled_quantity or not math.isfinite(filled_quantity):
         return {**result, "reason": depth_error or "insufficient_liquidity"}
     value = math.fsum(amount for amount, _ in fills) / filled_quantity
-    return {**result, "value": value if math.isfinite(value) else None,
-            "reason": None if math.isfinite(value) else "invalid_quantity"}
+    return {
+        **result,
+        "value": value if math.isfinite(value) else None,
+        "reason": None if math.isfinite(value) else "invalid_quantity",
+    }

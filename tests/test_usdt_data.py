@@ -1,4 +1,5 @@
 """Dedicated USDT snapshots expose real quantities without retyping legacy data."""
+
 import csv
 import json
 import os
@@ -21,10 +22,13 @@ class UsdtDataTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.market = self.root / "collector"
         self.legacy = self.root / "legacy"
-        environment = patch.dict(os.environ, {
-            "DASHBOARD_DATA_ROOT": str(self.legacy),
-            "DASHBOARD_COLLECTOR_DATA_ROOT": str(self.market),
-        })
+        environment = patch.dict(
+            os.environ,
+            {
+                "DASHBOARD_DATA_ROOT": str(self.legacy),
+                "DASHBOARD_COLLECTOR_DATA_ROOT": str(self.market),
+            },
+        )
         environment.start()
         self.addCleanup(environment.stop)
         self.origin = int(pd.Timestamp("2026-10-25T00:00:00Z").timestamp() * 1000)
@@ -36,31 +40,53 @@ class UsdtDataTests(unittest.TestCase):
             "sampledAt": [self.origin + 25, self.origin + 1025, self.origin + 2025],
             "serverTime": [self.origin - 100, self.origin + 900, self.origin + 1900],
             "receivedTime": [self.origin + 10, self.origin + 1010, self.origin + 2010],
-            "b1_p": [1342, 1343, 1344], "a1_p": [1343, 1344, 1345],
-            "bid_size": [0.125, 1.5, 23.456789], "ask_size": [40.25, 2.5, 0],
+            "b1_p": [1342, 1343, 1344],
+            "a1_p": [1343, 1344, 1345],
+            "bid_size": [0.125, 1.5, 23.456789],
+            "ask_size": [40.25, 2.5, 0],
             "quote_age_ms": [125, 125, 125],
-            "price_unit": ["KRW"] * 3, "quantity_unit": ["USDT"] * 3,
-            "sample_interval_ms": [1000] * 3, "market": ["KRW-USDT"] * 3,
+            "price_unit": ["KRW"] * 3,
+            "quantity_unit": ["USDT"] * 3,
+            "sample_interval_ms": [1000] * 3,
+            "market": ["KRW-USDT"] * 3,
         }
         data.update(changes)
         return pd.DataFrame(data)
 
     def write(self, exchange="bithumb", ticker="USDT", frame=None, *, legacy=False):
-        path = (self.legacy if legacy else self.market) / exchange / ("ob" if legacy else "ob_1s") / ticker / "2026/10/25/00.parquet"
+        path = (
+            (self.legacy if legacy else self.market)
+            / exchange
+            / ("ob" if legacy else "ob_1s")
+            / ticker
+            / "2026/10/25/00.parquet"
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         (self.rows() if frame is None else frame).to_parquet(path, index=False)
         return path
 
     def query(self, **changes):
-        config = {"legs": [{"id": "A", "exchange": "bithumb", "ticker": "usdt"}],
-                  "formula": "A", "start": "2026-10-25T00:00:00Z", "end": "2026-10-25T00:00:03Z",
-                  "interval": "1s", "price_mode": "last", "ewm_span": 1}
+        config = {
+            "legs": [{"id": "A", "exchange": "bithumb", "ticker": "usdt"}],
+            "formula": "A",
+            "start": "2026-10-25T00:00:00Z",
+            "end": "2026-10-25T00:00:03Z",
+            "interval": "1s",
+            "price_mode": "last",
+            "ewm_span": 1,
+        }
         config.update(changes)
         return analyze(config)
 
     def export(self, mode="raw", **changes):
-        config = {"exchange": "bithumb", "ticker": "usdt", "start": "2026-10-25T00:00:00Z",
-                  "end": "2026-10-25T00:00:03Z", "mode": mode, "interval": "10s"}
+        config = {
+            "exchange": "bithumb",
+            "ticker": "usdt",
+            "start": "2026-10-25T00:00:00Z",
+            "end": "2026-10-25T00:00:03Z",
+            "mode": mode,
+            "interval": "10s",
+        }
         config.update(changes)
         target = self.root / "output.csv"
         result = csv_export.export_csv(config, target)
@@ -76,7 +102,9 @@ class UsdtDataTests(unittest.TestCase):
         self.assertEqual(parquet.list_symbols(), {"bithumb": ["USDT"], "upbit": ["USDT"]})
         self.assertEqual(catalog()["exchanges"], parquet.list_symbols())
         self.assertEqual(parquet.validate_symbol("bithumb", "usdt"), ("bithumb", "USDT"))
-        self.assertEqual(parquet.bounds("bithumb", "usdt")["start"], "2026-10-25T09:00:00.025000+09:00")
+        self.assertEqual(
+            parquet.bounds("bithumb", "usdt")["start"], "2026-10-25T09:00:00.025000+09:00"
+        )
         self.assertEqual(parquet.bounds("upbit", "USDT")["end"], "2026-10-25T09:00:02.025000+09:00")
         result = self.query()
         leg = result["legs"][0]
@@ -95,7 +123,7 @@ class UsdtDataTests(unittest.TestCase):
         self.write(frame=frame)
         leg = self.query(interval="10s")["legs"][0]
         complete = (leg["bid"][0], leg["ask"][0], leg["bid_size"][0], leg["ask_size"][0])
-        self.assertIn(complete, {(1342, 1343, .125, 40.25), (1344, 1345, 23.456789, 0)})
+        self.assertIn(complete, {(1342, 1343, 0.125, 40.25), (1344, 1345, 23.456789, 0)})
         self.assertEqual(leg["quote_times"], [self.origin + 1500])
 
     def test_mean_averages_only_the_same_valid_price_and_size_rows(self):
@@ -109,9 +137,14 @@ class UsdtDataTests(unittest.TestCase):
         self.assertEqual(result["meta"]["rows_read"], 2)
         self.assertIn("수량", " ".join(result["meta"]["warnings"]))
         self.assertNotIn("quote_times", leg)
-        for field, value in [("bid_size", -1), ("ask_size", float("inf")),
-                             ("quantity_unit", "KRW"), ("price_unit", "USDT"),
-                             ("sample_interval_ms", 2000), ("market", "USDT-BTC")]:
+        for field, value in [
+            ("bid_size", -1),
+            ("ask_size", float("inf")),
+            ("quantity_unit", "KRW"),
+            ("price_unit", "USDT"),
+            ("sample_interval_ms", 2000),
+            ("market", "USDT-BTC"),
+        ]:
             with self.subTest(field=field):
                 self.write(frame=self.rows(**{field: [value] * 3}))
                 with self.assertRaises(DataError):
@@ -128,24 +161,39 @@ class UsdtDataTests(unittest.TestCase):
     def test_sampling_and_full_result_keep_quantities_aligned(self):
         self.write()
         result = self.query(max_points=2, include_full_data=True)
-        self.assertEqual(result["legs"][0]["bid_size"], [.125, 23.456789])
-        self.assertEqual(result["full"]["legs"][0]["bid_size"], [.125, 1.5, 23.456789])
+        self.assertEqual(result["legs"][0]["bid_size"], [0.125, 23.456789])
+        self.assertEqual(result["full"]["legs"][0]["bid_size"], [0.125, 1.5, 23.456789])
         self.assertEqual(result["full"]["legs"][0]["ask_size"], [40.25, 2.5, 0])
 
     def test_both_exchanges_can_be_combined_for_analysis(self):
         self.write()
         self.write("upbit", frame=self.rows(b1_p=[1341] * 3, a1_p=[1342] * 3))
-        result = self.query(legs=[{"id": "A", "exchange": "bithumb", "ticker": "USDT"},
-                                  {"id": "B", "exchange": "upbit", "ticker": "USDT"}], formula="A - B")
+        result = self.query(
+            legs=[
+                {"id": "A", "exchange": "bithumb", "ticker": "USDT"},
+                {"id": "B", "exchange": "upbit", "ticker": "USDT"},
+            ],
+            formula="A - B",
+        )
         self.assertEqual(result["result"], [1, 2, 3])
         self.assertEqual([leg["quantity_unit"] for leg in result["legs"]], ["USDT", "USDT"])
 
     def test_raw_csv_keeps_all_clocks_prices_and_true_fractional_quantities(self):
         self.write()
         result, rows = self.export()
-        for column in ["sampleTime", "sampledAt", "desktopTime", "serverTime", "receivedTime", "quote_age_ms", "bid_size", "ask_size", "quantity_unit"]:
+        for column in [
+            "sampleTime",
+            "sampledAt",
+            "desktopTime",
+            "serverTime",
+            "receivedTime",
+            "quote_age_ms",
+            "bid_size",
+            "ask_size",
+            "quantity_unit",
+        ]:
             self.assertIn(column, result["columns"])
-        self.assertEqual(float(rows[0]["bid_size"]), .125)
+        self.assertEqual(float(rows[0]["bid_size"]), 0.125)
         self.assertEqual(int(rows[0]["desktopTime"]), self.origin + 25)
         self.assertEqual(int(rows[0]["sampleTime"]), self.origin)
         self.assertEqual(rows[0]["quantity_unit"], "USDT")
@@ -156,7 +204,7 @@ class UsdtDataTests(unittest.TestCase):
         result, rows = self.export("aggregated")
         self.assertEqual(result["rows"], 1)
         self.assertEqual(float(rows[0]["bid"]), 1343)
-        self.assertAlmostEqual(float(rows[0]["bid_size"]), (.125 + 1.5 + 23.456789) / 3)
+        self.assertAlmostEqual(float(rows[0]["bid_size"]), (0.125 + 1.5 + 23.456789) / 3)
         self.assertEqual(rows[0]["quantity_unit"], "USDT")
         self.assertEqual(rows[0]["sample_interval_ms"], "1000")
         self.assertEqual(rows[0]["source_kind"], "orderbook_1s")
@@ -196,15 +244,32 @@ class UsdtDataTests(unittest.TestCase):
         self.assertNotIn("upbit", parquet.list_symbols())
         path.unlink()
         path.symlink_to(outside / "00.parquet")
-        self.assertEqual(parquet.files_for_range("bithumb", "USDT", pd.Timestamp("2026-10-25T00:00:00Z"), pd.Timestamp("2026-10-25T00:01:00Z")), [])
+        self.assertEqual(
+            parquet.files_for_range(
+                "bithumb",
+                "USDT",
+                pd.Timestamp("2026-10-25T00:00:00Z"),
+                pd.Timestamp("2026-10-25T00:01:00Z"),
+            ),
+            [],
+        )
         with self.assertRaises(DataError):
             parquet.bounds("bithumb", "USDT")
 
     def test_unknown_or_traversing_source_is_rejected(self):
         self.write()
-        for exchange, ticker in [("../bithumb", "USDT"), ("bithumb", "../../USDT"), ("bithumb", "NOPE")]:
+        for exchange, ticker in [
+            ("../bithumb", "USDT"),
+            ("bithumb", "../../USDT"),
+            ("bithumb", "NOPE"),
+        ]:
             with self.subTest(exchange=exchange, ticker=ticker), self.assertRaises(DataError):
-                parquet.files_for_range(exchange, ticker, pd.Timestamp("2026-10-25T00:00:00Z"), pd.Timestamp("2026-10-25T00:01:00Z"))
+                parquet.files_for_range(
+                    exchange,
+                    ticker,
+                    pd.Timestamp("2026-10-25T00:00:00Z"),
+                    pd.Timestamp("2026-10-25T00:01:00Z"),
+                )
 
 
 if __name__ == "__main__":

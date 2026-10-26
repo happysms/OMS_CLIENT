@@ -1,4 +1,5 @@
 """Durable spool and atomic hourly Parquet publication for 1-second books."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -15,26 +16,45 @@ import pyarrow.parquet as pq
 from oms_client.paths import ROOT
 
 EXCHANGES = ("bithumb", "upbit")
-DEPTH_COLUMNS = [name for level in range(2, 6)
-                 for name in (f'b{level}_p', f'a{level}_p', f'bid_size_{level}', f'ask_size_{level}')]
-SAMPLE_SCHEMA = pa.schema([
-    ("sampleTime", pa.int64()), ("desktopTime", pa.int64()),
-    ("serverTime", pa.int64()), ("receivedTime", pa.int64()), ("sampledAt", pa.int64()),
-    ("b1_p", pa.float64()), ("a1_p", pa.float64()),
-    ("bid_size", pa.float64()), ("ask_size", pa.float64()), ("quote_age_ms", pa.int64()),
-    ("price_unit", pa.string()), ("quantity_unit", pa.string()),
-    ("sample_interval_ms", pa.int64()), ("market", pa.string()),
-    *[(name, pa.float64()) for name in DEPTH_COLUMNS],
-])
+DEPTH_COLUMNS = [
+    name
+    for level in range(2, 6)
+    for name in (f'b{level}_p', f'a{level}_p', f'bid_size_{level}', f'ask_size_{level}')
+]
+SAMPLE_SCHEMA = pa.schema(
+    [
+        ("sampleTime", pa.int64()),
+        ("desktopTime", pa.int64()),
+        ("serverTime", pa.int64()),
+        ("receivedTime", pa.int64()),
+        ("sampledAt", pa.int64()),
+        ("b1_p", pa.float64()),
+        ("a1_p", pa.float64()),
+        ("bid_size", pa.float64()),
+        ("ask_size", pa.float64()),
+        ("quote_age_ms", pa.int64()),
+        ("price_unit", pa.string()),
+        ("quantity_unit", pa.string()),
+        ("sample_interval_ms", pa.int64()),
+        ("market", pa.string()),
+        *[(name, pa.float64()) for name in DEPTH_COLUMNS],
+    ]
+)
 COLUMNS = SAMPLE_SCHEMA.names
 
 
 def default_data_root() -> Path:
-    return Path(os.environ.get("DASHBOARD_COLLECTOR_DATA_ROOT", ROOT / "data" / "market")).expanduser().resolve()
+    return (
+        Path(os.environ.get("DASHBOARD_COLLECTOR_DATA_ROOT", ROOT / "data" / "market"))
+        .expanduser()
+        .resolve()
+    )
 
 
 def default_state_dir() -> Path:
-    state_root = Path(os.environ.get("DASHBOARD_STATE_DIR") or ROOT / ".state").expanduser().resolve()
+    state_root = (
+        Path(os.environ.get("DASHBOARD_STATE_DIR") or ROOT / ".state").expanduser().resolve()
+    )
     return state_root / "collectors" / "usdt"
 
 
@@ -96,34 +116,58 @@ class OrderbookSampleStore:
             fcntl.flock(self._lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             self._lock_file.close()
-            raise CollectorAlreadyRunning("A USDT collector already writes this data root") from None
+            raise CollectorAlreadyRunning(
+                "A USDT collector already writes this data root"
+            ) from None
         try:
             self._state_lock_file = (self.state_dir / ".usdt-collector.lock").open("a+")
             try:
                 fcntl.flock(self._state_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise CollectorAlreadyRunning("A USDT collector already uses this state directory") from None
+                raise CollectorAlreadyRunning(
+                    "A USDT collector already uses this state directory"
+                ) from None
             self.connection = sqlite3.connect(self.state_dir / "samples.sqlite3", timeout=10)
             self.connection.row_factory = sqlite3.Row
             self.connection.execute("PRAGMA journal_mode=WAL")
             self.connection.execute("PRAGMA synchronous=FULL")
             definitions = []
             for field in SAMPLE_SCHEMA:
-                sql_type = "TEXT" if pa.types.is_string(field.type) else "REAL" if pa.types.is_floating(field.type) else "INTEGER"
+                sql_type = (
+                    "TEXT"
+                    if pa.types.is_string(field.type)
+                    else "REAL" if pa.types.is_floating(field.type) else "INTEGER"
+                )
                 nullable = '' if field.name in DEPTH_COLUMNS else ' NOT NULL'
                 definitions.append(f'"{field.name}" {sql_type}{nullable}')
-            self.connection.execute("CREATE TABLE IF NOT EXISTS samples (exchange TEXT NOT NULL, " +
-                                    ", ".join(definitions) + ", PRIMARY KEY(exchange, sampleTime))")
-            existing_columns = {row[1] for row in self.connection.execute('PRAGMA table_info(samples)')}
+            self.connection.execute(
+                "CREATE TABLE IF NOT EXISTS samples (exchange TEXT NOT NULL, "
+                + ", ".join(definitions)
+                + ", PRIMARY KEY(exchange, sampleTime))"
+            )
+            existing_columns = {
+                row[1] for row in self.connection.execute('PRAGMA table_info(samples)')
+            }
             for name in DEPTH_COLUMNS:
                 if name not in existing_columns:
                     self.connection.execute(f'ALTER TABLE samples ADD COLUMN "{name}" REAL')
-            self.connection.execute("CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL)")
-            self.connection.execute("CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
-            binding = self.connection.execute("SELECT value FROM settings WHERE name='data_root'").fetchone()
+            self.connection.execute(
+                "CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL)"
+            )
+            self.connection.execute(
+                "CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+            binding = self.connection.execute(
+                "SELECT value FROM settings WHERE name='data_root'"
+            ).fetchone()
             if binding is not None and binding[0] != str(self.data_root):
-                raise ValueError("This state directory belongs to another data root; use a separate --state-dir")
-            self.connection.execute("INSERT OR IGNORE INTO settings(name,value) VALUES ('data_root',?)", (str(self.data_root),))
+                raise ValueError(
+                    "This state directory belongs to another data root; use a separate --state-dir"
+                )
+            self.connection.execute(
+                "INSERT OR IGNORE INTO settings(name,value) VALUES ('data_root',?)",
+                (str(self.data_root),),
+            )
             self.connection.commit()
             fsync_directory(self.state_dir)
         except Exception:
@@ -138,8 +182,11 @@ class OrderbookSampleStore:
         return dict(self.connection.execute("SELECT name, value FROM counters"))
 
     def _increment(self, name, value):
-        self.connection.execute("INSERT INTO counters(name, value) VALUES (?, ?) "
-                                "ON CONFLICT(name) DO UPDATE SET value=value+excluded.value", (name, value))
+        self.connection.execute(
+            "INSERT INTO counters(name, value) VALUES (?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET value=value+excluded.value",
+            (name, value),
+        )
 
     def append(self, samples: list[dict]) -> int:
         if not samples:
@@ -149,13 +196,21 @@ class OrderbookSampleStore:
                 raise ValueError("Unsupported exchange")
         columns = ["exchange", *COLUMNS]
         names = ",".join(f'"{name}"' for name in columns)
-        values = [tuple(sample.get(name) if name in DEPTH_COLUMNS else sample[name] for name in columns) for sample in samples]
+        values = [
+            tuple(sample.get(name) if name in DEPTH_COLUMNS else sample[name] for name in columns)
+            for sample in samples
+        ]
         before = self.connection.total_changes
         try:
-            self.connection.executemany(f"INSERT OR IGNORE INTO samples ({names}) VALUES ({','.join('?' for _ in columns)})", values)
+            self.connection.executemany(
+                f"INSERT OR IGNORE INTO samples ({names}) VALUES ({','.join('?' for _ in columns)})",
+                values,
+            )
             inserted = self.connection.total_changes - before
             if self.pending_rows > self.max_pending:
-                raise SpoolFull(f"Pending samples exceeded {self.max_pending} rows; existing samples are preserved")
+                raise SpoolFull(
+                    f"Pending samples exceeded {self.max_pending} rows; existing samples are preserved"
+                )
             self._increment("samples_committed", inserted)
             self.connection.commit()
             return inserted
@@ -164,19 +219,30 @@ class OrderbookSampleStore:
             raise
 
     def pending(self) -> list[dict]:
-        return [dict(row) for row in self.connection.execute("SELECT * FROM samples ORDER BY sampleTime, exchange")]
+        return [
+            dict(row)
+            for row in self.connection.execute(
+                "SELECT * FROM samples ORDER BY sampleTime, exchange"
+            )
+        ]
 
     def _publish(self, path: Path, samples: list[dict]) -> None:
         by_slot = {}
         if path.exists():
             existing = pq.read_table(path, schema=SAMPLE_SCHEMA).to_pylist()
             by_slot.update((row["sampleTime"], row) for row in existing)
-        by_slot.update((row["sampleTime"], {name: row[name] for name in COLUMNS}) for row in samples)
-        table = pa.Table.from_pylist([by_slot[key] for key in sorted(by_slot)], schema=SAMPLE_SCHEMA)
+        by_slot.update(
+            (row["sampleTime"], {name: row[name] for name in COLUMNS}) for row in samples
+        )
+        table = pa.Table.from_pylist(
+            [by_slot[key] for key in sorted(by_slot)], schema=SAMPLE_SCHEMA
+        )
         durable_mkdir(path.parent)
         temporary = None
         try:
-            descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+            descriptor, temporary = tempfile.mkstemp(
+                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+            )
             os.close(descriptor)
             pq.write_table(table, temporary, compression="zstd")
             with open(temporary, "rb") as stream:
@@ -190,15 +256,19 @@ class OrderbookSampleStore:
     def flush(self) -> int:
         groups = defaultdict(list)
         for sample in self.pending():
-            groups[parquet_path(self.data_root, sample["exchange"], sample["desktopTime"])].append(sample)
+            groups[parquet_path(self.data_root, sample["exchange"], sample["desktopTime"])].append(
+                sample
+            )
         flushed = 0
         for path, samples in sorted(groups.items()):
             self._publish(path, samples)
             # A crash before this commit leaves rows in the spool. Replaying
             # them replaces the same sampleTime, never appends duplicates.
             with self.connection:
-                self.connection.executemany("DELETE FROM samples WHERE exchange=? AND sampleTime=?",
-                                            [(row["exchange"], row["sampleTime"]) for row in samples])
+                self.connection.executemany(
+                    "DELETE FROM samples WHERE exchange=? AND sampleTime=?",
+                    [(row["exchange"], row["sampleTime"]) for row in samples],
+                )
                 self._increment("samples_flushed", len(samples))
             flushed += len(samples)
         return flushed

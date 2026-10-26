@@ -4,6 +4,7 @@ Inputs are one coherent observed account/order snapshot and an external-only
 book. An executor must reserve and register intents atomically before the next
 evaluation. This module does not simulate fills or connect to the paper API.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,9 +27,14 @@ def _amount(value, name, *, positive=False, signed=False):
         number = Decimal(value)
     except (InvalidOperation, ValueError):
         raise ValueError(f"{name}: invalid decimal") from None
-    if (not number.is_finite() or number.copy_abs() > Decimal('1e18')
-            or len(number.as_tuple().digits) > 28 or not -18 <= number.as_tuple().exponent <= 18
-            or (not signed and number < 0) or (positive and number <= 0)):
+    if (
+        not number.is_finite()
+        or number.copy_abs() > Decimal('1e18')
+        or len(number.as_tuple().digits) > 28
+        or not -18 <= number.as_tuple().exponent <= 18
+        or (not signed and number < 0)
+        or (positive and number <= 0)
+    ):
         raise ValueError(f"{name}: invalid amount or precision")
     return number
 
@@ -61,22 +67,45 @@ class StartInputs:
 
     @classmethod
     def from_payload(cls, payload):
-        if not isinstance(payload, dict) or set(payload) - {'ticker', 'initial_krw', 'initial_coin'}:
+        if not isinstance(payload, dict) or set(payload) - {
+            'ticker',
+            'initial_krw',
+            'initial_coin',
+        }:
             raise ValueError('Enter ticker, initial_krw and initial_coin')
-        return cls(payload.get('ticker'), payload.get('initial_krw', '1000000'),
-                   payload.get('initial_coin', '0'))
+        return cls(
+            payload.get('ticker'),
+            payload.get('initial_krw', '1000000'),
+            payload.get('initial_coin', '0'),
+        )
 
     def account_seed(self, name):
         """Build the proposed virtual-account creation payload, without saving it."""
         _label(name, 'name')
-        costs = ([{'currency': self.ticker, 'avg_cost': None, 'cost_policy': 'start_mark'}]
-                 if self.initial_coin else [])
-        return {'schema_version': 1, 'name': name, 'venue_configs': [{
-            'venue': 'bithumb', 'trading_enabled': True, 'account_mode': 'spot_cash',
-            'initial_state': {'balances': [
-                {'currency': 'KRW', 'total': str(self.initial_krw)},
-                {'currency': self.ticker, 'total': str(self.initial_coin)}],
-                'spot_cost_basis': costs, 'swap_positions': []}}]}
+        costs = (
+            [{'currency': self.ticker, 'avg_cost': None, 'cost_policy': 'start_mark'}]
+            if self.initial_coin
+            else []
+        )
+        return {
+            'schema_version': 1,
+            'name': name,
+            'venue_configs': [
+                {
+                    'venue': 'bithumb',
+                    'trading_enabled': True,
+                    'account_mode': 'spot_cash',
+                    'initial_state': {
+                        'balances': [
+                            {'currency': 'KRW', 'total': str(self.initial_krw)},
+                            {'currency': self.ticker, 'total': str(self.initial_coin)},
+                        ],
+                        'spot_cost_basis': costs,
+                        'swap_positions': [],
+                    },
+                }
+            ],
+        }
 
 
 @dataclass(frozen=True)
@@ -153,7 +182,11 @@ class WorkingOrder:
     def __post_init__(self):
         _label(self.order_id, 'order_id')
         _label(self.strategy_id, 'strategy_id')
-        if self.side not in {'buy', 'sell'} or self.phase not in {'live', 'in_flight', 'cancel_pending'}:
+        if self.side not in {'buy', 'sell'} or self.phase not in {
+            'live',
+            'in_flight',
+            'cancel_pending',
+        }:
             raise ValueError('invalid order side or phase')
         for name in ('price', 'remaining_qty'):
             object.__setattr__(self, name, _amount(getattr(self, name), name, positive=True))
@@ -182,22 +215,39 @@ class SimpleMM:
     def __init__(self, config: MMConfig, strategy_id='bithumb_simple_mm', theory_mode='none'):
         self.config = config
         self.strategy_id = _label(strategy_id, 'strategy_id')
-        if theory_mode not in {'none','midprice'}: raise ValueError('지원하지 않는 메이커 이론가 방식입니다.')
+        if theory_mode not in {'none', 'midprice'}:
+            raise ValueError('지원하지 않는 메이커 이론가 방식입니다.')
         self.theory_mode = theory_mode
 
     def theoretical_quote(self, quote: QuoteView, *, now_ms: int):
         # This is a strategy output, separate from order generation and account valuation.
         from .theory import TheoryOutput
-        if (self.theory_mode=='none' or quote.ticker!=self.config.ticker or quote.includes_own_orders
-                or quote.bid<=0 or quote.ask<=quote.bid
-                or not 0<=now_ms-quote.desktop_time_ms<=self.config.max_quote_age_ms):
-            return None
-        return TheoryOutput((quote.bid+quote.ask)/2,quote.desktop_time_ms,
-                            quote.desktop_time_ms+self.config.max_quote_age_ms,
-                            'strategy_best_bid_ask_midprice','(best_bid + best_ask) / 2')
 
-    def plan(self, quote: QuoteView, account: AccountView,
-             orders: tuple[WorkingOrder, ...], *, now_ms: int) -> MMPlan:
+        if (
+            self.theory_mode == 'none'
+            or quote.ticker != self.config.ticker
+            or quote.includes_own_orders
+            or quote.bid <= 0
+            or quote.ask <= quote.bid
+            or not 0 <= now_ms - quote.desktop_time_ms <= self.config.max_quote_age_ms
+        ):
+            return None
+        return TheoryOutput(
+            (quote.bid + quote.ask) / 2,
+            quote.desktop_time_ms,
+            quote.desktop_time_ms + self.config.max_quote_age_ms,
+            'strategy_best_bid_ask_midprice',
+            '(best_bid + best_ask) / 2',
+        )
+
+    def plan(
+        self,
+        quote: QuoteView,
+        account: AccountView,
+        orders: tuple[WorkingOrder, ...],
+        *,
+        now_ms: int,
+    ) -> MMPlan:
         """Orders must include ALL owners' working orders in this account/symbol.
 
         free balances already exclude all venue locks and unconfirmed local
@@ -213,10 +263,15 @@ class SimpleMM:
         own = [order for order in orders if order.strategy_id == self.strategy_id]
         if not account.synchronized or not account.execution_known:
             return MMPlan(reasons=('account_not_ready',))
-        if (quote.bid <= 0 or quote.ask <= quote.bid
-                or not 0 <= now_ms - quote.desktop_time_ms <= self.config.max_quote_age_ms):
-            return MMPlan(cancel_order_ids=tuple(sorted(o.order_id for o in own if o.phase == 'live')),
-                          reasons=('book_unavailable_cancel_live',))
+        if (
+            quote.bid <= 0
+            or quote.ask <= quote.bid
+            or not 0 <= now_ms - quote.desktop_time_ms <= self.config.max_quote_age_ms
+        ):
+            return MMPlan(
+                cancel_order_ids=tuple(sorted(o.order_id for o in own if o.phase == 'live')),
+                reasons=('book_unavailable_cancel_live',),
+            )
         keep, cancel, new, reasons = [], [], [], []
         with localcontext() as context:
             context.prec = 160
@@ -231,20 +286,43 @@ class SimpleMM:
                 if any((price >= o.price if side == 'buy' else price <= o.price) for o in opposite):
                     reasons.append(f'{side}_would_cross_own_account_order')
                     continue
-                quantity, reserved = (self._buy_size(account.free_krw, price) if side == 'buy'
-                                      else (self._floor_qty(account.free_coin), ZERO))
+                quantity, reserved = (
+                    self._buy_size(account.free_krw, price)
+                    if side == 'buy'
+                    else (self._floor_qty(account.free_coin), ZERO)
+                )
                 if quantity < self.config.min_qty or quantity * price < self.config.min_notional:
                     reasons.append(f'{side}_below_order_minimum')
                     continue
-                key = [self.strategy_id, account.account_id, account.version, quote.version,
-                       side, str(price), str(quantity), str(reserved)]
-                digest = hashlib.sha256(json.dumps(key, separators=(',', ':')).encode()).hexdigest()[:28]
-                new.append(LimitIntent('MM' + digest, side, price, quantity, reserved,
-                                       quantity if side == 'sell' else ZERO))
+                key = [
+                    self.strategy_id,
+                    account.account_id,
+                    account.version,
+                    quote.version,
+                    side,
+                    str(price),
+                    str(quantity),
+                    str(reserved),
+                ]
+                digest = hashlib.sha256(
+                    json.dumps(key, separators=(',', ':')).encode()
+                ).hexdigest()[:28]
+                new.append(
+                    LimitIntent(
+                        'MM' + digest,
+                        side,
+                        price,
+                        quantity,
+                        reserved,
+                        quantity if side == 'sell' else ZERO,
+                    )
+                )
         return MMPlan(tuple(sorted(keep)), tuple(sorted(cancel)), tuple(new), tuple(reasons))
 
     def _floor_qty(self, quantity):
-        return (Fraction(quantity) // Fraction(self.config.quantity_step)) * self.config.quantity_step
+        return (
+            Fraction(quantity) // Fraction(self.config.quantity_step)
+        ) * self.config.quantity_step
 
     def _buy_size(self, cash, price):
         # Exact rational comparisons avoid overspending at lot and fee boundaries.

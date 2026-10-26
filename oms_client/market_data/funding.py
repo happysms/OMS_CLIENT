@@ -4,6 +4,7 @@ The collectors store ``fundingRate`` as a ratio and ``nextFundingTime`` as
 seconds remaining at the source observation. Neither field is an account's
 settled cash payment. Public series expose both the original ratio and percent.
 """
+
 from __future__ import annotations
 
 import duckdb
@@ -22,12 +23,19 @@ def list_symbols() -> dict[str, list[str]]:
     found = {}
     for exchange in sorted(root.iterdir()):
         directory = exchange / "funding"
-        if (not IDENTIFIER.fullmatch(exchange.name) or not directory.is_dir()
-                or not parquet.within_root(directory, root)):
+        if (
+            not IDENTIFIER.fullmatch(exchange.name)
+            or not directory.is_dir()
+            or not parquet.within_root(directory, root)
+        ):
             continue
-        symbols = sorted(path.name for path in directory.iterdir()
-                         if path.is_dir() and IDENTIFIER.fullmatch(path.name)
-                         and parquet.within_root(path, directory))
+        symbols = sorted(
+            path.name
+            for path in directory.iterdir()
+            if path.is_dir()
+            and IDENTIFIER.fullmatch(path.name)
+            and parquet.within_root(path, directory)
+        )
         if symbols:
             found[exchange.name] = symbols
     return found
@@ -70,25 +78,38 @@ def bounds(exchange: str, ticker: str) -> dict:
         with parquet.query_deadline(con):
             for path in files:
                 with materialize_parquet([str(path)]) as readable:
-                    start = con.execute("SELECT min(desktopTime) FROM read_parquet(?)", [readable[0]]).fetchone()[0]
+                    start = con.execute(
+                        "SELECT min(desktopTime) FROM read_parquet(?)", [readable[0]]
+                    ).fetchone()[0]
                 if start is not None:
                     break
             for path in reversed(files):
                 with materialize_parquet([str(path)]) as readable:
-                    end = con.execute("SELECT max(desktopTime) FROM read_parquet(?)", [readable[0]]).fetchone()[0]
+                    end = con.execute(
+                        "SELECT max(desktopTime) FROM read_parquet(?)", [readable[0]]
+                    ).fetchone()[0]
                 if end is not None:
                     break
     except duckdb.Error as exc:
-        raise DataError("펀딩비율 파일의 시간 범위를 읽지 못했습니다. parquet 파일을 확인해 주세요.") from exc
+        raise DataError(
+            "펀딩비율 파일의 시간 범위를 읽지 못했습니다. parquet 파일을 확인해 주세요."
+        ) from exc
     finally:
         con.close()
     if start is None or end is None:
         raise DataError(f"{exchange} {ticker}의 펀딩비율 파일이 비어 있습니다.")
-    return {"start": iso_timestamp(int(start)), "end": iso_timestamp(int(end)),
-            "exchange": exchange, "ticker": ticker, "data_type": "funding"}
+    return {
+        "start": iso_timestamp(int(start)),
+        "end": iso_timestamp(int(end)),
+        "exchange": exchange,
+        "ticker": ticker,
+        "data_type": "funding",
+    }
 
 
-def files_for_range(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timestamp) -> list[str]:
+def files_for_range(
+    exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timestamp
+) -> list[str]:
     exchange, ticker = validate_symbol(exchange, ticker)
     parent = parquet.data_root() / exchange / "funding" / ticker
     first, last = start.floor("h"), (end - pd.Timedelta(nanoseconds=1)).floor("h")
@@ -109,8 +130,15 @@ def files_for_range(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Tim
     return files
 
 
-def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timestamp,
-                 step: int, *, price_mode: str = "mean"):
+def read_buckets(
+    exchange: str,
+    ticker: str,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    step: int,
+    *,
+    price_mode: str = "mean",
+):
     """Read last observations or means, retaining last observation metadata.
 
     ``value`` is in percent; ``funding_rate`` preserves the source ratio.
@@ -129,16 +157,28 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
             # Metadata is optional for older/minimal snapshots. The rate and
             # desktopTime remain required; union_by_name tolerates optional
             # columns that exist in only some of the selected hours.
-            columns = {row[0] for row in con.execute(
-                "DESCRIBE SELECT * FROM read_parquet($paths, union_by_name=true)", {"paths": readable}).fetchall()}
-            server = 'try_cast("serverTime" AS BIGINT)' if "serverTime" in columns else "NULL::BIGINT"
-            remaining = ('CASE WHEN isfinite(try_cast("nextFundingTime" AS DOUBLE)) '
-                         'AND abs(try_cast("nextFundingTime" AS DOUBLE)) <= 2678400 '
-                         'THEN try_cast("nextFundingTime" AS DOUBLE) ELSE NULL END'
-                         if "nextFundingTime" in columns else "NULL::DOUBLE")
+            columns = {
+                row[0]
+                for row in con.execute(
+                    "DESCRIBE SELECT * FROM read_parquet($paths, union_by_name=true)",
+                    {"paths": readable},
+                ).fetchall()
+            }
+            server = (
+                'try_cast("serverTime" AS BIGINT)' if "serverTime" in columns else "NULL::BIGINT"
+            )
+            remaining = (
+                'CASE WHEN isfinite(try_cast("nextFundingTime" AS DOUBLE)) '
+                'AND abs(try_cast("nextFundingTime" AS DOUBLE)) <= 2678400 '
+                'THEN try_cast("nextFundingTime" AS DOUBLE) ELSE NULL END'
+                if "nextFundingTime" in columns
+                else "NULL::DOUBLE"
+            )
             rate = "observation.funding_rate" if price_mode == "last" else "mean_rate"
             delta = timestamp_delta_sql(columns, exchange, 'funding')
-            selected_delta = 'observation.timestamp_delta_ms' if price_mode == 'last' else 'mean_delta'
+            selected_delta = (
+                'observation.timestamp_delta_ms' if price_mode == 'last' else 'mean_delta'
+            )
             query = f"""
                 WITH buckets AS (
                     SELECT CAST(floor(desktopTime / $step) AS BIGINT) * $step AS time,
@@ -165,15 +205,24 @@ def read_buckets(exchange: str, ticker: str, start: pd.Timestamp, end: pd.Timest
                        observation.next_funding_in_seconds AS next_funding_in_seconds
                 FROM buckets ORDER BY time
             """
-            frame = con.execute(query, {
-                "paths": readable, "start": int(start.value // 1_000_000),
-                "end": int(end.value // 1_000_000), "step": step,
-            }).df()
+            frame = con.execute(
+                query,
+                {
+                    "paths": readable,
+                    "start": int(start.value // 1_000_000),
+                    "end": int(end.value // 1_000_000),
+                    "step": step,
+                },
+            ).df()
     except duckdb.Error as exc:
-        raise DataError(f"{exchange} {ticker} 펀딩비율 파일을 읽지 못했습니다. parquet 스키마를 확인해 주세요.") from exc
+        raise DataError(
+            f"{exchange} {ticker} 펀딩비율 파일을 읽지 못했습니다. parquet 스키마를 확인해 주세요."
+        ) from exc
     finally:
         con.close()
     if frame.empty:
         raise DataError(f"선택한 기간에 {exchange} {ticker}의 유효한 펀딩비율 관측값이 없습니다.")
-    frame.attrs['timestamp_delta_unavailable_reason'] = unmeasurable_clock_reason(exchange, 'funding')
+    frame.attrs['timestamp_delta_unavailable_reason'] = unmeasurable_clock_reason(
+        exchange, 'funding'
+    )
     return frame.set_index("time"), int(frame["source_rows"].sum())

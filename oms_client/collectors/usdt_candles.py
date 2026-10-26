@@ -1,4 +1,5 @@
 """Backfill completed Bithumb/Upbit KRW-USDT candles through public REST APIs."""
+
 from __future__ import annotations
 
 import argparse
@@ -14,7 +15,11 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from oms_client.storage.candle_samples import MinuteCandleStore
-from oms_client.storage.orderbook_samples import CollectorAlreadyRunning, EXCHANGES, default_data_root
+from oms_client.storage.orderbook_samples import (
+    CollectorAlreadyRunning,
+    EXCHANGES,
+    default_data_root,
+)
 
 MINUTE_MS = 60_000
 ENDPOINTS = {exchange: f"https://api.{exchange}.com/v1/candles/minutes/1" for exchange in EXCHANGES}
@@ -51,27 +56,54 @@ def normalize_candle(item: dict, fetched_at: int) -> dict:
         opened = int(stamp.timestamp() * 1000)
         if opened <= 0 or opened % MINUTE_MS or stamp.second or stamp.microsecond:
             raise ValueError("Candle is not aligned to a UTC minute")
-        values = {name: float(item[source]) for name, source in
-                  (("open", "opening_price"), ("high", "high_price"), ("low", "low_price"),
-                   ("close", "trade_price"), ("volume", "candle_acc_trade_volume"), ("trade_value", "candle_acc_trade_price"))}
+        values = {
+            name: float(item[source])
+            for name, source in (
+                ("open", "opening_price"),
+                ("high", "high_price"),
+                ("low", "low_price"),
+                ("close", "trade_price"),
+                ("volume", "candle_acc_trade_volume"),
+                ("trade_value", "candle_acc_trade_price"),
+            )
+        }
         if not all(math.isfinite(value) for value in values.values()):
             raise ValueError("Non-finite candle value")
         if min(values[name] for name in ("open", "high", "low", "close")) <= 0:
             raise ValueError("Non-positive candle price")
-        if values["high"] < max(values["open"], values["close"], values["low"]) or values["low"] > min(values["open"], values["close"]):
+        if values["high"] < max(values["open"], values["close"], values["low"]) or values[
+            "low"
+        ] > min(values["open"], values["close"]):
             raise ValueError("Invalid OHLC range")
         if values["volume"] < 0 or values["trade_value"] < 0:
             raise ValueError("Negative candle volume")
-        return {"candleTime": opened, "availableTime": opened + MINUTE_MS, **values,
-                "fetchedAt": int(fetched_at), "market": "KRW-USDT", "price_unit": "KRW", "quantity_unit": "USDT",
-                "candle_interval_ms": MINUTE_MS, "source": "rest_1m"}
+        return {
+            "candleTime": opened,
+            "availableTime": opened + MINUTE_MS,
+            **values,
+            "fetchedAt": int(fetched_at),
+            "market": "KRW-USDT",
+            "price_unit": "KRW",
+            "quantity_unit": "USDT",
+            "candle_interval_ms": MINUTE_MS,
+            "source": "rest_1m",
+        }
     except (KeyError, AttributeError, TypeError, ValueError, OverflowError):
         raise CandleFetchError("Exchange returned an invalid KRW-USDT 1-minute candle") from None
 
 
 class PublicMinuteCandleClient:
-    def __init__(self, *, opener=urlopen, clock=time.time, monotonic=time.monotonic, sleep=time.sleep,
-                 max_requests=2000, max_retries=4, requests_per_second=3):
+    def __init__(
+        self,
+        *,
+        opener=urlopen,
+        clock=time.time,
+        monotonic=time.monotonic,
+        sleep=time.sleep,
+        max_requests=2000,
+        max_retries=4,
+        requests_per_second=3,
+    ):
         if not 1 <= max_requests <= 20_000 or not 0 <= max_retries <= 8:
             raise ValueError("Invalid request/retry limit")
         if not math.isfinite(requests_per_second) or not 0 < requests_per_second <= 3:
@@ -84,15 +116,21 @@ class PublicMinuteCandleClient:
 
     def _wait_for_slot(self):
         if self.requests >= self.max_requests:
-            raise RequestLimitExceeded(f"REST request limit ({self.max_requests}) reached; completed pages are preserved")
+            raise RequestLimitExceeded(
+                f"REST request limit ({self.max_requests}) reached; completed pages are preserved"
+            )
         if self.last_request is not None:
             self.sleep(max(0, self.request_interval - (self.monotonic() - self.last_request)))
         self.last_request = self.monotonic()
         self.requests += 1
 
     def _retry_delay(self, error, attempt):
-        delay = min(30, 2 ** attempt)
-        retry_after = error.headers.get("Retry-After") if isinstance(error, HTTPError) and error.headers else None
+        delay = min(30, 2**attempt)
+        retry_after = (
+            error.headers.get("Retry-After")
+            if isinstance(error, HTTPError) and error.headers
+            else None
+        )
         if retry_after:
             try:
                 requested = float(retry_after)
@@ -109,7 +147,10 @@ class PublicMinuteCandleClient:
         if exchange not in EXCHANGES:
             raise ValueError("Unsupported exchange")
         query = urlencode({"market": "KRW-USDT", "count": 200, "to": request_to(exchange, to_ms)})
-        request = Request(f"{ENDPOINTS[exchange]}?{query}", headers={"Accept": "application/json", "User-Agent": "OMS-Client-USDT-Backfill/1.0"})
+        request = Request(
+            f"{ENDPOINTS[exchange]}?{query}",
+            headers={"Accept": "application/json", "User-Agent": "OMS-Client-USDT-Backfill/1.0"},
+        )
         for attempt in range(self.max_retries + 1):
             self._wait_for_slot()
             try:
@@ -133,12 +174,16 @@ class PublicMinuteCandleClient:
                 self.sleep(delay)
             except (URLError, TimeoutError, OSError) as error:
                 if attempt >= self.max_retries:
-                    raise CandleFetchError(f"{exchange}: REST network failure ({type(error).__name__})") from None
+                    raise CandleFetchError(
+                        f"{exchange}: REST network failure ({type(error).__name__})"
+                    ) from None
                 self.sleep(self._retry_delay(error, attempt))
         raise CandleFetchError(f"{exchange}: REST retry limit reached")
 
 
-def backfill_exchange(exchange: str, start_ms: int, end_ms: int, client, store, *, clock=time.time) -> dict:
+def backfill_exchange(
+    exchange: str, start_ms: int, end_ms: int, client, store, *, clock=time.time
+) -> dict:
     """Fetch descending exclusive pages. No trade/no candle intervals stay empty."""
     if exchange not in EXCHANGES or start_ms >= end_ms or end_ms % MINUTE_MS:
         raise ValueError("Invalid exchange or candle window")
@@ -154,25 +199,54 @@ def backfill_exchange(exchange: str, start_ms: int, end_ms: int, client, store, 
         oldest = min(row["candleTime"] for row in normalized)
         if oldest >= cursor:
             raise CandleFetchError(f"{exchange}: REST pagination did not move backwards")
-        by_time = {row["candleTime"]: row for row in normalized
-                   if start_ms <= row["candleTime"] < cursor and row["availableTime"] <= end_ms and row["availableTime"] <= fetched_at}
+        by_time = {
+            row["candleTime"]: row
+            for row in normalized
+            if start_ms <= row["candleTime"] < cursor
+            and row["availableTime"] <= end_ms
+            and row["availableTime"] <= fetched_at
+        }
         selected = [by_time[key] for key in sorted(by_time)]
         if selected:
             inserted += store.merge(exchange, selected)
             received += len(selected)
-            earliest = selected[0]["candleTime"] if earliest is None else min(earliest, selected[0]["candleTime"])
-            latest = selected[-1]["candleTime"] if latest is None else max(latest, selected[-1]["candleTime"])
+            earliest = (
+                selected[0]["candleTime"]
+                if earliest is None
+                else min(earliest, selected[0]["candleTime"])
+            )
+            latest = (
+                selected[-1]["candleTime"]
+                if latest is None
+                else max(latest, selected[-1]["candleTime"])
+            )
         cursor = oldest
-    return {"exchange": exchange, "pages": pages, "candles_received": received, "candles_inserted": inserted,
-            "earliest_candle_ms": earliest, "latest_candle_ms": latest}
+    return {
+        "exchange": exchange,
+        "pages": pages,
+        "candles_received": received,
+        "candles_inserted": inserted,
+        "earliest_candle_ms": earliest,
+        "latest_candle_ms": latest,
+    }
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--days", type=float, default=30, help="Completed recent days; fractional days are useful for smoke runs")
+    parser.add_argument(
+        "--days",
+        type=float,
+        default=30,
+        help="Completed recent days; fractional days are useful for smoke runs",
+    )
     parser.add_argument("--exchange", choices=(*EXCHANGES, "all"), default="all")
     parser.add_argument("--data-root", type=Path, default=default_data_root())
-    parser.add_argument("--max-requests", type=int, default=2000, help="Total HTTP attempts across exchanges, including retries (max 20000)")
+    parser.add_argument(
+        "--max-requests",
+        type=int,
+        default=2000,
+        help="Total HTTP attempts across exchanges, including retries (max 20000)",
+    )
     args = parser.parse_args(argv)
     if not math.isfinite(args.days) or not 0 < args.days <= 365:
         parser.error("--days must be greater than 0 and no more than 365")
@@ -183,10 +257,24 @@ def main(argv=None):
     client = PublicMinuteCandleClient(max_requests=args.max_requests)
     try:
         with MinuteCandleStore(args.data_root) as store:
-            results = [backfill_exchange(exchange, start_ms, end_ms, client, store)
-                       for exchange in (EXCHANGES if args.exchange == "all" else (args.exchange,))]
-        print(json.dumps({"source": "rest_1m", "market": "KRW-USDT", "start_ms": start_ms, "end_ms": end_ms,
-                          "requests": client.requests, "data_root": str(Path(args.data_root).expanduser().resolve()), "exchanges": results}, ensure_ascii=False))
+            results = [
+                backfill_exchange(exchange, start_ms, end_ms, client, store)
+                for exchange in (EXCHANGES if args.exchange == "all" else (args.exchange,))
+            ]
+        print(
+            json.dumps(
+                {
+                    "source": "rest_1m",
+                    "market": "KRW-USDT",
+                    "start_ms": start_ms,
+                    "end_ms": end_ms,
+                    "requests": client.requests,
+                    "data_root": str(Path(args.data_root).expanduser().resolve()),
+                    "exchanges": results,
+                },
+                ensure_ascii=False,
+            )
+        )
         return 0
     except (CandleFetchError, CollectorAlreadyRunning) as error:
         print(str(error), file=sys.stderr)

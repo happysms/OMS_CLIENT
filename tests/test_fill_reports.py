@@ -1,4 +1,5 @@
 """Immutable per-fill valuations, partial exits, theory provenance and exports."""
+
 import csv
 import io
 import json
@@ -31,8 +32,15 @@ class FillReportTests(unittest.TestCase):
 
         class Theory:
             def get_many(self, pairs):
-                return {pair: dict(price=owner.theory_price, basis='test_strategy',
-                                   available_at_ms=int(owner.now * 1000) + owner.theory_offset) for pair in pairs}
+                return {
+                    pair: dict(
+                        price=owner.theory_price,
+                        basis='test_strategy',
+                        available_at_ms=int(owner.now * 1000) + owner.theory_offset,
+                    )
+                    for pair in pairs
+                }
+
         self.theory = Theory()
         self.paper = self.reopen()
         self.paper.reset(dict(initial_cash=1000, fee_bps=10, slippage_bps=0))
@@ -40,15 +48,28 @@ class FillReportTests(unittest.TestCase):
     def quote(self, exchange, ticker):
         if ticker in self.missing:
             raise RuntimeError('Missing quote')
-        return dict(exchange=exchange, ticker=ticker, bid=self.bid, ask=self.ask,
-                    ts=int(self.now * 1000), receivedAt=int(self.now * 1000))
+        return dict(
+            exchange=exchange,
+            ticker=ticker,
+            bid=self.bid,
+            ask=self.ask,
+            ts=int(self.now * 1000),
+            receivedAt=int(self.now * 1000),
+        )
 
     def reopen(self):
-        return PaperTradingService(self.store, self.quote, clock=lambda: self.now,
-                                   symbol_validator=lambda e, t: (e, t), theory_provider=self.theory)
+        return PaperTradingService(
+            self.store,
+            self.quote,
+            clock=lambda: self.now,
+            symbol_validator=lambda e, t: (e, t),
+            theory_provider=self.theory,
+        )
 
     def order(self, side, quantity, ticker='BTC', **extra):
-        return self.paper.place_order(dict(exchange='bithumb', ticker=ticker, side=side, quantity=quantity, **extra))
+        return self.paper.place_order(
+            dict(exchange='bithumb', ticker=ticker, side=side, quantity=quantity, **extra)
+        )
 
     def test_partial_exit_snapshots_include_fees_once_and_reconcile_equity(self):
         buy = self.order('buy', 2)['fill_report']
@@ -64,7 +85,7 @@ class FillReportTests(unittest.TestCase):
         self.assertAlmostEqual(account['theory_unrealized_pnl'], 13.899)
         self.assertAlmostEqual(account['total_pnl'], account['equity'] - 1000)
         self.assertAlmostEqual(account['theory_total_pnl'], account['theory_equity'] - 1000)
-        self.assertAlmostEqual(account['fees_paid'], .312)
+        self.assertAlmostEqual(account['fees_paid'], 0.312)
         self.assertEqual(sell['positions'][0]['quantity'], 1)
         self.assertEqual(sell['before']['quantity'], 2)
 
@@ -76,7 +97,9 @@ class FillReportTests(unittest.TestCase):
         retried = self.order('buy', 1, client_order_id='once')
         self.assertEqual(first, retried['fill_report'])
         self.assertEqual(self.paper.fills()['total'], 1)
-        self.assertNotEqual(retried['account']['unrealized_pnl'], first['account']['unrealized_pnl'])
+        self.assertNotEqual(
+            retried['account']['unrealized_pnl'], first['account']['unrealized_pnl']
+        )
 
     def test_missing_other_position_prevents_false_complete_account_pnl(self):
         self.order('buy', 1, ticker='ETH')
@@ -107,7 +130,10 @@ class FillReportTests(unittest.TestCase):
         self.assertEqual(self.paper.snapshot()['account']['cash'], before)
 
     def test_report_write_failure_rolls_back_fill_cash_and_position(self):
-        with patch('oms_client.paper_trading.service.json.dumps', side_effect=ValueError('report encoding failed')):
+        with patch(
+            'oms_client.paper_trading.service.json.dumps',
+            side_effect=ValueError('report encoding failed'),
+        ):
             with self.assertRaises(ValueError):
                 self.order('buy', 1)
         snapshot = self.paper.snapshot()
@@ -120,10 +146,15 @@ class FillReportTests(unittest.TestCase):
         class Quotes:
             def __init__(self):
                 self.closed = False
+
             def close(self):
                 self.closed = True
+
         execution, reference = Quotes(), Quotes()
-        with patch('oms_client.paper_trading.service.PublicQuoteProvider', side_effect=[execution, reference]):
+        with patch(
+            'oms_client.paper_trading.service.PublicQuoteProvider',
+            side_effect=[execution, reference],
+        ):
             paper = PaperTradingService(self.store)
         self.assertIs(paper.quote_provider, execution)
         self.assertIs(paper.theory_provider.quotes, reference)
@@ -148,7 +179,14 @@ class FillReportTests(unittest.TestCase):
 
     def test_fill_api_and_csv_retain_account_and_source_metadata(self):
         self.order('buy', 2)
-        app = create_app(dict(TESTING=True, STATE_DIR=str(self.directory), PASSWORD='test-password-only', PAPER_SERVICE=self.paper))
+        app = create_app(
+            dict(
+                TESTING=True,
+                STATE_DIR=str(self.directory),
+                PASSWORD='test-password-only',
+                PAPER_SERVICE=self.paper,
+            )
+        )
         self.addCleanup(app.extensions['close_services'])
         client = app.test_client()
         self.assertEqual(client.get('/api/paper/fills').status_code, 401)
@@ -160,7 +198,7 @@ class FillReportTests(unittest.TestCase):
         rows = list(csv.DictReader(io.StringIO(response.text.lstrip('\ufeff'))))
         self.assertAlmostEqual(float(rows[0]['theory_unrealized_pnl']), 7.798)
         self.assertEqual(float(rows[0]['fx_krw_per_usdt']), 100)
-        self.assertAlmostEqual(float(rows[0]['usdt_fee']), .00202)
+        self.assertAlmostEqual(float(rows[0]['usdt_fee']), 0.00202)
         self.assertEqual(float(rows[0]['fill_notional_krw']), 202)
         self.assertEqual(float(rows[0]['activity_krw_turnover']), 202)
         self.assertAlmostEqual(float(rows[0]['activity_usdt_turnover']), 2.02)
@@ -172,13 +210,31 @@ class FillReportTests(unittest.TestCase):
         now = int(self.now * 1000)
         end = completed_end(now)
         premiums = PremiumStore(self.directory)
-        premiums.save('BTC', [dict(hour_ms=end-HOUR, total=4, samples=2, minimum=2, maximum=2, fingerprint='test')])
+        premiums.save(
+            'BTC',
+            [
+                dict(
+                    hour_ms=end - HOUR, total=4, samples=2, minimum=2, maximum=2, fingerprint='test'
+                )
+            ],
+        )
+
         class Quotes:
             def get_many(self, pairs, timeout):
-                return {pair: dict(exchange=pair[0], ticker=pair[1], bid=100 if pair[0]=='okx' else 1000,
-                                   ask=100 if pair[0]=='okx' else 1000, ts=now, receivedAt=now) for pair in pairs}
+                return {
+                    pair: dict(
+                        exchange=pair[0],
+                        ticker=pair[1],
+                        bid=100 if pair[0] == 'okx' else 1000,
+                        ask=100 if pair[0] == 'okx' else 1000,
+                        ts=now,
+                        receivedAt=now,
+                    )
+                    for pair in pairs
+                }
+
         theory = PremiumTheoryProvider(self.directory, Quotes(), _fresh_quote, lambda: self.now)
-        result = theory.get_many([('bithumb','BTC')])[('bithumb','BTC')]
+        result = theory.get_many([('bithumb', 'BTC')])[('bithumb', 'BTC')]
         self.assertEqual(result['price'], 102000)
         self.assertEqual(result['mean_premium_pct'], 2)
         self.assertEqual(result['samples'], 2)
@@ -187,20 +243,41 @@ class FillReportTests(unittest.TestCase):
 
     def test_backtest_persists_post_fill_marks_without_current_premium_lookup(self):
         origin = int(self.now * 1000)
-        source = {'full': {'times': [origin+i*60000 for i in range(4)],
-                          'legs': [dict(mid=[100]*4, bid=[99]*4, ask=[101]*4)]}, 'meta': {}}
-        payload = dict(exchange='bithumb', ticker='BTC', start='2026-10-25T00:00:00Z',
-                       end='2026-10-25T00:04:00Z', interval='1min', strategy='buy_hold', initial_cash=1000,
-                       fee_bps=10, slippage_bps=0, close_on_end=False)
-        result = run_backtest(payload, data_provider=lambda _:source)
+        source = {
+            'full': {
+                'times': [origin + i * 60000 for i in range(4)],
+                'legs': [dict(mid=[100] * 4, bid=[99] * 4, ask=[101] * 4)],
+            },
+            'meta': {},
+        }
+        payload = dict(
+            exchange='bithumb',
+            ticker='BTC',
+            start='2026-10-25T00:00:00Z',
+            end='2026-10-25T00:04:00Z',
+            interval='1min',
+            strategy='buy_hold',
+            initial_cash=1000,
+            fee_bps=10,
+            slippage_bps=0,
+            close_on_end=False,
+        )
+        result = run_backtest(payload, data_provider=lambda _: source)
         fill = result['trades'][0]
         self.assertIsNone(fill['theory_unrealized_pnl'])
-        self.assertAlmostEqual(fill['total_pnl'], fill['equity']-1000)
+        self.assertAlmostEqual(fill['total_pnl'], fill['equity'] - 1000)
         self.assertLess(fill['unrealized_pnl'], 0)
-        supplied = run_backtest(payload, data_provider=lambda _:source,
-                               theory_provider=lambda stamp,*_:dict(price=105,available_at_ms=stamp,basis='historical_strategy'))
+        supplied = run_backtest(
+            payload,
+            data_provider=lambda _: source,
+            theory_provider=lambda stamp, *_: dict(
+                price=105, available_at_ms=stamp, basis='historical_strategy'
+            ),
+        )
         self.assertGreater(supplied['trades'][0]['theory_unrealized_pnl'], 0)
-        self.assertEqual(supplied['trades'][0]['valuation']['theory']['basis'], 'historical_strategy')
+        self.assertEqual(
+            supplied['trades'][0]['valuation']['theory']['basis'], 'historical_strategy'
+        )
 
 
 if __name__ == '__main__':

@@ -30,9 +30,14 @@ class FakeFeed:
 class LiveServiceTests(unittest.TestCase):
     def setUp(self):
         self.manager = LiveAnalysisManager(feed_factory=FakeFeed, start_reaper=False)
-        self.config = {"legs": [{"id": "A", "exchange": "bithumb", "ticker": "BTC"},
-                                {"id": "B", "exchange": "okx", "ticker": "BTC"}],
-                       "formula": "A / B", "ewm_span": 2}
+        self.config = {
+            "legs": [
+                {"id": "A", "exchange": "bithumb", "ticker": "BTC"},
+                {"id": "B", "exchange": "okx", "ticker": "BTC"},
+            ],
+            "formula": "A / B",
+            "ewm_span": 2,
+        }
 
     def tearDown(self):
         self.manager.close()
@@ -46,17 +51,34 @@ class LiveServiceTests(unittest.TestCase):
 
     def quotes(self, session, feed, now, a=200, b=100):
         for leg, mid in zip(session.legs, [a, b]):
-            feed.on_quote({**leg, "bid": mid - 1, "ask": mid + 1, "mid": mid,
-                           "ts": int(now * 1000), "receivedAt": int(now * 1000)})
+            feed.on_quote(
+                {
+                    **leg,
+                    "bid": mid - 1,
+                    "ask": mid + 1,
+                    "mid": mid,
+                    "ts": int(now * 1000),
+                    "receivedAt": int(now * 1000),
+                }
+            )
             feed.on_status({"exchange": leg["exchange"], "state": "connected", "message": ""})
 
     def test_normalizes_real_protocols_and_rejects_crossed_quotes(self):
-        quote = parse_quotes("bithumb", {"type": "orderbook", "code": "KRW-BTC", "timestamp": 1792900000123456,
-                                        "orderbook_units": [{"bid_price": 100, "ask_price": 102}]})[0]
+        quote = parse_quotes(
+            "bithumb",
+            {
+                "type": "orderbook",
+                "code": "KRW-BTC",
+                "timestamp": 1792900000123456,
+                "orderbook_units": [{"bid_price": 100, "ask_price": 102}],
+            },
+        )[0]
         self.assertEqual(quote["ts"], 1792900000123)
         self.assertEqual(quote["mid"], 101)
-        okx = {"arg": {"channel": "books5", "instId": "BTC-USDT-SWAP"},
-               "data": [{"bids": [["100", "1"]], "asks": [["102", "1"]], "ts": "1792900000123"}]}
+        okx = {
+            "arg": {"channel": "books5", "instId": "BTC-USDT-SWAP"},
+            "data": [{"bids": [["100", "1"]], "asks": [["102", "1"]], "ts": "1792900000123"}],
+        }
         self.assertEqual(parse_quotes("okx", okx)[0]["ticker"], "BTC")
         okx["data"][0]["asks"][0][0] = "99"
         self.assertEqual(parse_quotes("okx", okx), [])
@@ -64,30 +86,59 @@ class LiveServiceTests(unittest.TestCase):
     def test_funding_sources_are_never_silently_subscribed_as_prices(self):
         before = len(FakeFeed.instances)
         for data_type in ('funding', 'candle'):
-            config = {**self.config, "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": data_type}], "formula": "A"}
-            with self.subTest(data_type=data_type), self.assertRaisesRegex(ds.DataError, "펀딩|1분봉"):
+            config = {
+                **self.config,
+                "legs": [{"id": "A", "exchange": "okx", "ticker": "BTC", "data_type": data_type}],
+                "formula": "A",
+            }
+            with (
+                self.subTest(data_type=data_type),
+                self.assertRaisesRegex(ds.DataError, "펀딩|1분봉"),
+            ):
                 self.manager.start(config)
         self.assertEqual(len(FakeFeed.instances), before)
 
     def test_twenty_six_sources_sample_and_subscribe_to_shared_market_once(self):
-        config = {"formula": "+".join(SOURCE_IDS), "legs": [
-            {"id": identifier, "exchange": "okx", "ticker": "BTC"} for identifier in SOURCE_IDS]}
+        config = {
+            "formula": "+".join(SOURCE_IDS),
+            "legs": [
+                {"id": identifier, "exchange": "okx", "ticker": "BTC"} for identifier in SOURCE_IDS
+            ],
+        }
         identifier, session, feed = self.session(config)
         now = time.time()
         session.clock = lambda: now
         feed.on_status({"exchange": "okx", "state": "connected", "message": ""})
         for leg in session.legs:
-            feed.on_quote({**leg, "mid": 100, "bid": 99, "ask": 101, "ts": now * 1000, "receivedAt": now * 1000})
+            feed.on_quote(
+                {
+                    **leg,
+                    "mid": 100,
+                    "bid": 99,
+                    "ask": 101,
+                    "ts": now * 1000,
+                    "receivedAt": now * 1000,
+                }
+            )
         session._tick()
         result = self.manager.get(identifier)["result"]
         self.assertEqual(result["result"], [2600])
         self.assertEqual([leg["id"] for leg in result["legs"]], list(SOURCE_IDS))
-        self.assertEqual(_subscription("okx", session.legs)["args"], [{"channel": "books5", "instId": "BTC-USDT-SWAP"}])
+        self.assertEqual(
+            _subscription("okx", session.legs)["args"],
+            [{"channel": "books5", "instId": "BTC-USDT-SWAP"}],
+        )
 
     def test_extended_ids_reject_missing_duplicate_and_too_many_before_feed(self):
         before = len(FakeFeed.instances)
-        valid = [{"id": identifier, "exchange": "bithumb", "ticker": "BTC"} for identifier in SOURCE_IDS]
-        for legs, formula in [(valid[:4], "E"), ([valid[4], valid[4]], "E"), (valid + [{"id": "AA"}], "A")]:
+        valid = [
+            {"id": identifier, "exchange": "bithumb", "ticker": "BTC"} for identifier in SOURCE_IDS
+        ]
+        for legs, formula in [
+            (valid[:4], "E"),
+            ([valid[4], valid[4]], "E"),
+            (valid + [{"id": "AA"}], "A"),
+        ]:
             with self.subTest(legs=legs, formula=formula), self.assertRaises(ds.DataError):
                 self.manager.start({"legs": legs, "formula": formula})
         self.assertEqual(len(FakeFeed.instances), before)
@@ -115,7 +166,10 @@ class LiveServiceTests(unittest.TestCase):
         self.quotes(session, feed, now)
         session._tick()
         result = session.result
-        with patch.object(session.stop_event, 'wait', return_value=False), patch.object(session, '_tick', side_effect=RuntimeError('test failure')):
+        with (
+            patch.object(session.stop_event, 'wait', return_value=False),
+            patch.object(session, '_tick', side_effect=RuntimeError('test failure')),
+        ):
             session._sample_loop()
         snapshot = self.manager.get(identifier)
         self.assertEqual(snapshot['status'], 'failed')
@@ -139,16 +193,43 @@ class LiveServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["result"]["stats"]["count"], 1)
 
     def test_live_formulas_use_nth_and_vwap_prices_and_skip_incomplete_fill(self):
-        config = {**self.config, 'formula': 'A - B', 'legs': [
-            {'id': 'A', 'exchange': 'bithumb', 'ticker': 'BTC', 'price_basis': 'buy_vwap', 'liquidity_amount': 303},
-            {'id': 'B', 'exchange': 'bithumb', 'ticker': 'BTC', 'price_basis': 'ask', 'book_level': 2}]}
+        config = {
+            **self.config,
+            'formula': 'A - B',
+            'legs': [
+                {
+                    'id': 'A',
+                    'exchange': 'bithumb',
+                    'ticker': 'BTC',
+                    'price_basis': 'buy_vwap',
+                    'liquidity_amount': 303,
+                },
+                {
+                    'id': 'B',
+                    'exchange': 'bithumb',
+                    'ticker': 'BTC',
+                    'price_basis': 'ask',
+                    'book_level': 2,
+                },
+            ],
+        }
         identifier, session, feed = self.session(config)
         now = time.time()
         session.clock = lambda: now
         for leg in session.legs:
-            feed.on_quote({**leg, 'bid': 100, 'ask': 101, 'mid': 100.5,
-                           'bids': [[100, 2], [99, 2]], 'asks': [[101, 2], [102, 2]],
-                           'quantity_basis': 'native_base_quantity', 'ts': int(now * 1000), 'receivedAt': int(now * 1000)})
+            feed.on_quote(
+                {
+                    **leg,
+                    'bid': 100,
+                    'ask': 101,
+                    'mid': 100.5,
+                    'bids': [[100, 2], [99, 2]],
+                    'asks': [[101, 2], [102, 2]],
+                    'quantity_basis': 'native_base_quantity',
+                    'ts': int(now * 1000),
+                    'receivedAt': int(now * 1000),
+                }
+            )
         feed.on_status({'exchange': 'bithumb', 'state': 'connected', 'message': ''})
         session._tick()
         snapshot = self.manager.get(identifier)
@@ -156,7 +237,14 @@ class LiveServiceTests(unittest.TestCase):
         self.assertEqual(snapshot['result']['legs'][1]['values'], [102])
         self.assertEqual(snapshot['result']['legs'][1]['mid'], [100.5])
         now += 1
-        feed.on_quote({**session.quotes['A'], 'asks': [[101, 1], [102, 0]], 'ts': int(now * 1000), 'receivedAt': int(now * 1000)})
+        feed.on_quote(
+            {
+                **session.quotes['A'],
+                'asks': [[101, 1], [102, 0]],
+                'ts': int(now * 1000),
+                'receivedAt': int(now * 1000),
+            }
+        )
         session._tick()
         snapshot = self.manager.get(identifier)
         self.assertEqual(len(snapshot['result']['times']), 1)
@@ -165,17 +253,41 @@ class LiveServiceTests(unittest.TestCase):
         self.assertEqual(snapshot['missing'][0]['reason'], 'insufficient_liquidity')
 
     def test_contract_counts_are_not_accepted_as_live_base_quantities(self):
-        config = {**self.config, 'formula': 'A', 'legs': [{'id': 'A', 'exchange': 'okx', 'ticker': 'BTC',
-                                                       'price_basis': 'buy_vwap', 'liquidity_amount': 100}]}
+        config = {
+            **self.config,
+            'formula': 'A',
+            'legs': [
+                {
+                    'id': 'A',
+                    'exchange': 'okx',
+                    'ticker': 'BTC',
+                    'price_basis': 'buy_vwap',
+                    'liquidity_amount': 100,
+                }
+            ],
+        }
         _, session, feed = self.session(config)
         now = time.time()
         session.clock = lambda: now
-        feed.on_quote({**session.legs[0], 'bid': 100, 'ask': 101, 'mid': 100.5, 'bids': [[100, 2]], 'asks': [[101, 2]],
-                       'quantity_basis': 'contracts', 'ts': int(now * 1000), 'receivedAt': int(now * 1000)})
+        feed.on_quote(
+            {
+                **session.legs[0],
+                'bid': 100,
+                'ask': 101,
+                'mid': 100.5,
+                'bids': [[100, 2]],
+                'asks': [[101, 2]],
+                'quantity_basis': 'contracts',
+                'ts': int(now * 1000),
+                'receivedAt': int(now * 1000),
+            }
+        )
         feed.on_status({'exchange': 'okx', 'state': 'connected', 'message': ''})
         session._tick()
         self.assertIsNone(session.result)
-        self.assertEqual(session._missing(int(now * 1000))[0]['reason'], 'unverified_contract_quantity')
+        self.assertEqual(
+            session._missing(int(now * 1000))[0]['reason'], 'unverified_contract_quantity'
+        )
 
     def test_partial_subscription_does_not_discard_previous_quote(self):
         _, session, feed = self.session()
@@ -243,11 +355,19 @@ class LiveServiceTests(unittest.TestCase):
         with self.assertRaises(ds.DataError):
             self.manager.start({**self.config, "formula": "__import__('os')"})
         with self.assertRaises(ds.DataError):
-            self.manager.start({**self.config, "legs": [{"id": "A", "exchange": "ls", "ticker": "BTC"}], "formula": "A"})
+            self.manager.start(
+                {
+                    **self.config,
+                    "legs": [{"id": "A", "exchange": "ls", "ticker": "BTC"}],
+                    "formula": "A",
+                }
+            )
         with self.assertRaises(ds.DataError):
             self.manager.start({**self.config, "formula": "MA(A, 4000)"})
         with self.assertRaises(ds.DataError):
-            self.manager.start({**self.config, "legs": [{"id": [], "exchange": "okx", "ticker": "BTC"}]})
+            self.manager.start(
+                {**self.config, "legs": [{"id": [], "exchange": "okx", "ticker": "BTC"}]}
+            )
 
     def test_bounded_sessions_and_stop_cleanup(self):
         first = self.manager.start(self.config)

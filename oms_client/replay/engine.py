@@ -1,4 +1,5 @@
 """Deterministic spot MM replay. Pacing and UI never participate in matching."""
+
 from collections import deque
 from decimal import Decimal
 from typing import Mapping
@@ -8,7 +9,11 @@ from ..paper_trading.reporting import evaluate_positions
 from ..paper_trading.currency import UsdtLedger
 from ..paper_trading.activity import TradingActivity, ExecutedTrade
 from ..strategies.simple_mm import (
-    AccountView, MMConfig, QuoteView, SimpleMM, _amount,
+    AccountView,
+    MMConfig,
+    QuoteView,
+    SimpleMM,
+    _amount,
 )
 from .configuration import config_from  # Public import retained for API/test callers.
 from .ledger import FeeSchedule, SpotLedger
@@ -33,9 +38,13 @@ class ReplayEngine:
     def __init__(self, config: dict, fx_provider=None):
         self.config = config
         strategy = config.get('strategy')
-        if strategy and (strategy.get('type') != 'single_exchange_maker' or not strategy.get('executable')):
+        if strategy and (
+            strategy.get('type') != 'single_exchange_maker' or not strategy.get('executable')
+        ):
             raise ValueError('이 실행기에서 지원하지 않는 전략입니다.')
-        self.strategy_parameters = strategy['parameters'] if strategy else {'direction': 'both', 'max_quote_age_ms': 1000}
+        self.strategy_parameters = (
+            strategy['parameters'] if strategy else {'direction': 'both', 'max_quote_age_ms': 1000}
+        )
         self.guard = FeedDelayGuard(self.strategy_parameters)
         self.queue_cancel = QueueCancellation(config)
         self.queue_tape = {}
@@ -51,7 +60,9 @@ class ReplayEngine:
         self.strategy_theory = None
         self.now = config['start_ms']
         self.fee_schedule = FeeSchedule.from_config(config)
-        self.account = SpotLedger(D(config['initial_krw']), D(config['initial_coin']), self.fee_schedule)
+        self.account = SpotLedger(
+            D(config['initial_krw']), D(config['initial_coin']), self.fee_schedule
+        )
         self.usdt_ledger = UsdtLedger()
         self.activity = TradingActivity()
         self.fx_provider = fx_provider or (lambda now: None)
@@ -127,38 +138,79 @@ class ReplayEngine:
         book = self.books.get('bithumb', {})
         for level in book.get('bids' if side == 'buy' else 'asks', []):
             if D(str(level['price'])) == price:
-                return max(ZERO, D(str(level['quantity'])) - self.depth.self_debt.get((side, price), ZERO)) if level['quantity'] is not None else None
+                return (
+                    max(
+                        ZERO,
+                        D(str(level['quantity'])) - self.depth.self_debt.get((side, price), ZERO),
+                    )
+                    if level['quantity'] is not None
+                    else None
+                )
         # Inside the observed range (including spread improvement), no row means zero.
         levels = book.get('bids' if side == 'buy' else 'asks', [])
         opposite = book.get('asks' if side == 'buy' else 'bids', [])
         if levels and opposite:
             boundary = None
             for level in opposite:
-                value = self.depth.available('sell' if side == 'buy' else 'buy', D(str(level['price'])), level['quantity'])
+                value = self.depth.available(
+                    'sell' if side == 'buy' else 'buy', D(str(level['price'])), level['quantity']
+                )
                 if value is None or value > 0:
                     boundary = D(str(level['price']))
                     break
             edge = D(str(opposite[-1]['price']))
-            within_own = price >= D(str(levels[-1]['price'])) if side == 'buy' else price <= D(str(levels[-1]['price']))
-            within_opposite = (price < boundary if side == 'buy' else price > boundary) if boundary is not None else price <= edge if side == 'buy' else price >= edge
+            within_own = (
+                price >= D(str(levels[-1]['price']))
+                if side == 'buy'
+                else price <= D(str(levels[-1]['price']))
+            )
+            within_opposite = (
+                (price < boundary if side == 'buy' else price > boundary)
+                if boundary is not None
+                else price <= edge if side == 'buy' else price >= edge
+            )
             if within_own and within_opposite:
                 return ZERO
         return None
 
-    def place(self, side, price, quantity, owner='manual', tif='post_only', stp='cancel_taker', expires_at_ms=None, client_order_id=None):
+    def place(
+        self,
+        side,
+        price,
+        quantity,
+        owner='manual',
+        tif='post_only',
+        stp='cancel_taker',
+        expires_at_ms=None,
+        client_order_id=None,
+    ):
         if self.closed or self.initial_equity is None:
             raise ValueError('유효한 초기 호가가 도착한 뒤 주문할 수 있습니다.')
         if tif not in TIFS or stp not in STPS:
             raise ValueError('지원하지 않는 지정가 조건 또는 STP입니다.')
         if (tif == 'gtd') != (expires_at_ms is not None):
             raise ValueError('GTD 주문에는 만료 시각이 필요합니다.')
-        if expires_at_ms is not None and (type(expires_at_ms) is not int or expires_at_ms <= self.now):
+        if expires_at_ms is not None and (
+            type(expires_at_ms) is not int or expires_at_ms <= self.now
+        ):
             raise ValueError('만료는 현재 가상 시각 이후의 정수 ms여야 합니다.')
         price = _amount(price, 'price', positive=True)
         quantity = _amount(quantity, 'quantity', positive=True)
-        fingerprint = (side, str(price.normalize()), str(quantity.normalize()), owner, tif, stp, expires_at_ms)
+        fingerprint = (
+            side,
+            str(price.normalize()),
+            str(quantity.normalize()),
+            owner,
+            tif,
+            stp,
+            expires_at_ms,
+        )
         if client_order_id is not None:
-            if not isinstance(client_order_id, str) or not 1 <= len(client_order_id) <= 80 or any((ord(c) < 32 for c in client_order_id)):
+            if (
+                not isinstance(client_order_id, str)
+                or not 1 <= len(client_order_id) <= 80
+                or any((ord(c) < 32 for c in client_order_id))
+            ):
                 raise ValueError('클라이언트 주문 ID를 확인하세요.')
             previous = self.order_book.retry(client_order_id, fingerprint)
             if previous is not None:
@@ -177,7 +229,11 @@ class ReplayEngine:
             raise ValueError('주문 방향을 확인하세요.')
         step = D(self.config['quantity_step'])
         price_step = D(self.config.get('price_step', '0'))
-        if quantity % step or quantity * price < D(self.config['min_notional']) or (price_step and price % price_step):
+        if (
+            quantity % step
+            or quantity * price < D(self.config['min_notional'])
+            or (price_step and price % price_step)
+        ):
             raise ValueError('모형의 최소 금액·수량 단위를 확인하세요.')
         cash, coin = self.account.available(working)
         reserve = self.fee_schedule.reserve_buy(price, quantity, tif) if side == 'buy' else ZERO
@@ -229,17 +285,32 @@ class ReplayEngine:
         key = (order.side, order.price)
         result['queue_known'] = self.queue_known.get(key, False)
         if not result['queue_known'] or order.active_at is None:
-            result.update(queue_ahead=None, queue_external_ahead=None,
-                          queue_external_behind=None, queue_front_cancel_probability=None)
+            result.update(
+                queue_ahead=None,
+                queue_external_ahead=None,
+                queue_external_behind=None,
+                queue_front_cancel_probability=None,
+            )
             return result
         ahead = ZERO
         for node in self.queues.get(key, []):
             if node['kind'] == 'own' and node['id'] == order.id:
                 break
-            ahead += node['qty'] if node['kind'] == 'external' else self.orders[node['id']].remaining if node['id'] in self.orders else ZERO
-        result['queue_ahead'] = float(ahead) if result['queue_known'] and order.active_at is not None else None
+            ahead += (
+                node['qty']
+                if node['kind'] == 'external'
+                else self.orders[node['id']].remaining if node['id'] in self.orders else ZERO
+            )
+        result['queue_ahead'] = (
+            float(ahead) if result['queue_known'] and order.active_at is not None else None
+        )
         position = self.queue_cancel.position(self.queues.get(key, []), order.id)
-        result.update({k: v if result['queue_known'] and order.active_at is not None else None for k, v in position.items()})
+        result.update(
+            {
+                k: v if result['queue_known'] and order.active_at is not None else None
+                for k, v in position.items()
+            }
+        )
         return result
 
     def _activate(self, order: ReplayOrder) -> None:
@@ -272,7 +343,9 @@ class ReplayEngine:
                 self.depth.consume('sell' if order.side == 'buy' else 'buy', target, size, 'taker')
                 opposite_key = ('sell' if order.side == 'buy' else 'buy', target)
                 self.queue_cancel.consume_external(self.queues.get(opposite_key, []), size)
-                self._fill(order, size, dict(source_id=book['source_id']), price=target, role='taker')
+                self._fill(
+                    order, size, dict(source_id=book['source_id']), price=target, role='taker'
+                )
         if outcome == 'filled':
             return
         if outcome == 'unknown':
@@ -287,7 +360,11 @@ class ReplayEngine:
         self.queue_known.setdefault(key, visible is not None)
         if visible is not None and self.queue_cancel.enabled:
             if not any((n['kind'] == 'own' for n in nodes)):
-                extra = max(ZERO, visible - max(self.queue_tape.get(key, ZERO), self.depth.public_debt.get(key, ZERO)))
+                extra = max(
+                    ZERO,
+                    visible
+                    - max(self.queue_tape.get(key, ZERO), self.depth.public_debt.get(key, ZERO)),
+                )
                 if extra:
                     nodes.append(dict(kind='external', qty=extra))
         elif visible is not None:
@@ -318,7 +395,11 @@ class ReplayEngine:
         if kind == 'gtd' and order.expires_at_ms is None:
             raise ValueError('GTD 변경은 새 만료 시각을 갖춘 신규 주문으로 제출하세요.')
         price_step = D(self.config.get('price_step', '0'))
-        if total % D(self.config['quantity_step']) or total * price < D(self.config['min_notional']) or (price_step and price % price_step):
+        if (
+            total % D(self.config['quantity_step'])
+            or total * price < D(self.config['min_notional'])
+            or (price_step and price % price_step)
+        ):
             raise ValueError('교체 주문의 가격·수량·최소금액을 확인하세요.')
         if total < order.filled:
             raise ValueError('총수량은 이미 체결된 수량 이상이어야 합니다.')
@@ -373,12 +454,20 @@ class ReplayEngine:
                 del self.queues[key]
                 self.queue_known.pop(key, None)
         book = self.books.get('bithumb', {})
-        visible = {(side, D(str(level['price']))) for side, field in [('buy', 'bids'), ('sell', 'asks')] for level in book.get(field, [])}
-        self.depletion = {key: value for key, value in self.depletion.items() if key in self.queues or key in visible}
+        visible = {
+            (side, D(str(level['price'])))
+            for side, field in [('buy', 'bids'), ('sell', 'asks')]
+            for level in book.get(field, [])
+        }
+        self.depletion = {
+            key: value
+            for key, value in self.depletion.items()
+            if key in self.queues or key in visible
+        }
 
     def advance(self, timestamp: int) -> None:
         processed = False
-        while (event := self.scheduler.pop_due(timestamp)):
+        while event := self.scheduler.pop_due(timestamp):
             processed = True
             self.now = event.at_ms
             kind, identifier = (event.kind, event.identifier)
@@ -411,17 +500,21 @@ class ReplayEngine:
             self.books[event['venue']] = {k: v for k, v in event.items() if k != '_key'}
             if event['venue'] == 'bithumb':
                 self.depth.book()
-                self.guard.observe(event['time'], event.get('server_time'), self.mm.config.max_quote_age_ms)
-                self.accept_theory(self.mm.theoretical_quote(
-                    QuoteView(
-                        self.config['ticker'],
-                        str(self.event_sequence),
-                        str(event['bids'][0]['price']),
-                        str(event['asks'][0]['price']),
-                        event['time'],
-                    ),
-                    now_ms=self.now,
-                ))
+                self.guard.observe(
+                    event['time'], event.get('server_time'), self.mm.config.max_quote_age_ms
+                )
+                self.accept_theory(
+                    self.mm.theoretical_quote(
+                        QuoteView(
+                            self.config['ticker'],
+                            str(self.event_sequence),
+                            str(event['bids'][0]['price']),
+                            str(event['asks'][0]['price']),
+                            event['time'],
+                        ),
+                        now_ms=self.now,
+                    )
+                )
                 if self.queue_cancel.enabled:
                     self._update_queue_book(previous, event)
                 elif previous:
@@ -437,7 +530,9 @@ class ReplayEngine:
                                 elif after < before:
                                     # A smaller snapshot acknowledges already observed trades.
                                     # Never subtract a consumed trade twice for a later order.
-                                    self.depletion[key] = max(ZERO, self.depletion.get(key, ZERO) - D(str(before - after)))
+                                    self.depletion[key] = max(
+                                        ZERO, self.depletion.get(key, ZERO) - D(str(before - after))
+                                    )
                 if self.initial_equity is None and self.now >= self.config['start_ms']:
                     self._initialize_account(D(str(event['bids'][0]['price'])))
                 for key, nodes in self.queues.items() if not self.queue_cancel.enabled else []:
@@ -452,14 +547,20 @@ class ReplayEngine:
                 if self.queue_cancel.enabled:
                     key = ('sell' if event['qty'] > 0 else 'buy', D(str(event['price'])))
                     if key in self.queues or self._visible(*key) is not None:
-                        self.queue_tape[key] = self.queue_tape.get(key, ZERO) + abs(D(str(event['qty'])))
+                        self.queue_tape[key] = self.queue_tape.get(key, ZERO) + abs(
+                            D(str(event['qty']))
+                        )
                 self._match(event)
         if self.now >= self.config['start_ms']:
             self.auto()
         self._gc()
 
     def _update_queue_book(self, previous, event):
-        old = {(side, D(str(level['price']))): level['quantity'] for side, field in [('buy', 'bids'), ('sell', 'asks')] for level in (previous or {}).get(field, [])}
+        old = {
+            (side, D(str(level['price']))): level['quantity']
+            for side, field in [('buy', 'bids'), ('sell', 'asks')]
+            for level in (previous or {}).get(field, [])
+        }
         for key in sorted(self.queues):
             nodes = self.queues[key]
             visible = self._visible(*key)
@@ -469,7 +570,9 @@ class ReplayEngine:
                 self.queue_known[key] = False
                 continue
             if before is None or not self.queue_known.get(key):
-                nodes[:] = [dict(kind='external', qty=visible)] + [n for n in nodes if n['kind'] == 'own']
+                nodes[:] = [dict(kind='external', qty=visible)] + [
+                    n for n in nodes if n['kind'] == 'own'
+                ]
                 self.queue_known[key] = True
                 self.queue_cancel.compact(nodes)
                 continue
@@ -492,21 +595,23 @@ class ReplayEngine:
             if inferred:
                 self.queue_cancel.count += 1
                 self.queue_cancel.cancelled += applied
-                self.queue_cancel.events.append(dict(
-                    timestamp=self.now,
-                    side=key[0],
-                    price=float(key[1]),
-                    previous_quantity=str(before),
-                    visible_quantity=str(visible),
-                    trade_quantity=str(traded),
-                    inferred_cancel_quantity=str(inferred),
-                    applied_cancel_quantity=str(applied),
-                    added_quantity=str(added),
-                    trade_reconciled_quantity=str(reconciled),
-                    positions_before=positions,
-                    positions_after_cancel=after_cancel,
-                    random_draws=self.queue_cancel.draws,
-                ))
+                self.queue_cancel.events.append(
+                    dict(
+                        timestamp=self.now,
+                        side=key[0],
+                        price=float(key[1]),
+                        previous_quantity=str(before),
+                        visible_quantity=str(visible),
+                        trade_quantity=str(traded),
+                        inferred_cancel_quantity=str(inferred),
+                        applied_cancel_quantity=str(applied),
+                        added_quantity=str(added),
+                        trade_reconciled_quantity=str(reconciled),
+                        positions_before=positions,
+                        positions_after_cancel=after_cancel,
+                        random_draws=self.queue_cancel.draws,
+                    )
+                )
         self.queue_tape.clear()
         self.queue_consumed.clear()
         self.depletion.clear()
@@ -514,7 +619,11 @@ class ReplayEngine:
     def start(self):
         self.advance(self.config['start_ms'])
         book = self.books.get('bithumb')
-        if self.initial_equity is None and book and (self.now - book['time'] <= self.mm.config.max_quote_age_ms):
+        if (
+            self.initial_equity is None
+            and book
+            and (self.now - book['time'] <= self.mm.config.max_quote_age_ms)
+        ):
             self._initialize_account(D(str(book['bids'][0]['price'])))
         self.auto()
 
@@ -572,10 +681,17 @@ class ReplayEngine:
         side = 'sell' if tick['qty'] > 0 else 'buy'
         price = D(str(tick['price']))
         budget = abs(D(str(tick['qty'])))
-        visible = {D(str(level['price'])): level['quantity'] for level in self.books.get('bithumb', {}).get('asks' if side == 'sell' else 'bids', [])}
+        visible = {
+            D(str(level['price'])): level['quantity']
+            for level in self.books.get('bithumb', {}).get('asks' if side == 'sell' else 'bids', [])
+        }
         candidates = set(self.queues) | {(side, p) for p in visible}
         keys = sorted(
-            (key for key in candidates if key[0] == side and (key[1] <= price if side == 'sell' else key[1] >= price)),
+            (
+                key
+                for key in candidates
+                if key[0] == side and (key[1] <= price if side == 'sell' else key[1] >= price)
+            ),
             key=lambda key: key[1],
             reverse=side == 'buy',
         )
@@ -583,7 +699,12 @@ class ReplayEngine:
             if budget <= 0:
                 break
             nodes = self.queues.get(key, [])
-            if not any((n['kind'] == 'own' and self.orders[n['id']].status in {'live', 'cancel_pending'} for n in nodes)):
+            if not any(
+                (
+                    n['kind'] == 'own' and self.orders[n['id']].status in {'live', 'cancel_pending'}
+                    for n in nodes
+                )
+            ):
                 available = self.depth.available(side, key[1], visible.get(key[1]))
                 if available is None:
                     break
@@ -594,7 +715,14 @@ class ReplayEngine:
             if not self.queue_known.get(key):
                 break
             # A tick tied with activation may have happened before our arrival.
-            if not any((n['kind'] == 'own' and self.orders[n['id']].active_at is not None and (self.orders[n['id']].active_at < self.now) for n in nodes)):
+            if not any(
+                (
+                    n['kind'] == 'own'
+                    and self.orders[n['id']].active_at is not None
+                    and (self.orders[n['id']].active_at < self.now)
+                    for n in nodes
+                )
+            ):
                 return
             while nodes and budget > 0:
                 node = nodes[0]
@@ -630,8 +758,14 @@ class ReplayEngine:
                 if order.remaining == 0:
                     nodes.pop(0)
 
-    def _fill(self, order: ReplayOrder, size: Decimal, tick: dict,
-              price: Decimal | None = None, role: str = 'maker') -> None:
+    def _fill(
+        self,
+        order: ReplayOrder,
+        size: Decimal,
+        tick: dict,
+        price: Decimal | None = None,
+        role: str = 'maker',
+    ) -> None:
         if self.fill_count >= 100000:
             raise DataError('체결 10만 건 한도입니다. 기간을 줄여 주세요.')
         queue_position = self._public_order(order)
@@ -639,13 +773,31 @@ class ReplayEngine:
         before_quantity = self.coin
         fx = self._fx_quote()
         settlement = self.account.settle(order, size, price, role)
-        self.activity.record(ExecutedTrade('bithumb', self.config['ticker'], order.side,
-                                           size, price, settlement.fee, fx.rate if fx else None))
-        usdt_fill = self.usdt_ledger.record_fill(f"bithumb:{self.config['ticker']}", order.side,
-                                                size, price, settlement.fee, before_quantity, fx)
+        self.activity.record(
+            ExecutedTrade(
+                'bithumb',
+                self.config['ticker'],
+                order.side,
+                size,
+                price,
+                settlement.fee,
+                fx.rate if fx else None,
+            )
+        )
+        usdt_fill = self.usdt_ledger.record_fill(
+            f"bithumb:{self.config['ticker']}",
+            order.side,
+            size,
+            price,
+            settlement.fee,
+            before_quantity,
+            fx,
+        )
         fee, realized = (settlement.fee, settlement.realized_pnl)
         if order.remaining == 0:
-            self._terminal(order, 'filled', 'trade_tick' if role == 'maker' else 'arrival_liquidity')
+            self._terminal(
+                order, 'filled', 'trade_tick' if role == 'maker' else 'arrival_liquidity'
+            )
         self.version += 1
         self.fill_count += 1
         valuation = self.valuation()
@@ -669,7 +821,9 @@ class ReplayEngine:
             positions=valuation['positions'],
             theory=valuation['theory'],
             order_guard=self.guard.snapshot(self.now),
-            queue_position={key: value for key, value in queue_position.items() if key.startswith('queue_')},
+            queue_position={
+                key: value for key, value in queue_position.items() if key.startswith('queue_')
+            },
             queue_model=self.queue_cancel.summary(),
             usdt=dict(valuation['usdt'], fill=usdt_fill),
         )
@@ -679,6 +833,7 @@ class ReplayEngine:
     def accept_theory(self, output):
         # Future strategy adapters publish through this method; account code never invents a price.
         from ..strategies.theory import TheoryOutput
+
         if output is not None and (not isinstance(output, TheoryOutput)):
             raise ValueError('전략은 TheoryOutput 또는 None을 반환해야 합니다.')
         self.strategy_theory = output if output is not None and output.valid_at(self.now) else None
@@ -686,8 +841,23 @@ class ReplayEngine:
     def valuation(self):
         book = self.books.get('bithumb')
         pair = ('bithumb', self.config['ticker'])
-        marks = {pair: dict(bid=book['bids'][0]['price'], ts=book['time'])} if book and 0 <= self.now - book['time'] <= self.mm.config.max_quote_age_ms else {}
-        positions = [dict(exchange='bithumb', ticker=pair[1], quantity=float(self.coin), avg_price=float(self.cost / self.coin))] if self.coin else []
+        marks = (
+            {pair: dict(bid=book['bids'][0]['price'], ts=book['time'])}
+            if book and 0 <= self.now - book['time'] <= self.mm.config.max_quote_age_ms
+            else {}
+        )
+        positions = (
+            [
+                dict(
+                    exchange='bithumb',
+                    ticker=pair[1],
+                    quantity=float(self.coin),
+                    avg_price=float(self.cost / self.coin),
+                )
+            ]
+            if self.coin
+            else []
+        )
         theory = None
         if self.strategy_theory and self.strategy_theory.valid_at(self.now):
             profile = self.config.get('strategy', {})
@@ -704,7 +874,9 @@ class ReplayEngine:
         account, positions = evaluate_positions(
             dict(
                 cash=float(self.cash),
-                initial_cash=float(self.initial_equity if self.initial_equity is not None else self.cash),
+                initial_cash=float(
+                    self.initial_equity if self.initial_equity is not None else self.cash
+                ),
                 realized_pnl=float(self.realized),
                 fees_paid=float(self.fees),
             ),
@@ -719,9 +891,13 @@ class ReplayEngine:
             coin=float(self.coin),
             initial_equity=float(self.initial_equity) if self.initial_equity is not None else None,
         )
-        return dict(account=account, positions=positions, theory=theory,
-                    activity=self.activity.report(),
-                    usdt=self.usdt_ledger.valuation(account, positions, self._fx_quote()))
+        return dict(
+            account=account,
+            positions=positions,
+            theory=theory,
+            activity=self.activity.report(),
+            usdt=self.usdt_ledger.valuation(account, positions, self._fx_quote()),
+        )
 
     def finish(self, reason='end_of_run'):
         self.closed = True

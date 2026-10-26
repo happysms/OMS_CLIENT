@@ -1,4 +1,5 @@
 """Wall time changes presentation speed, never market-event timestamps."""
+
 import time
 
 
@@ -13,7 +14,11 @@ class PlaybackClock:
         self.paused = False
 
     def now(self):
-        return self.anchor_ms if self.paused else self.anchor_ms + (self.monotonic() - self.anchor_wall) * 1000 * self.speed
+        return (
+            self.anchor_ms
+            if self.paused
+            else self.anchor_ms + (self.monotonic() - self.anchor_wall) * 1000 * self.speed
+        )
 
     def set(self, *, speed=None, paused=None):
         current = self.now()

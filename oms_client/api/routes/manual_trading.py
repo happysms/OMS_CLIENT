@@ -1,7 +1,9 @@
 """Authenticated explicit manual trading actions; no private request during page loading."""
+
 import threading
 from flask import jsonify, request
 from ...manual_trading.service import ManualTradingService, OrderNotSubmitted
+
 
 def register(app, directory):
     creation_lock = threading.Lock()
@@ -16,9 +18,18 @@ def register(app, directory):
 
     def command(callback, *, private=True):
         if private and not app.config.get("MANUAL_DIRECT_TRADING_ENABLED", False):
-            return jsonify(error="이 서버는 원격 실행 서버를 제어하는 역할입니다. 로컬 API 키 등록과 거래소 개인 요청은 비활성화되어 있습니다.", code="REMOTE_EXECUTION_REQUIRED"), 409
+            return (
+                jsonify(
+                    error="이 서버는 원격 실행 서버를 제어하는 역할입니다. 로컬 API 키 등록과 거래소 개인 요청은 비활성화되어 있습니다.",
+                    code="REMOTE_EXECUTION_REQUIRED",
+                ),
+                409,
+            )
         if not command_slot.acquire(blocking=False):
-            return (jsonify(error='다른 수동 매매 요청을 처리 중입니다. 상태 확인 후 다시 시도하세요.'), 429)
+            return (
+                jsonify(error='다른 수동 매매 요청을 처리 중입니다. 상태 확인 후 다시 시도하세요.'),
+                429,
+            )
         try:
             return jsonify(callback())
         except OrderNotSubmitted as error:
@@ -28,7 +39,12 @@ def register(app, directory):
         except RuntimeError as error:
             return (jsonify(error=str(error)), 409)
         except Exception:
-            return (jsonify(error='요청을 완료하지 못했습니다. 실주문은 재전송 전에 주문 목록과 상태를 확인하세요.'), 503)
+            return (
+                jsonify(
+                    error='요청을 완료하지 못했습니다. 실주문은 재전송 전에 주문 목록과 상태를 확인하세요.'
+                ),
+                503,
+            )
         finally:
             command_slot.release()
 
@@ -58,6 +74,7 @@ def register(app, directory):
                 raise ValueError('시세 구독 항목을 확인하세요.')
             service().market.subscribe(data['exchange'], data['ticker'])
             return dict(status='connecting')
+
         return command(run, private=False)
 
     @app.post('/api/manual/keys')
@@ -74,6 +91,7 @@ def register(app, directory):
         def run():
             service().delete_key(identifier)
             return dict(deleted=True)
+
         return command(run)
 
     @app.post('/api/manual/orders')

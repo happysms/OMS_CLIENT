@@ -1,4 +1,5 @@
 """Bounded projection cache for immutable strategy inputs, owned by one replay."""
+
 from ..strategies.simple_mm import WorkingOrder
 from .orders import ReplayOrder
 
@@ -11,9 +12,20 @@ class StrategyOrderViews:
         current = {}
         result = []
         for order in orders:
-            signature = (order.id, order.owner, order.side, order.price, order.remaining, order.status)
+            signature = (
+                order.id,
+                order.owner,
+                order.side,
+                order.price,
+                order.remaining,
+                order.status,
+            )
             previous = self._views.get(order.id)
-            view = previous[1] if previous is not None and previous[0] == signature else WorkingOrder(*signature)
+            view = (
+                previous[1]
+                if previous is not None and previous[0] == signature
+                else WorkingOrder(*signature)
+            )
             current[order.id] = (signature, view)
             result.append(view)
         # Evict completed orders on every projection; never retain a run's full history.
