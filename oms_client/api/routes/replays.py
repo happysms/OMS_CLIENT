@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+import threading
 
 from flask import Response, abort, jsonify, request, stream_with_context
 
@@ -9,9 +10,12 @@ from ...market_data.validation import DataError
 from ...replay.limit_execution import capabilities
 from ...paper_trading.currency import USDT_CSV_FIELDS, usdt_csv_values
 from ...paper_trading.activity import ACTIVITY_CSV_FIELDS, activity_csv_values
+from ...replay.fill_context import FillContextService
 
 
 def register(app, manager):
+    context_service = FillContextService(manager.store, app.config.get('REPLAY_CONTEXT_READER'))
+    context_slot = threading.BoundedSemaphore(1)
     @app.get('/api/replays/capabilities')
     def replay_capabilities():
         return jsonify(capabilities())
@@ -52,6 +56,15 @@ def register(app, manager):
             raise DataError('체결 페이지 번호를 확인하세요.')
         rows = invoke(manager.store.fills, identifier, int(before) if before is not None else None)
         return jsonify(items=rows, next_before=rows[-1]['sequence'] if len(rows)==100 else None)
+
+    @app.get('/api/replays/<identifier>/fills/<int:sequence>/context')
+    def replay_fill_context(identifier, sequence):
+        if not context_slot.acquire(blocking=False):
+            return jsonify(error='다른 체결 상세를 조회 중입니다. 잠시 후 다시 조회하세요.'), 429
+        try:
+            return jsonify(invoke(context_service.get, identifier, sequence))
+        finally:
+            context_slot.release()
 
     @app.get('/api/replays/<identifier>/fills.csv')
     def replay_csv(identifier):

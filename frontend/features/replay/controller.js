@@ -1,3 +1,4 @@
+import {TimeChart} from '../../shared/charts.js';
 import {pnlCurrency,pnlAccount,pnlFill,fxDescription,pnlTheoryPrice,fillNotional,renderTradeActivity} from '../../shared/dom.js';
 // Replay inputs always mean Korean time, independent of the browser's timezone.
 const MAX_PERIOD_MS = 7 * 86400000;
@@ -74,6 +75,7 @@ export function initReplay({api,getCatalog}){
   let snapshot=null,id=null,visible=false,timer=null,polling=false,epoch=0,boundsEpoch=0,creating=false,controlTail=Promise.resolve();
   let historicalFills=null,nextBefore=null,historyCursor=null,historyEpoch=0;
   let renderedFills=null;
+  const inspector=new FillInspector({api});
   let unit=pnlCurrency('replay');
   $('pnl-currency').value=unit;
   $('pnl-currency').addEventListener('change',()=>{unit=pnlCurrency('replay',$('pnl-currency').value);if(snapshot)render(snapshot);history().catch(e=>error(e.message));});
@@ -160,7 +162,8 @@ export function initReplay({api,getCatalog}){
       rows($('fills'),fills.map(f=>{
         const value=pnlFill(f,unit),a=pnlAccount(f,unit),fx=f.usdt?.fill?.fx;
         const theoryPrice=pnlTheoryPrice(f,unit);
-        return row([stamp(f.timestamp),f.order_id,side(f.side),num(value.price),num(f.quantity),num(value.fee),num(value.realized_pnl),num(a.realized_pnl),num(a.unrealized_pnl),num(a.theory_unrealized_pnl),num(a.total_pnl),num(a.equity),num(theoryPrice),stamp(f.theory?.available_at_ms??f.positions?.[0]?.theory?.available_at_ms),f.liquidity??'maker',num(fx?.krw_per_usdt),num(fillNotional(f,unit))]);
+        const tr=row(['',f.order_id,side(f.side),num(value.price),num(f.quantity),num(value.fee),num(value.realized_pnl),num(a.realized_pnl),num(a.unrealized_pnl),num(a.theory_unrealized_pnl),num(a.total_pnl),num(a.equity),num(theoryPrice),stamp(f.theory?.available_at_ms??f.positions?.[0]?.theory?.available_at_ms),f.liquidity??'maker',num(fx?.krw_per_usdt),num(fillNotional(f,unit))]);
+        const button=document.createElement('button');button.type='button';button.className='quiet-button';button.textContent=stamp(f.timestamp);button.dataset.fillContext=f.sequence;button.setAttribute('aria-label',`체결 ${f.sequence} 전후 1분 보기`);tr.firstChild.append(button);return tr;
       }),17,'아직 모의 체결이 없습니다.');
       renderedFills={id:snapshot.id,source,unit};
     }
@@ -226,7 +229,7 @@ export function initReplay({api,getCatalog}){
     try{const result=await api('/api/replays/'+selected);if(version===epoch)render(result);}catch(e){if(version===epoch)error(e.message);}finally{polling=false;if(version!==epoch&&visible&&id)poll();}
   }
   function schedule(){clearInterval(timer);if(visible)timer=setInterval(()=>{if(id&&(!snapshot||!terminal(snapshot.status)))poll();},250);}
-  async function select(identifier){epoch++;id=identifier;snapshot=null;historicalFills=null;renderedFills=null;error('');await poll();schedule();}
+  async function select(identifier){inspector.close();epoch++;id=identifier;snapshot=null;historicalFills=null;renderedFills=null;error('');await poll();schedule();}
   async function history(restore=false,append=false){
     if(append&&!historyCursor)return;
     const version=++historyEpoch,cursor=append?historyCursor:null;
@@ -322,10 +325,169 @@ export function initReplay({api,getCatalog}){
     const version=epoch,selected=id,before=nextBefore;if(!before)return;$('older').disabled=true;
     try{const result=await api(`/api/replays/${selected}/fills?before=${before}`);if(version!==epoch)return;historicalFills=result.items;nextBefore=result.next_before;renderFills();}catch(e){if(version===epoch)error(e.message);}finally{$('older').disabled=false;}
   });
+  $('fills').addEventListener('click',event=>{const button=event.target.closest('[data-fill-context]');const fill=button&&(historicalFills||snapshot?.fills||[]).find(item=>item.sequence===Number(button.dataset.fillContext));if(fill)inspector.open(id,fill,unit);});
   $('newest').addEventListener('click',()=>{historicalFills=null;renderFills();});
   $('csv').addEventListener('click',async()=>{
     const selected=id;try{const blob=await api(`/api/replays/${selected}/fills.csv`,{responseType:'blob'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`replay-${selected}-fills.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){error(e.message);}
   });
   populate();periodPreview();updateRunButton();
-  return {ready:Promise.resolve(),refresh:populate,onEnter(){visible=true;loadStrategies().catch(e=>error(e.message));history(true).catch(e=>error(e.message));poll();schedule();},onLeave(){visible=false;clearInterval(timer);}};
+  return {ready:Promise.resolve(),refresh:populate,onEnter(){visible=true;loadStrategies().catch(e=>error(e.message));history(true).catch(e=>error(e.message));poll();schedule();},onLeave(){visible=false;clearInterval(timer);inspector.close();}};
+}
+
+export class FillInspector {
+  constructor({api}) {
+    this.api = api;
+    this.$ = id => document.getElementById('replay-context-' + id);
+    this.dialog = this.$('dialog');
+    this.version = 0;
+    this.data = null;
+    this.chart = null;
+    this.request = null;
+    this.tickPage = 0;
+    this.fillPage = 0;
+    this.$('close').addEventListener('click', () => this.close());
+    this.dialog.addEventListener('close', () => this.cancel());
+    this.dialog.addEventListener('cancel', () => this.cancel());
+    this.$('reload').addEventListener('click', () => {if(this.fill)this.open(this.runId, this.fill, this.unit);});
+    this.$('venue').addEventListener('change', () => {this.tickPage = 0;this.renderMarket();});
+    this.$('position').addEventListener('input', () => this.selectFrame(Number(this.$('position').value)));
+    this.$('center').addEventListener('click', () => this.center());
+    this.$('reset').addEventListener('click', () => this.chart?.setZoom(null));
+    for (const kind of ['tick', 'fill']) {
+      for (const [action, delta] of [['prev', -1], ['next', 1]]) {
+        this.$(kind + '-' + action).addEventListener('click', () => {
+          this[kind + 'Page'] += delta;
+          if (kind === 'tick') this.renderTicks();else this.renderFills();
+        });
+      }
+    }
+    this.$('fills').addEventListener('click', event => {
+      const button = event.target.closest('[data-context-sequence]');
+      const fill = button && this.data?.fills.find(item => item.sequence === Number(button.dataset.contextSequence));
+      if (fill) this.open(this.runId, fill, this.unit);
+    });
+  }
+  cancel() {
+    ++this.version;
+    this.request?.abort();this.request = null;
+  }
+  close() {
+    this.cancel();
+    if (this.dialog.open) this.dialog.close();
+  }
+  clear() {
+    this.data = null;this.tickPage = 0;this.fillPage = 0;
+    this.chart?.setData([], []);this.chart?.setZoom(null);
+    for (const name of ['book','ticks','fills','orders','venue']) this.$(name).replaceChildren();
+    for (const name of ['source','book-time','tick-count','tick-page','fill-page']) this.$(name).textContent = '';
+    this.$('position').disabled = true;
+    for (const name of ['tick-prev','tick-next','fill-prev','fill-next','center']) this.$(name).disabled = true;
+    this.$('error').hidden = true;
+  }
+  renderSummary() {
+    const fill = this.fill, account = pnlAccount(fill, this.unit), trade = pnlFill(fill, this.unit);
+    this.$('summary').textContent = `${formatReplayPeriod(fill.timestamp, fill.timestamp).split(' ~ ')[0]} KST · ${fill.fill_id || '#'+fill.sequence} · ${fill.order_id} · ${side(fill.side)} ${num(fill.quantity)}개 @ ${num(fill.price)} KRW · ${fill.liquidity || 'maker'}`;
+    const metrics = [['이번 실현', trade.realized_pnl],['누적 실현', account.realized_pnl],['미실현',account.unrealized_pnl],['이론가 미실현',account.theory_unrealized_pnl]];
+    this.$('stats').replaceChildren(...metrics.map(([title, value]) => {
+      const article = document.createElement('article'),label = document.createElement('span'),strong = document.createElement('strong');
+      label.textContent = title + ' · ' + this.unit;strong.textContent = num(value);article.append(label,strong);return article;
+    }));
+    this.$('own-order').textContent = `선택 체결 주문 ${fill.order_id} · 지정가 ${num(fill.limit_price ?? fill.price)} KRW · 체결 후 잔량 ${num(fill.remaining)}개 · 체결 직전 앞 대기 ${num(fill.queue_position?.queue_external_ahead)}개 / 뒤 대기 ${num(fill.queue_position?.queue_external_behind)}개 (저장값이 없으면 —)`;
+  }
+  async open(runId, fill, unit = 'KRW') {
+    this.cancel();
+    const version = this.version;
+    this.runId = runId;this.fill = fill;this.unit = unit;
+    this.clear();this.renderSummary();
+    this.$('status').textContent = '체결 전후 각 1분의 저장 기록과 원본을 조회 중입니다.';
+    if (!this.dialog.open) this.dialog.showModal();
+    if (!this.chart) this.chart = new TimeChart(this.$('chart'), {
+      format: num,
+      onHover: at => {
+        if (at === null) {this.chart.setCursor(null);return;}
+        const frames = this.market()?.frames || [];
+        const index = frames.findLastIndex(frame => frame.time <= at);
+        if (index >= 0) this.selectFrame(index);
+      },
+      onZoom: range => this.chart.setZoom(range),
+    });
+    this.request = new AbortController();
+    try {
+      const result = await this.api(`/api/replays/${encodeURIComponent(runId)}/fills/${fill.sequence}/context`, {signal: this.request.signal});
+      if (version !== this.version || !this.dialog.open) return;
+      this.data = result;this.fill = result.fill;this.renderSummary();
+      this.$('status').textContent = `${result.ticker} · ${formatReplayPeriod(result.start_ms,result.end_ms)} · 저장 진행 시각 ${stamp(result.checkpoint_ms)} KST`
+        + (result.future_hidden ? ' · 아직 재생하지 않은 이후 구간은 숨김. 진행 후 다시 조회하세요.' : '')
+        + (result.start_ms < result.run_start_ms || result.end_ms > result.run_end_ms ? ' · 실행 기간 밖의 호가·틱은 참고 원본이며 모의 체결은 없습니다.' : '')
+        + (result.fills_truncated ? ' · 내 체결은 선택 건과 가까운 1,000건만 표시.' : '')
+        + (result.orders_truncated ? ' · 주문 종료는 가까운 200건만 표시.' : '');
+      this.$('venue').replaceChildren(...result.markets.map(market => new Option(market.venue==='bithumb'?'빗썸 · KRW':'OKX · USDT',market.venue)));
+      this.renderMarket();
+      const position = result.fills.findIndex(item => item.sequence === this.fill.sequence);
+      this.fillPage = Math.max(0,Math.floor(position/100));this.renderFills();
+      rows(this.$('orders'), result.order_events.map(order => row([stamp(order.closed_at),order.id,states[order.status]||order.status,num(order.quantity_state?.filled),num(order.quantity_state?.cancelled)])),5,'주변에 저장된 주문 종료 기록이 없습니다.');
+    } catch (error) {
+      if (version !== this.version || error.name === 'AbortError') return;
+      this.$('error').hidden = false;
+      this.$('error').textContent = '상세 조회를 완료하지 못했습니다: ' + error.message + ' · 이전 서버 버전이라면 서버 업데이트 후 사용할 수 있습니다.';
+      this.$('status').textContent = '선택 체결의 저장 손익은 위에 표시됩니다. 다시 조회할 수 있습니다.';
+    }
+  }
+  market() {return this.data?.markets.find(item => item.venue === this.$('venue').value);}
+  renderMarket() {
+    const market = this.market();
+    if (!market) return;
+    const frames = market.frames, fresh = frame => frame.book && frame.time-frame.book.time <= this.data.max_quote_age_ms;
+    const times = frames.map(frame => frame.time);
+    const series = [
+      {label:'최우선 매수',color:'#5bdfb7',values:frames.map(frame=>fresh(frame)?frame.book.bids[0]?.price:null),isolatedPoints:true},
+      {label:'최우선 매도',color:'#78b4e8',values:frames.map(frame=>fresh(frame)?frame.book.asks[0]?.price:null),isolatedPoints:true},
+    ];
+    if (market.venue === 'bithumb') series.push({label:'선택 체결',color:'#f1b66e',values:times.map(at=>at===this.fill.timestamp?this.fill.price:null),isolatedPoints:true});
+    this.chart.setZoom(null);this.chart.setData(times,series,{gapMs:1000});
+    this.$('source').textContent = Object.entries(market.streams).map(([kind,info]) => {
+      const label = kind==='book'?'호가':'틱';
+      if(info.status!=='ok')return `${label}: ${info.message}`;
+      return `${label}: 원본 ${num(info.event_count)}개 · ${info.provenance==='matched'?'실행 파일 크기·수정 시각 일치':'실행 당시 파일 목록 밖의 원본 또는 이전 기록: 동일성 미확인'}${info.skipped?' · 잘못된 원본 '+num(info.skipped)+'개 제외':''}`;
+    }).join(' / ');
+    this.$('position').max = Math.max(0,frames.length-1);
+    this.$('position').disabled = !frames.length;this.$('center').disabled = !frames.length;
+    this.center();this.renderTicks();
+  }
+  center() {
+    const frames = this.market()?.frames || [];
+    this.selectFrame(Math.max(0,frames.findIndex(frame => frame.time===this.fill.timestamp)));
+  }
+  selectFrame(index) {
+    const frame = this.market()?.frames[index];
+    this.$('position').value = index;
+    if (!frame) {this.$('book-time').textContent='표시할 원본 호가가 없습니다.';rows(this.$('book'),[],3);return;}
+    const book = frame.book;
+    this.chart.setCursor(frame.time);
+    this.$('book-time').textContent = `${stamp(frame.time)} KST · 체결 대비 ${num((frame.time-this.fill.timestamp)/1000)}초`
+      + (book ? ` · 원본 ${stamp(book.time)} · 경과 ${num(frame.time-book.time)}ms${frame.time-book.time>this.data.max_quote_age_ms?' · 오래된 호가 (차트 연결 제외)':''}` : ' · 이전에 관측한 호가가 없습니다.');
+    rows(this.$('book'),book?[...[...book.asks].reverse().map(level=>row(['매도',num(level.price),num(level.quantity)],'replay-sell')),...book.bids.map(level=>row(['매수',num(level.price),num(level.quantity)],'replay-buy'))]:[],3,'선택 시점 이전 원본 호가가 없습니다.');
+  }
+  page(kind, items) {
+    const pages = Math.max(1,Math.ceil(items.length/100));
+    const index = Math.max(0,Math.min(pages-1,this[kind+'Page']));this[kind+'Page'] = index;
+    this.$(kind+'-page').textContent = `${index+1} / ${pages} · ${num(items.length)}건`;
+    this.$(kind+'-prev').disabled = index===0;this.$(kind+'-next').disabled = index===pages-1;
+    return items.slice(index*100,index*100+100);
+  }
+  renderTicks() {
+    const market = this.market();if(!market)return;
+    const info = market.streams.tick;
+    this.$('tick-count').textContent = info.status==='ok' ? `구간 틱 ${num(info.event_count)}개${info.truncated?' 중 체결에 가까운 1,000개 표시':''} · 선택 체결의 근거 틱과 일치하면 강조` : '틱 원본을 표시할 수 없습니다.';
+    rows(this.$('ticks'),this.page('tick',market.ticks).map(tick=>row([stamp(tick.time),tick.direction_known?(tick.qty>0?'매수':'매도'):'방향 미확인',num(tick.price),num(Math.abs(tick.qty))],tick.source_id===this.fill.source_tick?'fill-context-selected':'')),4,'주변에 표시할 시장 틱이 없습니다.');
+  }
+  renderFills() {
+    if(!this.data)return;
+    rows(this.$('fills'),this.page('fill',this.data.fills).map(fill=>{
+      const tr = row(['',fill.order_id,side(fill.side),num(fill.price),num(fill.quantity),num(fill.realized_pnl)],fill.sequence===this.fill.sequence?'fill-context-selected':'');
+      const button = document.createElement('button');button.type='button';button.className='quiet-button';
+      button.textContent=stamp(fill.timestamp);button.dataset.contextSequence=fill.sequence;
+      button.setAttribute('aria-label',`체결 ${fill.sequence} 전후 상세 보기`);tr.firstChild.append(button);return tr;
+    }),6,'주변에 저장된 내 체결이 없습니다.');
+  }
 }

@@ -17,6 +17,7 @@
 | `services.py` | 실시간 분석·모의 계좌의 지연 생성과 종료 |
 | `routes/data.py` | 가격·펀딩·틱 종목 목록과 저장 범위, 틱 차트·원본 페이지·전체 CSV, 가격 CSV 생성·진행 상태·다운로드 |
 | `routes/analysis.py` | 과거·실시간 분석, 조합 저장, 이력·CSV |
+| `GET /api/replays/<id>/fills/<sequence>/context` | 체결 전후 각 60초의 저장 체결·주문 종료와 원본 호가·틱. 진행 중 미래는 숨기며 조회만 수행. 동시 1건, 초과 429. |
 | `routes/backtesting.py` | 백테스트 요청·결과·거래 CSV |
 | `routes/paper_trading.py` | 모의 계좌·주문·초기화 |
 | `routes/oms.py` | OMS 연결 상태 |

@@ -34,6 +34,8 @@ class ReplayStore:
                 CREATE TABLE IF NOT EXISTS order_events (
                     run_id TEXT NOT NULL, sequence INTEGER NOT NULL, report TEXT NOT NULL,
                     PRIMARY KEY(run_id, sequence));
+                CREATE INDEX IF NOT EXISTS fills_time ON fills(run_id, json_extract(report,'$.timestamp'));
+                CREATE INDEX IF NOT EXISTS order_events_time ON order_events(run_id, json_extract(report,'$.closed_at'));
             ''')
             for identifier, updated, raw in con.execute('SELECT id,updated,snapshot FROM runs ORDER BY updated,id').fetchall():
                 snapshot = json.loads(raw)
@@ -112,3 +114,35 @@ class ReplayStore:
             rows = con.execute('SELECT report FROM fills WHERE run_id=? AND sequence<? ORDER BY sequence DESC LIMIT ?',
                                (identifier, before if before is not None else 2**63-1, limit)).fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    def fill_context(self, identifier, sequence):
+        """Freeze the fill and neighbouring saved reports at one database checkpoint."""
+        if type(sequence) is not int or not 1 <= sequence <= 100000:
+            raise ValueError('체결 번호는 1~100000 정수여야 합니다.')
+        with self.connect() as con:
+            con.execute('BEGIN')
+            saved = con.execute('SELECT snapshot FROM runs WHERE id=?', (identifier,)).fetchone()
+            target = con.execute('SELECT report FROM fills WHERE run_id=? AND sequence=?', (identifier, sequence)).fetchone()
+            if not saved or not target:
+                raise KeyError(identifier)
+            snapshot, fill = json.loads(saved[0]), json.loads(target[0])
+            center = fill['timestamp']
+            start, requested_end = max(0, center - 60000), center + 60001
+            active = snapshot['status'] in {'loading', 'running', 'paused'}
+            end = min(requested_end, snapshot['virtual_time_ms'] + 1) if active else requested_end
+            neighbours = con.execute('''SELECT report FROM fills WHERE run_id=? AND sequence!=? AND sequence<=?
+                AND json_extract(report,'$.timestamp')>=? AND json_extract(report,'$.timestamp')<?
+                ORDER BY abs(json_extract(report,'$.timestamp')-?),sequence LIMIT 1000''',
+                (identifier, sequence, snapshot['fill_count'], start, end, center)).fetchall()
+            orders = con.execute('''SELECT report FROM order_events WHERE run_id=? AND sequence<=?
+                AND json_extract(report,'$.closed_at')>=? AND json_extract(report,'$.closed_at')<?
+                ORDER BY abs(json_extract(report,'$.closed_at')-?),sequence LIMIT 201''',
+                (identifier, snapshot.get('order_event_count', 0), start, end, center)).fetchall()
+        fills = [fill, *[json.loads(row[0]) for row in neighbours[:999]]]
+        return dict(snapshot=snapshot, fill=fill, start_ms=start, end_ms=end,
+                    requested_end_ms=requested_end, future_hidden=end < requested_end,
+                    fills=sorted(fills, key=lambda row: (row['timestamp'], row['sequence'])),
+                    fills_truncated=len(neighbours) > 999,
+                    order_events=sorted([json.loads(row[0]) for row in orders[:200]],
+                                        key=lambda row: (row['closed_at'], row['sequence'])),
+                    orders_truncated=len(orders) > 200)

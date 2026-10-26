@@ -53,7 +53,7 @@ class ReplaySource:
             self.fx_quotes = AsOfFxQuotes()
             self.fx_quotes.error = '과거 USDT/KRW 호가가 없어 USDT 손익을 평가할 수 없습니다.'
 
-    def _stream(self, venue, kind, paths, native, originals):
+    def _stream(self, venue, kind, paths, native, originals, max_events=MAX_EVENTS):
         con = self.stack.enter_context(parquet.connection())
         columns = {r[0] for r in con.execute('DESCRIBE SELECT * FROM read_parquet(?,union_by_name=true)', [paths]).fetchall()}
         required = {'desktopTime', 'price', 'qty'} if kind == 'tick' else {'desktopTime','b1_p','a1_p'}
@@ -73,8 +73,8 @@ class ReplaySource:
             count = con.execute(f'SELECT count(*) FROM read_parquet($paths,union_by_name=true) WHERE {where}', params).fetchone()[0]
         self.total += count
         self.counts[f'{venue}:{kind}'] = count
-        if self.total > MAX_EVENTS:
-            raise DataError('한 실행은 원본 이벤트 500만 개까지 지원합니다. 기간을 줄여 주세요.')
+        if self.total > max_events:
+            raise DataError(f'원본 이벤트 {max_events:,}개 조회 한도를 넘었습니다. 구간의 원본을 모두 표시할 수 없습니다.')
         with parquet.query_deadline(con):
             con.execute(f'SELECT {selected},filename,file_row_number FROM read_parquet($paths,union_by_name=true,filename=true,file_row_number=true) WHERE {where} ORDER BY desktopTime,list_position($paths,filename),file_row_number', params)
         ranks={name:i for i,name in enumerate(paths)}
@@ -123,6 +123,26 @@ class ReplaySource:
                     event['_key'] = (event['time'], 0 if kind=='tick' else 1, venue, ranks[row[-2]], row[-1])
                     yield event
         return rows()
+
+    def open_context_stream(self, venue, kind, max_events=100000):
+        """Read one bounded market stream for inspection, without account or FX work."""
+        if venue not in self.config['venues'] or kind not in {'book', 'tick'}:
+            raise DataError('체결 상세 데이터 종류를 확인하세요.')
+        provider = parquet if kind == 'book' else ticks
+        _, ticker = provider.validate_symbol(venue, self.config['ticker'])
+        native = kind == 'book' and parquet._resolve_source(venue, ticker)['source_kind'] == 'orderbook_1s'
+        start = pd.Timestamp(self.config['start_ms'] - self.warmup_ms, unit='ms', tz='UTC')
+        end = pd.Timestamp(self.config['end_ms'], unit='ms', tz='UTC')
+        paths = provider.files_for_range(venue, ticker, start, end)
+        if not paths:
+            raise DataError('이 구간의 원본 파일이 없습니다.')
+        if len(paths) > 8:
+            raise DataError('상세 조회 원본 파일 수 한도를 넘었습니다.')
+        for name in paths:
+            stat = Path(name).stat()
+            self.manifest.append(dict(path=name, size=stat.st_size, mtime_ns=stat.st_mtime_ns))
+        readable = self.stack.enter_context(ticks._materialize(paths)) if kind == 'tick' else paths
+        return self._stream(venue, kind, readable, native, paths, max_events)
 
     def load(self):
         config = self.config
