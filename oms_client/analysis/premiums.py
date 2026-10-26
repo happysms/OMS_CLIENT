@@ -13,6 +13,7 @@ import pandas as pd
 from ..market_data import parquet
 from ..market_data.validation import DataError
 from ..storage.premiums import HOUR, PROFILE, PremiumStore
+from ..storage.access import DATA_ACCESS
 
 DAY = 24 * HOUR
 GRACE_MS = 120_000
@@ -134,6 +135,7 @@ class PremiumService:
             self.wake.wait(30)
             self.wake.clear()
 
+    @DATA_ACCESS.protect
     def refresh(self, *, automatic=False):
         end = completed_end(self.clock() * 1000)
         with (self.store.directory / 'premiums.lock').open('a') as lock:

@@ -7,6 +7,7 @@ import time
 import uuid
 
 from ..strategies.registry import StrategyRegistry, DEFAULT_ID
+from ..storage.access import DATA_ACCESS
 from .clock import PlaybackClock
 from .engine import ReplayEngine, config_from
 from .source import ReplaySource
@@ -120,6 +121,7 @@ class ReplaySession:
             self.condition.notify_all()
             return json.loads(self._snapshot_json)
 
+    @DATA_ACCESS.protect
     def _run(self):
         try:
             events = iter(self.source.load())

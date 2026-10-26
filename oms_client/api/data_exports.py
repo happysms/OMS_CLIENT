@@ -15,6 +15,7 @@ import time
 from ..market_data.csv_export import MAX_BYTES, MAX_ROWS, export_csv, filename, normalize_config
 from ..market_data.validation import DataError
 from ..storage.state import utc_now
+from ..storage.access import DATA_ACCESS
 
 
 class DataExportJobs:
@@ -69,6 +70,7 @@ class DataExportJobs:
                 raise
         return {"id": identifier, "status": "queued"}
 
+    @DATA_ACCESS.protect
     def _run(self, identifier):
         path = self.directory / f"{identifier}.csv"
         try:

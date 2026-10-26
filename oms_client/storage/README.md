@@ -9,3 +9,5 @@
 `orderbook_samples.py`는 독립 USDT 수집기의 SQLite WAL spool과 UTC 시간별 Parquet 저장을 담당합니다. 먼저 커밋한 행을 임시 Parquet·fsync·원자적 교체로 반영하고 성공한 행만 spool에서 삭제합니다. 데이터 루트와 상태 디렉터리를 각각 잠그며, 재시작 후 `(exchange, sampleTime)`으로 병합합니다. 스키마·단위·실행 방법은 `../collectors/README.md`에 있습니다.
 
 호가 수집기의 2~5단계 깊이는 nullable 컬럼으로 확장합니다. 이전 SQLite spool과 기존 시간 파일의 1호가 기록을 유지하며 과거에 없던 깊이를 추정하지 않습니다. `candle_samples.py`는 공개 REST 완료 1분봉을 별도 잠금과 UTC 날짜별 Parquet으로 보관합니다.
+
+`retention.py`는 서버 파일시스템 용량과 명시적으로 켠 시세 파일 보관 정책을 관리합니다. 기본 7일·자동 정리 꺼짐이며, 계좌·결과 DB는 대상에서 제외합니다. `access.py`의 읽기/정리 사용권으로 실행 중인 조회·분석·리플레이를 보호합니다. 설정·스캔 제한·수집기 잠금·API와 운영 범위는 [상세 문서](../../docs/storage_retention.ko.md)에 있습니다.

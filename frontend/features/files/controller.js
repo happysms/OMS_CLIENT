@@ -6,6 +6,66 @@ const kindLabels={ob:'호가',price:'호가',orderbook:'호가',ob_1s:'1초 호�
 const size=value=>Number.isFinite(value)?value<1024?number(value,0)+' B':value<1048576?number(value/1024,1)+' KiB':value<1073741824?number(value/1048576,1)+' MiB':number(value/1073741824,2)+' GiB':'—';
 const name=item=>String(item?.label||item?.name||'이름 없음');
 
+export function initStorage({api,onCleaned=()=>{}}){
+  let loaded=false,polling=false,timer=null,lastCleanup=null;
+  const labels={system:'시스템',legacy:'기본 시세',collector:'전용 수집',state:'계좌·결과'};
+  const deferred={disabled:'자동 정리 꺼짐',data_in_use:'분석·시뮬레이션에서 데이터를 사용 중이라 다음 주기로 미뤘습니다.',collector_in_use:'수집기가 사용 중인 전용 파일은 건너뛰었습니다.',another_cleanup:'다른 정리 작업이 진행 중입니다.',settings_changed:'설정 변경 또는 종료 요청으로 정리를 멈췄습니다.',failed:'정리를 완료하지 못했습니다. 권한과 저장소 상태를 확인하세요.'};
+  const showError=message=>{$('storage-error').textContent=message||'';$('storage-error').hidden=!message;};
+  const policy=()=>({enabled:$('storage-enabled').checked,days:Number($('storage-days').value),scopes:['legacy','collector'].filter(scope=>$('storage-'+scope).checked)});
+  function render(result,replaceInputs=false){
+    const groups=new Map();
+    for(const disk of result.disks){const key=disk.device??disk.scope;const group=groups.get(key);if(group)group.locations.push(disk);else groups.set(key,{...disk,locations:[disk]});}
+    const articles=[];
+    for(const disk of groups.values()){
+      const article=document.createElement('article'),title=document.createElement('strong'),detail=document.createElement('p');
+      title.textContent=disk.locations.map(item=>labels[item.scope]||item.scope).join(' · ');
+      detail.textContent=disk.error||`남은 공간 ${size(disk.free)} / 전체 ${size(disk.total)} · 사용 ${disk.used_percent}%`;
+      article.append(title,detail);
+      if(!disk.error){const meter=document.createElement('progress');meter.max=100;meter.value=disk.used_percent;meter.setAttribute('aria-label',title.textContent+' 사용률');article.append(meter);}
+      for(const location of disk.locations){const path=document.createElement('small');path.textContent=location.path+(location.exists===false?' · 아직 없는 폴더, 상위 디스크 기준':'');article.append(path);}
+      articles.push(article);
+    }
+    $('storage-disks').replaceChildren(...articles);
+    $('storage-summary').textContent=[...groups.values()].map(disk=>disk.error?'용량 확인 불가':`남음 ${size(disk.free)} / ${size(disk.total)}`).join(' · ');
+    if(!loaded||replaceInputs){$('storage-enabled').checked=result.policy.enabled;$('storage-days').value=result.policy.days;for(const scope of ['legacy','collector'])$('storage-'+scope).checked=result.policy.scopes.includes(scope);loaded=true;}
+    for(const field of ['enabled','days','legacy','collector','save'])$('storage-'+field).disabled=false;
+    $('storage-preview').disabled=result.busy;
+    const last=result.last;
+    let status=`저장된 설정: 자동 정리 ${result.policy.enabled?'켜짐':'꺼짐'} · ${result.policy.days}일 보관. `;
+    if(result.busy)status+='파일을 확인·정리하고 있습니다. ';
+    if(last){status+=`${last.mode==='preview'?'미리보기':'정리'} (${time(last.finished_ms)} KST) · ${last.policy.days}일 기준 후보 ${number(last.count??0,0)}개 / ${size(last.bytes??0)}. `;
+      if(last.mode==='cleanup')status+=`삭제 ${number(last.deleted,0)}개 / ${size(last.deleted_bytes)}, 건너뜀 ${number(last.skipped,0)}개. `;
+      if(last.truncated)status+='일부만 확인한 결과이며 남은 파일은 다음 정리에서 처리합니다. ';
+      if(last.deferred)status+=(deferred[last.deferred]||last.deferred)+' ';
+      if(last.errors||last.scan_errors)status+=`오류 ${number((last.errors||0)+(last.scan_errors||0),0)}건. `;
+      $('storage-samples').hidden=!last.samples?.length;
+      $('storage-sample-list').replaceChildren(...(last.samples||[]).map(item=>{const li=document.createElement('li');li.textContent=`${labels[item.scope]} / ${item.path} · ${size(item.bytes)}`;return li;}));
+      if(last.mode==='cleanup'&&last.deleted>0&&lastCleanup!==last.finished_ms){lastCleanup=last.finished_ms;Promise.resolve(onCleaned()).catch(()=>{});}
+    }
+    $('storage-status').textContent=status;
+    showError(result.error);
+    clearTimeout(timer);timer=setTimeout(refresh,result.busy?2000:60000);
+  }
+  async function refresh(){
+    if(polling)return;
+    if(document.hidden){clearTimeout(timer);timer=setTimeout(refresh,60000);return;}
+    polling=true;
+    try{render(await api('/api/storage'));}catch(error){showError(error.message);$('storage-summary').textContent='저장 공간 기능 연결 확인 필요';clearTimeout(timer);timer=setTimeout(refresh,60000);}finally{polling=false;}
+  }
+  async function submit(preview){
+    if(!$('storage-form').reportValidity())return;
+    const payload=policy();if(!payload.scopes.length){showError('대상 저장소를 하나 이상 선택하세요.');return;}
+    $('storage-save').disabled=true;$('storage-preview').disabled=true;
+    try{render(await api('/api/storage/'+(preview?'preview':'policy'),{method:'POST',body:payload}),!preview);}
+    catch(error){showError(error.message);$('storage-save').disabled=!loaded;$('storage-preview').disabled=!loaded;}
+  }
+  $('storage-form').addEventListener('submit',event=>{event.preventDefault();submit(false);});
+  $('storage-preview').addEventListener('click',()=>submit(true));
+  $('storage-refresh').addEventListener('click',refresh);
+  $('storage-details').addEventListener('toggle',()=>{if($('storage-details').open)refresh();});
+  refresh();
+}
+
 export function initFiles({api,onOpenQuery}={}){
   const state={generation:0,records:new Map(),focusId:null,selectedId:null,selectionVersion:0,info:null,infoLoading:false,infoError:null,infoController:null,opening:false,openController:null,openError:null,search:'',searchPending:false,searchTimer:null,collapsed:false,destroyed:false};
   const panel=$('file-explorer'),layout=$('app-layout'),body=$('files-body'),tree=$('files-tree'),search=$('files-search');

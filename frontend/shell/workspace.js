@@ -3,7 +3,7 @@ import {initBacktesting} from '../features/backtesting/controller.js';
 import {initPaperTrading} from '../features/paper_trading/controller.js';
 import {initStrategies} from '../features/strategies/controller.js';
 import {initReplay} from '../features/replay/controller.js';
-import {initFiles} from '../features/files/controller.js';
+import {initFiles,initStorage} from '../features/files/controller.js';
 import {initQuality} from '../features/quality/controller.js';
 import {renderCatalogSummary} from '../shared/source-controls.js';
 import {initTabs} from './tabs.js';
@@ -29,4 +29,5 @@ export async function initWorkspace({api,getCatalog,stopLive}) {
     await modules.data.openQuery(query,options);
   }});
   document.addEventListener('oms:catalog',()=>{files.refresh?.();});
+  initStorage({api,onCleaned:()=>files.refresh()});
 }

@@ -10,6 +10,7 @@ import time
 
 from ..analysis import history as data_service
 from ..storage.state import utc_now
+from ..storage.access import DATA_ACCESS
 from .exports import _write_csv, _write_trades_csv
 
 class AnalysisJobs:
@@ -75,6 +76,7 @@ class AnalysisJobs:
             raise
         return {"id": run_id, "status": "queued"}
 
+    @DATA_ACCESS.protect
     def _run(self, run_id):
         try:
             with self.lock:

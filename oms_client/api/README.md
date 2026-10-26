@@ -2,6 +2,8 @@
 
 브라우저의 요청을 인증·검증하고 담당 도메인 서비스에 전달합니다. 가격 계산이나 모의 체결 규칙은 해당 기능 패키지에 둡니다.
 
+`routes/storage.py`의 `GET /api/storage`, `POST /api/storage/policy`, `POST /api/storage/preview`는 서버 디스크 용량·보관 설정·삭제 후보 미리보기를 제공합니다. 자동 삭제는 기본 꺼짐이며 로그인·CSRF 정책을 그대로 적용합니다. 시세를 사용하는 동기 API 요청에는 읽기 사용권을 부여하고 요청 종료 시 반환합니다. 백그라운드 작업은 각 작업 전체에 별도 읽기 사용권을 유지합니다. 상세 범위는 [저장 공간 문서](../../docs/storage_retention.ko.md)를 따릅니다.
+
 전체 공통 종목의 영구 괴리 집계는 `routes/premiums.py`에서 제공합니다. `GET /api/premiums`는 최근 3일·7일 평균과 충족률·작업 상태, `GET /api/premiums/hourly?ticker=BTC`는 최근 168시간 결과, `GET /api/premiums/csv`는 전체 종목 요약 CSV입니다. `POST /api/premiums/refresh`는 증분 갱신을 요청하고 `POST /api/premiums/settings`의 `{"enabled":true}`는 자동 누적 설정을 저장합니다. 모두 기존 로그인·CSRF 정책을 따릅니다. 원본이 갱신된 시간만 교체 저장하며 일반 분석 결과 캐시와 분리됩니다.
 
 | 파일 / 폴더 | 담당 |

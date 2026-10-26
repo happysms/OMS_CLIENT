@@ -26,6 +26,23 @@
       </div>
     </aside>
     <div id="app-content" class="app-content">
+  <section class="panel storage-panel" aria-label="서버 PC 저장 공간">
+    <details id="storage-details"><summary><strong>서버 PC 저장 공간 · 자동 정리</strong><span id="storage-summary" role="status">용량 확인 중…</span></summary>
+      <div class="storage-content">
+        <p class="tiny-help">대시보드 서버가 실행되는 PC의 용량입니다. 같은 디스크의 저장 위치는 한 행으로 표시합니다.</p>
+        <div id="storage-disks" class="storage-disks"></div>
+        <form id="storage-form" class="storage-form">
+          <label><input id="storage-enabled" type="checkbox" disabled> 오래된 시세 파일 자동 삭제</label>
+          <label>보관 기간(일) <input id="storage-days" type="number" min="1" max="3650" step="1" value="7" required disabled></label>
+          <fieldset><legend>대상 저장소</legend><label><input id="storage-legacy" type="checkbox" checked disabled> 기본 시세 저장소</label><label><input id="storage-collector" type="checkbox" checked disabled> 전용 수집 저장소</label></fieldset>
+          <p class="tiny-help">자동 삭제는 기본 꺼짐입니다. 켜고 저장하면 10분마다 조건에 맞는 시세 파일을 영구 삭제합니다. 데이터 시각과 마지막 수정 시각이 모두 보관 기간을 넘긴 파일만 대상으로 하며, 계좌·매매 결과·집계 결과는 보존합니다. 삭제한 원본 구간은 다시 조회하거나 시뮬레이션할 수 없습니다.</p>
+          <div class="storage-actions"><button id="storage-preview" class="small-button" type="button" disabled>삭제 대상 미리보기</button><button id="storage-save" class="save-button" type="submit" disabled>설정 저장</button><button id="storage-refresh" class="small-button" type="button">용량·상태 새로고침</button></div>
+        </form>
+        <p id="storage-status" class="tiny-help" role="status"></p><p id="storage-error" class="error-box" role="alert" hidden></p>
+        <details id="storage-samples" hidden><summary>최근 확인한 대상 파일 · 최대 50개</summary><ul id="storage-sample-list"></ul></details>
+      </div>
+    </details>
+  </section>
   <div id="module-analysis" class="workspace" role="tabpanel" aria-labelledby="tab-analysis">
     <aside class="sidebar" aria-label="분석 설정">
       <div class="sidebar-heading"><span class="eyebrow">COMPOSER</span><span class="subtle">01 — 설정</span></div>

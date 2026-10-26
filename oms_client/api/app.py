@@ -9,11 +9,13 @@ from ..analysis.premiums import PremiumService
 from ..paths import ROOT
 from ..replay.service import ReplayManager
 from ..storage.state import StateStore
+from ..storage.retention import RetentionService
+from ..market_data import parquet
 from . import errors
 from .auth import TransportAwareSessionInterface, configure_auth
 from .data_exports import DataExportJobs
 from .jobs import AnalysisJobs
-from .routes import analysis, backtesting, collectors, data, files, oms, paper_trading, premiums, quality, replays, strategies, workspace
+from .routes import analysis, backtesting, collectors, data, files, oms, paper_trading, premiums, quality, replays, storage, strategies, workspace
 from .services import configure_services
 
 
@@ -59,6 +61,9 @@ def create_app(config=None):
     app.extensions['premium_service'] = premium_service
     replay_manager = ReplayManager(store.directory)
     app.extensions['replay_manager'] = replay_manager
+    retention = RetentionService(store.directory, {'legacy': parquet.data_root(), 'collector': parquet.collector_data_root()},
+                                 autostart=not app.testing)
+    app.extensions['retention_service'] = retention
     live_manager, paper_service = configure_services(app, store, jobs)
     errors.register(app)
     workspace.register(app, csrf_token)
@@ -72,5 +77,6 @@ def create_app(config=None):
     oms.register(app)
     collectors.register(app)
     files.register(app)
+    storage.register(app, retention)
     quality.register(app)
     return app
