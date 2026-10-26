@@ -291,6 +291,34 @@ class ReplayApiTests(unittest.TestCase):
                     quantity_step='1',min_notional='1',latency_ms=0,fast=True)
         result.update(kw);return result
 
+    def test_limit_capabilities_controls_unknown_rejection_and_closed_order_export(self):
+        self.assertEqual(self.app.test_client().get('/api/replays/capabilities').status_code,401)
+        capabilities=self.client.get('/api/replays/capabilities').json
+        self.assertEqual(len(capabilities['cases']),142)
+        self.assertIn('fok',capabilities['tifs']);self.assertIn('okx_execution',capabilities['unsupported'])
+        response=self.client.post('/api/replays',json=self.payload(auto_mm=False,fast=False,end='2026-10-26T12:01:00+09:00',
+            maker_fee_bps='5',taker_fee_bps='10',price_step='1',end_order_policy='preserve'),headers=self.headers)
+        self.assertEqual(response.status_code,201);identifier=response.json['id'];session=self.manager.active
+        deadline=time.monotonic()+2
+        while self.manager.get(identifier)['status']=='loading' and time.monotonic()<deadline:time.sleep(.005)
+        base=f'/api/replays/{identifier}'
+        self.assertEqual(self.client.post(base+'/control',json={'action':'pause'},headers=self.headers).status_code,200)
+        for extra in ({'tif':'stop_limit'},{'reduce_only':True},{'venue':'okx'}):
+            response=self.client.post(base+'/control',json=dict(action='order',side='buy',price='100',quantity='1',**extra),headers=self.headers)
+            self.assertEqual(response.status_code,400)
+        for _ in range(2):
+            response=self.client.post(base+'/control',json=dict(action='order',side='buy',price='100',quantity='1',tif='ioc',client_order_id='retry'),headers=self.headers)
+            self.assertEqual(response.status_code,200)
+        self.assertEqual(len(response.json['orders']),1)
+        self.client.post(base+'/control',json={'action':'play'},headers=self.headers)
+        deadline=time.monotonic()+2
+        while not self.manager.get(identifier)['order_event_count'] and time.monotonic()<deadline:time.sleep(.005)
+        self.client.post(base+'/control',json={'action':'stop'},headers=self.headers);session.thread.join(2)
+        exported=self.client.get(base+'/result.json').json
+        self.assertEqual(len(exported['closed_orders']),1)
+        self.assertEqual(exported['closed_orders'][0]['quantity_state']['cancelled'],1)
+        self.assertEqual(exported['initial_config']['taker_fee_bps'],'10')
+
     def test_auth_csrf_and_invalid_speed(self):
         anonymous=self.app.test_client()
         self.assertEqual(anonymous.get('/api/replays').status_code,401)

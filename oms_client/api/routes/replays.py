@@ -6,9 +6,14 @@ import json
 from flask import Response, abort, jsonify, request, stream_with_context
 
 from ...market_data.validation import DataError
+from ...replay.limit_execution import capabilities
 
 
 def register(app, manager):
+    @app.get('/api/replays/capabilities')
+    def replay_capabilities():
+        return jsonify(capabilities())
+
     def invoke(call, *args):
         try:
             return call(*args)
@@ -54,7 +59,7 @@ def register(app, manager):
             output = io.StringIO(); writer = csv.writer(output)
             writer.writerow(['sequence','virtual_time_ms','order_id','side','price','quantity','fee','fill_realized_pnl',
                              'cumulative_realized_pnl','unrealized_pnl','theory_unrealized_pnl','total_pnl',
-                             'theory_total_pnl','cash','coin','equity','source_tick'])
+                             'theory_total_pnl','cash','coin','equity','source_tick','liquidity','tif','limit_price'])
             yield '\ufeff'+output.getvalue(); output.seek(0); output.truncate(0)
             before = snapshot['fill_count']+1
             while before>1:
@@ -64,7 +69,7 @@ def register(app, manager):
                     account = fill['account']
                     writer.writerow([fill[key] for key in ('sequence','timestamp','order_id','side','price','quantity','fee','realized_pnl')]+
                                     [account.get(key) for key in ('realized_pnl','unrealized_pnl','theory_unrealized_pnl','total_pnl',
-                                                                  'theory_total_pnl','cash','coin','equity')]+[fill['source_tick']])
+                                                                  'theory_total_pnl','cash','coin','equity')]+[fill['source_tick']]+[fill.get(key) for key in ('liquidity','tif','limit_price')])
                 yield output.getvalue(); output.seek(0); output.truncate(0)
                 before = rows[-1]['sequence']
         return Response(generate(), mimetype='text/csv', headers={'Content-Disposition':f'attachment; filename="replay-{snapshot["id"]}-fills.csv"'})
@@ -85,6 +90,15 @@ def register(app, manager):
                     yield ('' if first else ',')+json.dumps(fill, ensure_ascii=False, allow_nan=False)
                     first = False
                 before = rows[-1]['sequence']
+            yield '],"closed_orders":['
+            before, first = snapshot.get('order_event_count',0)+1, True
+            while before>1:
+                rows=manager.store.order_events(identifier,before,500)
+                if not rows:break
+                for order in rows:
+                    yield ('' if first else ',')+json.dumps(order,ensure_ascii=False,allow_nan=False)
+                    first=False
+                before=rows[-1]['sequence']
             yield ']}'
         return Response(generate(), mimetype='application/json', headers={
             'Content-Disposition':f'attachment; filename="replay-{snapshot["id"]}-result.json"'})

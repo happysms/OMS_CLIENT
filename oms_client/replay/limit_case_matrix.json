@@ -1,0 +1,1138 @@
+[
+  {
+    "id": "A01",
+    "scenario": "규격·자금·선택 거래소가 모두 유효",
+    "design": "전송→도착→주문 조건별 판단",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "A02",
+    "scenario": "여러 매수가 같은 현금을 중복 사용하려 함",
+    "design": "전송 중 예약 포함 검사, 초과 의도 거절",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "A03",
+    "scenario": "현물 복수 매도의 합계가 가용 코인 초과",
+    "design": "과매도 거절, 미체결 매수 예정량을 보유량으로 쓰지 않음",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "A04",
+    "scenario": "OKX 증가 주문에 담보 부족",
+    "design": "도착 시 truth 담보 재검사, 거절 또는 명시 프로필 처리",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "A05",
+    "scenario": "tick·lot·단위·부호가 잘못됨",
+    "design": "체결 전 거절, 자동 반올림 허용 여부는 사전 명시",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "A06",
+    "scenario": "주문 종류별 최소/최대 수량·금액 위반",
+    "design": "해당 주문 거절. 유효 제출 후 작은 부분체결은 유지",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "A07",
+    "scenario": "거래 중단·종목 상태·가격 보호에 걸림",
+    "design": "거래소 상태 프로필에 따라 거절/취소/제한, 정상 연속매칭 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "A08",
+    "scenario": "선택되지 않은 거래소·종목으로 주문/입력 전달",
+    "design": "구성 검증 오류. 암묵적으로 세 번째 거래소 생성 금지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "A09",
+    "scenario": "한 실행에 거래소 3개 이상 설정",
+    "design": "실행 전 최대 2개 제한 오류",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "A10",
+    "scenario": "거래소 ID 중복 또는 동일 멱등 키의 상충 요청",
+    "design": "거래소 중복 구성은 거절. 같은 요청 재전달은 기존 주문 반환, 상충 요청 거절",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B01",
+    "scenario": "매수 limit<ask / 매도 limit>bid, GTC",
+    "design": "공격 체결 없이 해당 가격 큐에 접수",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B02",
+    "scenario": "limit이 상대 best와 정확히 같음",
+    "design": "해당 가격의 실제 가용량만 체결, “같은 가격이므로 maker”로 분류하지 않음",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B03",
+    "scenario": "상대 best보다 공격적인 limit, 한 호가로 전량 가능",
+    "design": "상대 가격에서 전량 taker, 한도가로 불리하게 고정하지 않음",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B04",
+    "scenario": "여러 상대 호가를 써야 전량 가능",
+    "design": "가격 우선 소진, fill별 가격·역할·수량 보존",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B05",
+    "scenario": "GTC 일부만 즉시 가능, 뒤 가격은 limit 밖으로 확인됨",
+    "design": "일부 taker+확정 잔량 대기",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B06",
+    "scenario": "IOC 일부만 즉시 가능, 뒤 가격은 limit 밖으로 확인됨",
+    "design": "일부 taker+확정 잔량 취소",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B07",
+    "scenario": "IOC 즉시 가능량 0",
+    "design": "체결 없이 전량 취소, 대기 주문 생성 안 함",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B08",
+    "scenario": "Post-only가 도착 때 교차",
+    "design": "체결 없이 조건 취소/프로필의 거절 매핑",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B09",
+    "scenario": "Post-only가 도착 때 비교차",
+    "design": "전량 큐 대기, 후속 maker 체결 후보",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B10",
+    "scenario": "top-N 소진 후 limit 안의 더 깊은 잔량 미관측",
+    "design": "알려진 부분만 확정, 잔량 U. 마지막 가격 무제한 체결 금지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "B11",
+    "scenario": "raw best는 교차하나 self/public 소진 부채로 유효량 0",
+    "design": "소진 잔량 재사용 금지. 교차 판정과 유동성 정합의 근거/품질 기록",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "B12",
+    "scenario": "전송→도착 사이 호가 개선·악화·소멸",
+    "design": "도착 이전 시장 사건 먼저 반영, 전송 당시 가격·수량으로 체결하지 않음",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "C01",
+    "scenario": "주문가격까지 유효한 반대 체결이 오지 않음",
+    "design": "미체결 대기 유지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C02",
+    "scenario": "best quote가 내 가격에 닿았으나 trade tick 없음",
+    "design": "touch만으로 maker fill 생성 안 함",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C03",
+    "scenario": "상대 quote가 내 대기가격을 넘어왔으나 tick 없음",
+    "design": "crossed/stale/누락 가능성 기록. 대기 주문을 자동 taker나 전량 maker로 바꾸지 않음",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C04",
+    "scenario": "내 매수에 매수 주도 tick / 내 매도에 매도 주도 tick",
+    "design": "그 주문의 passive fill 근거로 사용하지 않음",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C05",
+    "scenario": "반대 주도 tick이지만 가격이 내 주문에 도달하지 않음",
+    "design": "해당 주문 미체결",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C06",
+    "scenario": "반대 tick 수량이 내 앞 물량보다 작음",
+    "design": "앞 물량만 줄고 내 체결 0",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C07",
+    "scenario": "반대 tick 수량이 내 앞 물량과 정확히 같음",
+    "design": "내 체결 0, 이후 거래부터 체결 가능",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C08",
+    "scenario": "반대 tick이 앞 물량을 초과하나 내 잔량 전체에는 부족",
+    "design": "초과분만 내 부분체결",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C09",
+    "scenario": "앞 물량+내 잔량을 정확히 소진",
+    "design": "내 전량체결",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C10",
+    "scenario": "앞 물량+내 잔량보다 많은 tick",
+    "design": "내 전량체결 후 남은 예산을 후순위에 한 번 배분",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C11",
+    "scenario": "내 주문보다 불리한 원본 가격까지 반대 tick이 관통",
+    "design": "내 가격이 우선했을 후보량만 배분, maker 가격은 내 지정가, 관측량 초과 금지",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "C12",
+    "scenario": "스프레드 안쪽에 내 지정가가 존재",
+    "design": "알려진 더 우선한 외부·내 주문 이후 배분. 원본 체결가로 임의 가격 개선 금지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "C13",
+    "scenario": "앞쪽 외부 취소 후보가 확인됨",
+    "design": "취소 모형에서 순번만 전진, 취소 자체로 fill 생성 안 함",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "C14",
+    "scenario": "뒤쪽 외부 취소만 발생",
+    "design": "내 앞 물량 유지",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "C15",
+    "scenario": "같은 가격 신규 외부 잔량 증가",
+    "design": "확인된 현재 시각의 기존 내 주문 뒤로 배치하는 모형, 과거 위치 소급 변경 금지",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "C16",
+    "scenario": "snapshot 감소만 있고 대응 tick 없음",
+    "design": "취소/체결 구분 불가. trade_only는 앞 물량 자동 축소 안 함",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "C17",
+    "scenario": "tick→snapshot 또는 snapshot→tick 순서 역전",
+    "design": "public 부채·감소 credit으로 한 번만 정합",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "C18",
+    "scenario": "반복 snapshot 또는 top-N 이탈 후 복귀",
+    "design": "새 유동성·새 큐로 초기화하지 않고 생명주기·미관측 상태 보존",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "D01",
+    "scenario": "같은 가격 O1→O2, 예산이 O1에도 도달 못 함",
+    "design": "두 주문 모두 미체결, 선행 외부 물량만 감소",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D02",
+    "scenario": "같은 가격 O1 일부체결",
+    "design": "O1 잔량이 남으면 O2로 건너뛰지 않음",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D03",
+    "scenario": "같은 가격 O1 전량, O2 일부/전량",
+    "design": "접수순 FIFO, 같은 tick을 주문마다 재생성하지 않음",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D04",
+    "scenario": "다른 가격 여러 매수",
+    "design": "높은 가격부터, 같은 가격 안에서는 FIFO",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D05",
+    "scenario": "다른 가격 여러 매도",
+    "design": "낮은 가격부터, 같은 가격 안에서는 FIFO",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D06",
+    "scenario": "내 주문 없는 더 우선한 외부 가격대가 존재",
+    "design": "외부 물량도 먼저 예산 소비",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D07",
+    "scenario": "한 tick이 여러 내 주문을 채움",
+    "design": "외부·내 전체 배분 합계가 원본 tick 양 이내",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D08",
+    "scenario": "여러 공격 주문이 같은 상대 잔량을 노림",
+    "design": "먼저 사용한 execution depth는 후속 주문이 재사용하지 못함",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D09",
+    "scenario": "매수만 체결 / 매도만 체결",
+    "design": "편측 재고·미헤지·담보 변화를 각각 반영",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D10",
+    "scenario": "양쪽이 순차 체결 / 양쪽 일부 체결",
+    "design": "중간 노출·왕복 비용·실현손익까지 보존",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "D11",
+    "scenario": "같은 ms의 여러 child 도착 또는 일부 child 거절",
+    "design": "고정 sequence로 개별 처리, 거절 child의 예약만 해제",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "D12",
+    "scenario": "한 슬롯 취소/교체 중 다른 슬롯 주문은 유효",
+    "design": "다른 주문의 순번·부분체결·예약 유지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "E01",
+    "scenario": "무체결 상태에서 취소가 먼저 효력 발생",
+    "design": "전량 취소, 이후 tick으로 새 fill 없음",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "E02",
+    "scenario": "취소 요청 전에 일부 체결",
+    "design": "기존 fill 유지, 남은 양만 취소",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "E03",
+    "scenario": "취소 전송→도착 사이 추가 부분체결",
+    "design": "추가 fill도 유효, 도착 때 실제 잔량 취소",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "E04",
+    "scenario": "취소 전송→도착 사이 전량체결",
+    "design": "전량체결 유지, 취소는 no-op/실패 응답",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "E05",
+    "scenario": "전량체결 뒤 취소 요청",
+    "design": "체결 되돌림 없이 이미 종료된 주문으로 응답",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "E06",
+    "scenario": "cancel arrival과 tick이 같은 ms",
+    "design": "고정 priority/sequence로 처리, 대체 순서 민감도 비교",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "E07",
+    "scenario": "취소 효력 후 새로운 거래량 발생",
+    "design": "해당 주문은 배분 대상에서 제외",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "E08",
+    "scenario": "취소 통지 후 과거 fill 통지 도착",
+    "design": "관측 갱신·헤지 연결 처리, truth 재체결 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "E09",
+    "scenario": "주문 ACK 전 취소 요청",
+    "design": "기본 cancel_on_ack에 따라 ACK 후 취소 전송 지연 시작",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "E10",
+    "scenario": "취소 요청 거절/전달 실패",
+    "design": "기존 주문·예약·위험 유지, 취소 완료로 가정하지 않음",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "E11",
+    "scenario": "여러 주문 일괄 취소 중 일부만 완료",
+    "design": "order_id별 완료·진행·실패를 분리",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "E12",
+    "scenario": "취소 대기 중 반대 주문 또는 교체 주문 전송",
+    "design": "양쪽 약정·STP·담보 검사. 원본 교체 정책은 해당 슬롯 취소 확인 후 신규",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "F01",
+    "scenario": "같은 주문을 같은 가격·같은 잔량으로 유지",
+    "design": "불필요한 취소 없이 순번 보존",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "F02",
+    "scenario": "같은 가격에 별도 order_id/슬롯으로 추가",
+    "design": "신규 주문은 기존 큐 뒤, 기존 외부 물량 중복 초기화 금지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "F03",
+    "scenario": "가격 변경을 취소 후 신규로 구현",
+    "design": "구 주문 취소 확인 후 신규 가격·새 순번",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "F04",
+    "scenario": "신규 가격이 도착 때 상대와 교차",
+    "design": "새 주문의 TIF에 따라 taker/조건 취소/잔량 처리",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "F05",
+    "scenario": "수량 증가 native 정정",
+    "design": "자금·규격 재검증, 순번 유지 여부는 프로필",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "F06",
+    "scenario": "수량 감소 native 정정",
+    "design": "이미 체결된 양 유지, 예약 차이 반환, 순번 정책 명시",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "F07",
+    "scenario": "기체결40·총수량100에서 new total50",
+    "design": "총수량 계약이면 목표 잔량10. remaining50 계약과 혼동 금지",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "F08",
+    "scenario": "정정 수량이 이미 체결된 양 이하",
+    "design": "프로필상 거절/잔량 종료/축소 처리, 과거 fill 삭제 금지",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "F09",
+    "scenario": "정정 전송→도착 사이 추가체결",
+    "design": "도착 시 누적체결·잔량 기준으로 정정 재검증",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "F10",
+    "scenario": "정정 실패·cxlOnFail 등 부가 정책",
+    "design": "기존 주문 유지/취소 여부를 해당 프로필로 처리",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "F11",
+    "scenario": "오래된 revision의 정정/취소 응답 도착",
+    "design": "새 슬롯 주문·새 revision을 덮어쓰지 않음",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "F12",
+    "scenario": "취소 후 신규 사이 구 주문의 잔량·헤지 목표가 바뀜",
+    "design": "신규 수량 재계산, 기존 목표량 전체를 다시 보내지 않음",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "G01",
+    "scenario": "내 신규 매수가 내 대기 매도와 교차",
+    "design": "STP 프로필 적용, 자기 체결 수익 생성 금지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "G02",
+    "scenario": "내 신규 매도가 내 대기 매수와 교차",
+    "design": "G01의 대칭 처리",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "G03",
+    "scenario": "STP cancel_maker 모드",
+    "design": "해당 maker 취소·신규 주문의 후속 처리 범위를 프로필로 고정",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "G04",
+    "scenario": "STP cancel_taker 모드",
+    "design": "충돌 시 신규 잔량의 취소 범위를 프로필로 고정",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "G05",
+    "scenario": "STP cancel_both 모드",
+    "design": "충돌 양측 처리·남은 큐 영향을 프로필로 고정",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "G06",
+    "scenario": "외부 물량 일부 체결 후 내 반대 주문과 충돌",
+    "design": "이미 외부와 체결된 부분 유지, 나머지 STP 처리",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "G07",
+    "scenario": "같은 전략/다른 전략의 주문이 같은 계좌에서 충돌",
+    "design": "전략 ID가 다르다고 STP 회피하지 않음, 계좌 범위 고정",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "G08",
+    "scenario": "가격 보호·체결 제한 때문에 유효 limit 안에서도 추가 매칭 중단",
+    "design": "확정 fill 유지, 잔량은 프로필상 대기 또는 제한 사유를 기록한 취소. 신규/정정 요청 거절은 별도 기록",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "G09",
+    "scenario": "내 숨은 대기열 여유량·queue multiplier가 있음",
+    "design": "큐 위치 가정에만 사용, 공격 유동성·visible 수량 증가 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "G10",
+    "scenario": "거래소별 STP/매칭 규칙을 과거 시점에 확인 못 함",
+    "design": "공통 기본값을 실제 규칙으로 단정하지 않고 가정/미지원 표시",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "H01",
+    "scenario": "지정가 체결이 기존 포지션과 같은 방향",
+    "design": "포지션 절댓값·네이티브 계약 증가, 평균진입가는 수량 가중평균으로 갱신",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H02",
+    "scenario": "반대방향 fill이 기존 포지션 일부만 줄임",
+    "design": "청산분 실현손익, 잔여 평균진입가 유지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H03",
+    "scenario": "반대방향 fill이 정확히 전량 청산",
+    "design": "포지션0·평균진입가 비움·실현손익·비용",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H04",
+    "scenario": "일반 반대 주문이 기존 포지션보다 많이 체결",
+    "design": "청산분과 반전 신규분 분리, 신규 평균가는 해당 fill 가격",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H05",
+    "scenario": "reduce-only가 현재 포지션을 유효하게 줄임",
+    "design": "해당 범위에서만 축소, 반전 신규분 생성 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H06",
+    "scenario": "reduce-only 도착/실행 전에 다른 주문이 이미 청산",
+    "design": "현재 포지션 재검사, 수량 조정/취소/거절의 프로필 적용",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H07",
+    "scenario": "여러 reduce-only가 같은 청산 가능량을 약정",
+    "design": "누적 약정·가격/접수 우선·실행 한도 검사",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H08",
+    "scenario": "전송 때 담보 충분, 도착 때 부족",
+    "design": "truth 기준 도착 검증, 사전 승인만으로 체결 강제 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H09",
+    "scenario": "접수 뒤 포지션·담보·거래 상태 변화",
+    "design": "명시된 위험 재검사·시스템 취소 모형. 근거 없는 정밀 청산 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H10",
+    "scenario": "지정가 max_q와 시장가 max_q·lot가 다름",
+    "design": "주문 종류별 규격 적용, child 분할·반올림 잔량 추적",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H11",
+    "scenario": "OKX GTC가 일부 taker 후 여러 번 maker 체결",
+    "design": "fill별 역할·가격·수수료, 동일 order_id 누적량",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "H12",
+    "scenario": "대기 중 확정 펀딩 또는 평가환율 변화",
+    "design": "정산은 원장에 한 번, 평가·담보 변화와 체결은 분리",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I01",
+    "scenario": "거래소1개 선택·그 거래소용 유효 프로필",
+    "design": "단일 거래소 주문/원장 실행, 자동 두 번째 거래소 생성 안 함",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "I02",
+    "scenario": "거래소1개 선택·point2 양 거래소 의존 프로필",
+    "design": "기준가격/헤지 의존성 검증 실패로 실행 전 차단",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "I03",
+    "scenario": "두 거래소가 같은 ms에 체결",
+    "design": "고정 전역 순서, 거래량·대기열·원장·통지는 venue별 분리",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I04",
+    "scenario": "빗썸 매수 일부/전량, OKX 매도 지정가 미체결",
+    "design": "현물만 증가, 실제 미헤지 유지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I05",
+    "scenario": "빗썸 매수 일부/전량, OKX 매도 일부체결",
+    "design": "수량 차이만큼 미헤지, 진행 잔량은 확정 포지션으로 세지 않음",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I06",
+    "scenario": "빗썸 매수와 OKX 매도가 목표량만큼 완료",
+    "design": "그 시점 수량 기준 헤지 일치, 중간 노출·비용 별도",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I07",
+    "scenario": "빗썸 매도 체결, 기존 OKX 숏의 매수 청산이 미체결",
+    "design": "현물 감소 뒤 남는 숏 노출 추적",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I08",
+    "scenario": "여러 현물 fill을 여러 OKX 가격에 분산",
+    "design": "목표 배분·모든 child 약정·다대다 인과 연결 보존",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I09",
+    "scenario": "OKX fill 통지 지연 중 현물 추가체결",
+    "design": "같은 observed projection의 포지션+전체 약정으로 추가량 계산",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I10",
+    "scenario": "현물 매수30→OKX 매도30 대기→현물 매도30으로 목표0",
+    "design": "기존 매도 취소 효력 전 체결 가능성 유지, 필요 조정을 대사 후 생성",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I11",
+    "scenario": "목표0 후 기존 매도 fill과 반대 매수 조정이 엇갈림",
+    "design": "체결 순서별 실제 포지션·약정·수수료 계산, 목표값만으로 위험 제거 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "I12",
+    "scenario": "한 거래소 자료 공백/거절/거래 중단, 다른 쪽은 정상",
+    "design": "주문·계좌 상태를 함께 삭제하지 않음, 영향을 헤지·성과 품질에 전파",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "J01",
+    "scenario": "ACK→fill→account 순서 정상",
+    "design": "truth는 fill 발생 때 한 번, observed는 통지 때 갱신",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "J02",
+    "scenario": "fill 통지가 ACK보다 먼저 도착",
+    "design": "누적체결·고유 fill 처리, 뒤 ACK로 LIVE 복원 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "J03",
+    "scenario": "최신 ACK 뒤 낮은 버전의 고유 fill 도착",
+    "design": "전역 버전만 보고 fill을 버리지 않음",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "J04",
+    "scenario": "같은 fill 통지 중복",
+    "design": "fill_id coverage로 잔고·헤지·비용 중복 반영 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "J05",
+    "scenario": "account snapshot이 fill을 먼저 포함",
+    "design": "후속 fill은 인과 연결하되 포지션 재가산 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "J06",
+    "scenario": "취소 통지가 fill 통지보다 먼저 도착",
+    "design": "발생시각·누적량으로 대사, 과거 유효 fill 유지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "J07",
+    "scenario": "일부 child 통지만 늦거나 빠짐",
+    "design": "해당 그룹 미확인 약정 유지, 다른 child 상태와 혼합 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "J08",
+    "scenario": "truth 일부체결, observed는 여전히 전체 약정",
+    "design": "position/commitment를 같은 projection에서 함께 전환",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "J09",
+    "scenario": "전송 응답 timeout/접수 상태 관측 불가",
+    "design": "자동 미접수·자동 재주문으로 단정하지 않고 멱등 조회/가상 정합 정책",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "J10",
+    "scenario": "refresh가 지연되고 서로 다른 계좌/주문 버전을 반환",
+    "design": "정합 전 새 증가 의도 보류, 미래 truth 즉시 반환 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "K01",
+    "scenario": "OKX passive 주문이 있는데 OKX tick 없음",
+    "design": "실행 차단 또는 U, book touch로 확정 체결 금지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "K02",
+    "scenario": "tick의 공격 방향 미확인",
+    "design": "방향을 임의 추정해 확정 fill 생성 금지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "K03",
+    "scenario": "호가 금액/코인/계약 수 단위 미확인",
+    "design": "단위 검증 실패, 잘못된 가용량 사용 금지",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "K04",
+    "scenario": "동일 시각·가격·수량의 여러 원본 행",
+    "design": "신뢰 가능한 ID 없이 자동 중복 제거 금지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "K05",
+    "scenario": "진짜 중복 파일/중복 수집이 확인됨",
+    "design": "확인 근거로 1회 처리, 제거 내역 보존",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "K06",
+    "scenario": "heartbeat/연결 기록으로 확인된 자료 공백",
+    "design": "영향 주문·포지션에 U/품질 전파, strict 중단",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "K07",
+    "scenario": "단순히 한동안 tick이 없음",
+    "design": "무체결을 수집 공백으로 자동 단정하지 않음",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "K08",
+    "scenario": "늦은 tick으로 정합 창이 지난 감소가 설명됨",
+    "design": "과거 체결·큐를 몰래 재작성하지 않고 영향 플래그",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "K09",
+    "scenario": "snapshot 반복·증가 때 self 부채와 public 부채를 혼동",
+    "design": "내 소진은 원본 감소로 소거하지 않음, 이중 보충 금지",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "K10",
+    "scenario": "top-N 이탈인지 실제 가격대0인지 모름",
+    "design": "큐·생명주기 초기화 금지, 관측 범위 상태 보존",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "K11",
+    "scenario": "동시각 교차 스트림 순서가 실제로 미확인",
+    "design": "고정 순서와 대체 순서 비교, 실제 선후를 안다고 표시 안 함",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "K12",
+    "scenario": "과거 규격·평가가격·환율 중 필수 정보 미확인",
+    "design": "허용 가정 표시/실행 차단, 손익·노출을 임의0으로 채우지 않음",
+    "status": "partial",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 모형의 일부 분기만 지원합니다. native 정정·수신 역전 복원·미관측 데이터는 구현으로 간주하지 않습니다."
+  },
+  {
+    "id": "L01",
+    "scenario": "평가 종료 때 주문 live/in-flight/cancel-pending",
+    "design": "상태·예약·미통지 fill·미완료 헤지 보존, 미래 체결로 완료 안 함",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "L02",
+    "scenario": "사용자가 pause/stop",
+    "design": "시계/작업 제어만 수행, 자동 거래소 취소·청산으로 바꾸지 않음",
+    "status": "model_assumption",
+    "scope": "bithumb_spot_replay",
+    "note": "설정한 합성 현물 프로필의 가정으로 처리합니다. 실제 거래소의 과거 규칙이나 순서를 확인했다는 뜻이 아닙니다."
+  },
+  {
+    "id": "L03",
+    "scenario": "FOK 지정가 확장, 알려진 깊이로 전량 가능/불가",
+    "design": "전량 즉시체결 또는 전량 조건 취소. 부분체결·대기 금지",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "L04",
+    "scenario": "FOK 전량 가능 여부를 깊이 밖이라 모름",
+    "design": "부분 fill 먼저 commit하지 않음. 원자성 보존하며 판정 불가 처리",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "L05",
+    "scenario": "GTD/거래소 만료 기능 확장",
+    "design": "expiry 이벤트의 정확한 효력시각과 fill 경합 정의, 미지원이면 선택 거절",
+    "status": "implemented",
+    "scope": "bithumb_spot_replay",
+    "note": "현재 현물 재생기에 해당 분기 또는 명시적 사전 차단을 연결했습니다. 거래소 선물까지 지원한다는 뜻은 아닙니다."
+  },
+  {
+    "id": "L06",
+    "scenario": "stop-limit/조건부 지정가 확장",
+    "design": "trigger 전에는 대기 지정가 아님. trigger 후 신규 도착·TIF 분기로 진입",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "L07",
+    "scenario": "경매·단일가·세션 전환",
+    "design": "연속매매 FIFO를 그대로 적용하지 않고 별도 모형 또는 미지원",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "L08",
+    "scenario": "iceberg/숨은 수량/우선순위가 관측되지 않음",
+    "design": "초기 큐 여유 등 명시된 가정·민감도, 실제 순번 확정 주장 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "L09",
+    "scenario": "OCO/조건 연동 주문 확장",
+    "design": "한 leg fill→다른 leg 취소의 지연·원자성 계약을 별도 정의. 자동 양쪽 체결 방지 보장 금지",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  },
+  {
+    "id": "L10",
+    "scenario": "강제청산·거래소 시스템 취소·규격 변경",
+    "design": "확인된 사건과 모형이 있을 때 반영, 없으면 미지원/중단·불확실 처리",
+    "status": "unsupported",
+    "scope": "bithumb_spot_replay",
+    "note": "별도 거래소·선물·통지·특수 주문 모형이 필요합니다. 해당 주문/제어 입력은 지원하지 않으며 대신 체결하지 않습니다."
+  }
+]

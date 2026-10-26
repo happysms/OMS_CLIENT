@@ -31,6 +31,9 @@ class ReplayStore:
                 CREATE TABLE IF NOT EXISTS commands (
                     run_id TEXT NOT NULL, sequence INTEGER NOT NULL, command TEXT NOT NULL,
                     PRIMARY KEY(run_id, sequence));
+                CREATE TABLE IF NOT EXISTS order_events (
+                    run_id TEXT NOT NULL, sequence INTEGER NOT NULL, report TEXT NOT NULL,
+                    PRIMARY KEY(run_id, sequence));
             ''')
             for identifier, updated, raw in con.execute('SELECT id,updated,snapshot FROM runs ORDER BY updated,id').fetchall():
                 snapshot = json.loads(raw)
@@ -53,7 +56,7 @@ class ReplayStore:
         finally:
             con.close()
 
-    def save(self, snapshot, fills=(), commands=()):
+    def save(self, snapshot, fills=(), commands=(), order_events=()):
         with self.connect() as con:
             existing = con.execute('SELECT metadata FROM accounts WHERE run_id=?', (snapshot['id'],)).fetchone()
             metadata = snapshot.get('virtual_account') or (json.loads(existing[0]) if existing else account_metadata(
@@ -66,6 +69,8 @@ class ReplayStore:
                             [(snapshot['id'], row['sequence'], json.dumps(row, allow_nan=False)) for row in fills])
             con.executemany('INSERT INTO commands VALUES (?,?,?)',
                             [(snapshot['id'], row['sequence'], json.dumps(row, allow_nan=False)) for row in commands])
+            con.executemany('INSERT INTO order_events VALUES (?,?,?)',
+                            [(snapshot['id'], row['sequence'], json.dumps(row, allow_nan=False)) for row in order_events])
             con.execute('INSERT INTO runs VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET updated=excluded.updated,snapshot=excluded.snapshot',
                         (snapshot['id'], time.time(), json.dumps(snapshot, allow_nan=False)))
 
@@ -75,6 +80,12 @@ class ReplayStore:
         if not row: raise KeyError(identifier)
         return json.loads(row[0])
 
+    def order_events(self, identifier, before, limit=500):
+        with self.connect() as con:
+            rows=con.execute('SELECT report FROM order_events WHERE run_id=? AND sequence<? ORDER BY sequence DESC LIMIT ?',
+                             (identifier,before,limit)).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def recent(self, before=None, limit=20):
         with self.connect() as con:
             rows = con.execute(
@@ -82,7 +93,7 @@ class ReplayStore:
                 'WHERE a.sequence<? ORDER BY a.sequence DESC LIMIT ?',
                 (before if before is not None else 2**63-1, limit)).fetchall()
         return [dict({key: snapshot.get(key) for key in
-                      ('id','status','config','virtual_account','virtual_time_ms','fill_count','account','error')},
+                      ('id','status','config','virtual_account','virtual_time_ms','fill_count','account','error','uncertain')},
                      history_sequence=sequence)
                 for sequence,raw in rows for snapshot in [json.loads(raw)]]
 

@@ -45,8 +45,8 @@ class ReplaySession:
                         manifest=self.source.manifest, **self.engine.snapshot())
         snapshot['lag_ms'] = max(0, int(min(self.config['end_ms'], self.clock.now())-self.engine.now)) if self.clock and not self.fast else 0
         # The UI and the database expose the same committed state. Failed commits never leak fills.
-        self.store.save(snapshot, self.engine.new_fills, self.commands)
-        self.engine.new_fills.clear(); self.commands.clear()
+        self.store.save(snapshot, self.engine.new_fills, self.commands, self.engine.new_order_events)
+        self.engine.new_fills.clear(); self.commands.clear(); self.engine.new_order_events.clear()
         self.snapshot = deepcopy(snapshot)
 
     def get(self):
@@ -57,7 +57,9 @@ class ReplaySession:
         if not isinstance(payload,dict): raise ValueError('제어 설정을 확인하세요.')
         action = payload.get('action')
         allowed = {'pause':set(), 'play':set(), 'stop':set(), 'pace':{'speed','fast'},
-                   'order':{'side','price','quantity'}, 'cancel':{'order_id'}, 'auto_mm':{'enabled'}}
+                   'order':{'side','price','quantity','tif','stp','expires_at_ms','client_order_id'},
+                   'replace':{'order_id','price','total_quantity','tif'},'cancel_all':set(),
+                   'cancel':{'order_id'}, 'auto_mm':{'enabled'}}
         if action not in allowed or set(payload)-allowed[action]-{'action'}:
             raise ValueError('지원하지 않는 재생 제어입니다.')
         with self.condition:
@@ -78,7 +80,13 @@ class ReplaySession:
                 self.clock.set(paused=self.paused)
                 self.status = 'paused' if self.paused else 'running'
             elif action == 'order':
-                self.engine.place(payload.get('side'), payload.get('price'), payload.get('quantity'))
+                self.engine.place(payload.get('side'), payload.get('price'), payload.get('quantity'),
+                    **{k:payload[k] for k in ('tif','stp','expires_at_ms','client_order_id') if k in payload})
+            elif action == 'replace':
+                self.engine.replace(payload.get('order_id'),payload.get('price'),payload.get('total_quantity'),payload.get('tif'))
+            elif action == 'cancel_all':
+                for order in self.engine.working():
+                    if order['status']!='execution_unknown':self.engine.cancel(order['id'])
             elif action == 'cancel':
                 identifier = payload.get('order_id')
                 if not isinstance(identifier,str): raise ValueError('주문 ID를 확인하세요.')
@@ -89,7 +97,7 @@ class ReplaySession:
                 self.config['auto_mm'] = enabled
                 if not enabled:
                     for order in self.engine.working():
-                        if order['owner']=='bithumb_simple_mm': self.engine.cancel(order['id'])
+                        if order['owner']=='bithumb_simple_mm' and order['status']!='execution_unknown': self.engine.cancel(order['id'])
                 self.engine.auto()
             self.command_sequence += 1
             self.commands.append(dict(sequence=self.command_sequence,virtual_time_ms=self.engine.now,**payload))

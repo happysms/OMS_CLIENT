@@ -20,7 +20,7 @@ def field(key, label, kind, default, **constraints):
 
 TEMPLATES = {
     'single_exchange_maker': dict(
-        label='일반 단일 거래소 메이커', executable=True, engine_version='bithumb-maker-v3', queue_cancellation_supported=True,
+        label='일반 단일 거래소 메이커', executable=True, engine_version='bithumb-maker-v4', queue_cancellation_supported=True, limit_execution_supported=True,
         description='가용 원화로 최우선 매수호가, 가용 코인으로 최우선 매도호가에 주문합니다. 현재 실행 거래소는 빗썸입니다.',
         required_venues=['bithumb'], execution_note='빗썸 현물 maker 모형으로 실행 가능 · OKX는 선택적 참조용',
         fields=[field('direction','매매 방향','choice','both',options={'both':'양방향','buy':'매수만','sell':'매도만'}),
@@ -147,6 +147,7 @@ def present(identifier,revision,definition,archived=False):
                 guard_configured='ping_guard_mode' in definition['parameters'],**definition,
                 executable=template['executable'],execution_note=template['execution_note'],
                 queue_cancellation_supported=template.get('queue_cancellation_supported',False),
+                limit_execution_supported=template.get('limit_execution_supported',False),
                 engine_version=template['engine_version'],
                 required_venues=['bithumb',definition['parameters']['reference_exchange']] if definition['type']=='minmaxma' else template['required_venues'])
 
