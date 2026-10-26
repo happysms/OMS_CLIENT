@@ -1,6 +1,7 @@
 """User registration, immutable revisions and exact strategy binding to accounts."""
 from copy import deepcopy
 from pathlib import Path
+import json
 import re
 import sys
 import tempfile
@@ -21,6 +22,42 @@ class RegistryTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.registry=StrategyRegistry(self.temp.name)
+
+    def test_handoff_setting_persists_in_immutable_revisions_and_validates(self):
+        original = self.registry.save(dict(name='전달 지연', type='point2', parameters={'hedge_signal_transfer_ms': 30}))
+        self.assertEqual(original['hedge_timing_preview']['planned_entry_latency_ms'], 70)
+        updated = self.registry.save(dict(name='전달 지연', type='point2', parameters={'hedge_signal_transfer_ms': 50}), original['id'], 1)
+        reopened = StrategyRegistry(self.temp.name)
+        self.assertEqual(reopened.get(original['id'], 1), original)
+        self.assertEqual(reopened.get(original['id']), updated)
+        self.assertEqual(updated['hedge_timing_preview']['planned_ack_latency_ms'], 110)
+        self.assertFalse(updated['executable'])
+        for params in ({'hedge_signal_transfer_ms': True}, {'hedge_signal_transfer_ms': -1},
+                       {'hedge_signal_transfer_ms': 1.5}, {'hedge_signal_transfer_ms': 60001},
+                       {'hedge_signal_transfer_ms': 30, 'hedge_timeout_ms': 89}):
+            with self.subTest(params=params), self.assertRaises(ValueError):
+                self.registry.save(dict(name='잘못된 전달', type='point2', parameters=params))
+
+    def test_old_latency_revision_defaults_handoff_without_rewriting_storage(self):
+        identifier = 'builtin_point2'
+        with self.registry.connect() as con:
+            raw = con.execute('SELECT definition FROM strategy_revisions WHERE strategy_id=? AND revision=1', (identifier,)).fetchone()[0]
+            definition = json.loads(raw)
+            del definition['parameters']['hedge_signal_transfer_ms']
+            legacy_raw = json.dumps(definition)
+            con.execute('UPDATE strategy_revisions SET definition=? WHERE strategy_id=? AND revision=1', (legacy_raw, identifier))
+        reopened = StrategyRegistry(self.temp.name)
+        old = reopened.get(identifier, 1)
+        self.assertNotIn('hedge_signal_transfer_ms', old['parameters'])
+        self.assertEqual(old['hedge_timing_preview']['planned_entry_latency_ms'], 40)
+        self.assertEqual(old['hedge_timing_preview']['planned_signal_transfer_ms'], 0)
+        self.assertEqual(old['revision'], 1)
+        with reopened.connect() as con:
+            stored = con.execute('SELECT definition FROM strategy_revisions WHERE strategy_id=? AND revision=1', (identifier,)).fetchone()[0]
+        self.assertEqual(stored, legacy_raw)
+        updated = reopened.save({key: old[key] for key in ('name', 'type', 'parameters')}, identifier, 1)
+        self.assertEqual(updated['revision'], 2)
+        self.assertEqual(updated['parameters']['hedge_signal_transfer_ms'], 0)
 
     def test_defaults_point_profile_and_registration_survive_restart(self):
         default=self.registry.list();self.assertEqual(len(default),3)

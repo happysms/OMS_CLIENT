@@ -124,4 +124,4 @@ Point의 이론가 출력식은 미결정이며 아직 가격을 출력하지 �
 
 모든 전략 유형에 `ping_guard_mode`, `max_feed_delay_ms`, `feed_delay_spike_ms`, `feed_delay_resume_ms`, `feed_delay_stable_ms`, `ping_existing_orders`를 등록한다. 신규 기본값은 사용, 500ms, 250ms, 200ms, 1000ms, 취소 요청이다. 현재 실행 연결은 빗썸 메이커에 적용되며 관측 기준은 RTT가 아닌 `desktopTime − serverTime`이다. 보호 설정 없는 이전 버전은 비활성으로 유지하고 새 버전 저장 시 설정을 포함한다.
 
-Point에는 `hedge_fill_notice_ms=20`, `hedge_decision_ms=0`, `hedge_submit_ms=20`, `hedge_ack_ms=20`, `hedge_timeout_ms=1000`을 추가한다. 입력 즉시 예상 도착 40ms·응답 60ms를 계산해 표시한다. 접수 응답과 실제 첫/전체 체결 시간은 별개다. **Point 실행 연결 전이므로 실제 헤지 체결을 생성하지 않는다.** 상세 단계·복구·저장 계약은 [지연·보호 문서](../../docs/execution_latency_controls.ko.md)를 따른다.
+Point에는 `hedge_fill_notice_ms=20`, `hedge_signal_transfer_ms=0`, `hedge_decision_ms=0`, `hedge_submit_ms=20`, `hedge_ack_ms=20`, `hedge_timeout_ms=1000`을 추가한다. 입력 즉시 체결 통지 수신·OKX 헤지 로직 전달·예상 도착·응답 시간을 계산한다. 기본 도착 40ms·응답 60ms이며, 추가 전달을 30ms로 바꾸면 헤지 로직 전달 50ms·도착 70ms·응답 90ms다. 추가 전달 설정이 없는 기존 버전은 0ms로 해석하며 저장된 정의를 덮어쓰지 않는다. 접수 응답과 실제 첫/전체 체결 시간은 별개다. **Point 실행 연결 전이므로 실제 헤지 체결을 생성하지 않는다.** 상세 단계·복구·저장 계약은 [지연·보호 문서](../../docs/execution_latency_controls.ko.md)를 따른다.

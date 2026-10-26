@@ -226,6 +226,8 @@ t_ack_notice    = t_accepted    + ack_notice_latency_ms[venue]
 t_fill_notice   = t_fill        + fill_notice_latency_ms[venue]
 ```
 
+빗썸 체결이 OKX 헤지 로직에 전달되는 추가 구간도 분리한다. 등록된 Point 모형에서는 `t_notice = t_fill + hedge_fill_notice_ms`, `t_signal = t_notice + hedge_signal_transfer_ms`, `t_send = t_signal + hedge_decision_ms`, `t_okx = t_send + hedge_submit_ms`다. `hedge_fill_notice_ms`는 위 체결 통지 구간에 대응하며 두 번 더하지 않는다. 추가 전달 기본값은 0ms이고 사용자 설정을 불변 전략 버전에 저장한다. 실제 수신이 늦으면 후속 단계도 그 실제 시각 이후로 밀린다. 단계·예시 그림·추적 결과 계약은 [헤지 지연 문서](execution_latency_controls.ko.md)를 따른다. **현재는 설정·계획·추적 계약이며 Point/OKX 실행 어댑터는 미연결이다.**
+
 설정한 정확한 시각에 이벤트를 삽입한다. 해당 시각에 원본 행이 없어도 실행한다. 다음 저장 행으로 반올림하지 않고, 관측 사이의 호가 변화를 보간하지 않는다. `desktopTime`이 이미 관측 시점이므로 별도의 시장 수신 지연을 다시 더하지 않는다.
 
 20ms와 40ms 사이에 새 호가·체결이 관측되지 않았다면 두 설정의 결과가 같을 수 있다. 지연 차이를 보이기 위해 가짜 중간 호가나 체결을 생성하지 않는다. 데이터보다 세밀한 실제 시장 변화를 안다고 해석하지 않는다.

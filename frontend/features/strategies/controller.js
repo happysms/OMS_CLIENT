@@ -6,10 +6,16 @@ export function initStrategies({api}){
   function timingPreview(){
     const isPoint=$('type').value==='point2';$('timing-preview').hidden=!isPoint;
     if(!isPoint)return;
-    const values=['hedge_fill_notice_ms','hedge_decision_ms','hedge_submit_ms','hedge_ack_ms','hedge_timeout_ms'].map(key=>Number(document.getElementById('strategy-param-'+key)?.value));
-    if(values.some(value=>!Number.isFinite(value))){$('timing-preview').textContent='헤지 지연 값을 입력하세요.';return;}
-    const entry=values[0]+values[1]+values[2],ack=entry+values[3];
-    $('timing-preview').textContent=`설정상 원체결 → 헤지 도착 ${entry}ms / 접수 응답 ${ack}ms / 완료 제한 ${values[4]}ms. 주문 차단·대기열·부분체결 시간은 별도입니다. Point 실행 연결 전이며 실제 체결시간을 뜻하지 않습니다.`;
+    const keys=['hedge_fill_notice_ms','hedge_signal_transfer_ms','hedge_decision_ms','hedge_submit_ms','hedge_ack_ms','hedge_timeout_ms'];
+    const values=keys.map(key=>{
+      const input=document.getElementById('strategy-param-'+key);
+      if(!input&&key==='hedge_signal_transfer_ms')return 0; // Old server schema.
+      return input?.value.trim()?Number(input.value):NaN;
+    });
+    if(values.some(value=>!Number.isInteger(value)||value<0||value>60000)){$('timing-preview').textContent='헤지 지연은 0~60000ms 정수로 입력하세요.';return;}
+    const signal=values[0]+values[1],entry=signal+values[2]+values[3],ack=entry+values[4];
+    if(values[5]<=0||values[5]<ack){$('timing-preview').textContent='완료 제한은 통지·신호 전달·판단·주문 전송·응답 지연의 합계 이상이어야 합니다.';return;}
+    $('timing-preview').textContent=`빗썸 체결 후 통지 수신 ${values[0]}ms → OKX 헤지 로직 전달 ${signal}ms (추가 전달 ${values[1]}ms) → OKX 주문 도착 ${entry}ms / 접수 응답 ${ack}ms / 완료 제한 ${values[5]}ms. 거래소에 도달하는 것은 헤지 주문이며, 접수·대기열·체결은 구분합니다. Point 실행 연결 전이며 설정상 예상 시간입니다.`;
   }
   $('parameters').addEventListener('input',timingPreview);
   function parameters(values={}){

@@ -152,6 +152,74 @@ class GuardTests(unittest.TestCase):
 
 
 class HedgeTimingTests(unittest.TestCase):
+    def test_signal_handoff_is_counted_once_and_included_in_timeout(self):
+        model = HedgeTimingModel(signal_transfer_ms=30, decision_ms=5, timeout_ms=95)
+        plan = model.plan(T)
+        self.assertEqual(plan['notice_due_ms'], T + 20)
+        self.assertEqual(plan['signal_due_ms'], T + 50)
+        self.assertEqual(plan['submit_due_ms'], T + 55)
+        self.assertEqual(plan['arrival_due_ms'], T + 75)
+        self.assertEqual(plan['ack_due_ms'], T + 95)
+        self.assertEqual(plan['planned_signal_latency_ms'], 50)
+        self.assertEqual(plan['planned_signal_transfer_ms'], 30)
+        self.assertEqual(plan['planned_entry_latency_ms'], 75)
+        for value in (True, -1, 0.5, '30', 60001):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                HedgeTimingModel(signal_transfer_ms=value)
+        with self.assertRaises(ValueError):
+            HedgeTimingModel(signal_transfer_ms=30, decision_ms=5, timeout_ms=94)
+
+    def test_delayed_signal_requires_observed_handoff_and_propagates_causally(self):
+        trace = HedgeTimingTrace('spot', T, '1', HedgeTimingModel(signal_transfer_ms=30, decision_ms=5))
+        self.assertIsNone(trace.report(T)['signal_latency_ms'])
+        with self.assertRaises(ValueError):
+            trace.record('signal_received', T + 50)
+        trace.record('noticed', T + 100)
+        before = trace.report(T + 100)
+        for stage, at in [('submitted', T + 200), ('signal_received', T + 129)]:
+            with self.subTest(stage=stage), self.assertRaises(ValueError):
+                trace.record(stage, at)
+            self.assertEqual(trace.report(T + 100), before)
+        # The actual handoff is later than both the original plan and its minimum delay.
+        trace.record('signal_received', T + 160)
+        trace.record('signal_received', T + 160)
+        with self.assertRaises(ValueError):
+            trace.record('submitted', T + 164)
+        trace.record('submitted', T + 165)
+        with self.assertRaises(ValueError):
+            trace.record('arrived', T + 184)
+        trace.record('arrived', T + 185)
+        with self.assertRaises(ValueError):
+            trace.fill('hedge', T + 184, '1')
+        trace.record('acknowledged', T + 205)
+        report = trace.report(T + 205)
+        self.assertEqual(report['fill_notice_latency_ms'], 100)
+        self.assertEqual(report['signal_received_at_ms'], T + 160)
+        self.assertEqual(report['signal_transfer_latency_ms'], 60)
+        self.assertEqual(report['signal_latency_ms'], 160)
+        self.assertEqual(report['entry_latency_ms'], 185)
+        self.assertEqual(report['ack_latency_ms'], 205)
+        self.assertIsNone(report['first_fill_latency_ms'])
+        self.assertIsNone(report['completion_latency_ms'])
+        trace.fill('hedge', T + 210, '1')
+        self.assertEqual(trace.report(T + 210)['completion_latency_ms'], 210)
+
+    def test_legacy_zero_delay_handoff_cannot_rewrite_submitted_history(self):
+        model = HedgeTimingModel.from_parameters({'hedge_decision_ms': 5})
+        self.assertEqual(model.signal_transfer_ms, 0)
+        trace = HedgeTimingTrace('spot', T, '1', model)
+        trace.record('noticed', T + 20)
+        trace.record('submitted', T + 25)
+        before = trace.report(T + 25)
+        self.assertEqual(before['signal_received_at_ms'], T + 20)
+        self.assertEqual(before['signal_transfer_latency_ms'], 0)
+        self.assertNotIn('signal_received', before['milestones'])
+        with self.assertRaises(ValueError):
+            trace.record('signal_received', T + 21)
+        self.assertEqual(trace.report(T + 25), before)
+        trace.record('signal_received', T + 20)
+        self.assertEqual(trace.report(T + 25)['signal_latency_ms'], 20)
+
     def test_stage_delays_ack_is_not_fill_and_partial_completion(self):
         model=HedgeTimingModel();plan=model.plan(T)
         self.assertEqual(plan['arrival_due_ms'],T+40);self.assertEqual(plan['ack_due_ms'],T+60)

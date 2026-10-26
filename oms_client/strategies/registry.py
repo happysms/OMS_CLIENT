@@ -74,9 +74,10 @@ GUARD_FIELDS = [
 for _template in TEMPLATES.values():
     _template['fields'].extend(deepcopy(GUARD_FIELDS))
 TEMPLATES['point2']['fields'].extend([
-    field('hedge_fill_notice_ms','현물 체결 → 통지 지연 · ms','integer',20,min=0,max=60000),
+    field('hedge_fill_notice_ms','빗썸 체결 → 체결 통지 수신 · ms','integer',20,min=0,max=60000),
+    field('hedge_signal_transfer_ms','체결 통지 수신 → OKX 헤지 로직 전달 · ms','integer',0,min=0,max=60000),
     field('hedge_decision_ms','헤지 판단·전송 준비 지연 · ms','integer',0,min=0,max=60000),
-    field('hedge_submit_ms','헤지 전송 → 거래소 도착 · ms','integer',20,min=0,max=60000),
+    field('hedge_submit_ms','헤지 주문 전송 → OKX 도착 · ms','integer',20,min=0,max=60000),
     field('hedge_ack_ms','헤지 도착 → 접수 응답 · ms','integer',20,min=0,max=60000),
     field('hedge_timeout_ms','원체결 → 헤지 완료 제한 · ms','integer',1000,min=1,max=60000)
 ])
@@ -135,14 +136,17 @@ def validate(payload):
                            variant='original_post_only_hedge' if normalized['hedge_execution']=='post_only' else 'modified_hedge_execution')
     specification['order_guard_basis']='desktopTime-serverTime; not RTT'
     if kind=='point2':
-        specification['hedge_timing_basis']='spot fill -> notice -> decision -> exchange arrival -> ack; fills observed separately'
+        specification['hedge_timing_basis']='spot fill -> notice -> signal transfer -> decision -> OKX arrival -> ack; fills observed separately'
         specification['hedge_ping_policy']='block_new_orders_keep_unhedged_exposure_visible'
     return dict(name=name.strip(),type=kind,description=description.strip(),parameters=normalized,specification=specification)
 
 
 def present(identifier,revision,definition,archived=False):
     template=TEMPLATES[definition['type']]
-    timing=HedgeTimingModel.from_parameters(definition['parameters']).plan(0) if definition['type']=='point2' and set(TIMING_DEFAULTS)<=set(definition['parameters']) else None
+    required_timing = set(TIMING_DEFAULTS) - {'hedge_signal_transfer_ms'}
+    timing = None
+    if definition['type'] == 'point2' and required_timing <= set(definition['parameters']):
+        timing = HedgeTimingModel.from_parameters(definition['parameters']).plan(0)
     return dict(id=identifier,revision=revision,archived=bool(archived),hedge_timing_preview=timing,
                 guard_configured='ping_guard_mode' in definition['parameters'],**definition,
                 executable=template['executable'],execution_note=template['execution_note'],
