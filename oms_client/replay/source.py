@@ -9,6 +9,7 @@ import pandas as pd
 
 from ..market_data import parquet, ticks
 from ..market_data.validation import DataError
+from .fx import AsOfFxQuotes
 
 MAX_EVENTS = 5_000_000
 
@@ -26,6 +27,31 @@ class ReplaySource:
         self.total = 0
         self.skipped = 0
         self.counts = {}
+        self.fx_quotes = AsOfFxQuotes()
+
+    def fx_at(self, now):
+        return self.fx_quotes.at(now)
+
+    def _load_fx(self, end):
+        # Independent reference stream: never changes market event counts/order.
+        try:
+            source = parquet._resolve_source('bithumb', 'USDT')
+            start = pd.Timestamp(self.config['start_ms'] - 10000, unit='ms', tz='UTC')
+            paths = parquet.files_for_range('bithumb', 'USDT', start, end)
+            if not paths or len(paths) > 256:
+                return
+            reference = ReplaySource(dict(self.config, ticker='USDT'))
+            reference.warmup_ms = 10000
+            self.stack.callback(reference.close)
+            events = reference._stream('bithumb', 'book', paths, source['source_kind'] == 'orderbook_1s', paths)
+            for name in paths:
+                info = Path(name).stat()
+                if not any(item['path'] == name for item in self.manifest):
+                    self.manifest.append(dict(path=name, size=info.st_size, mtime_ns=info.st_mtime_ns))
+            self.fx_quotes = AsOfFxQuotes(events)
+        except Exception:
+            self.fx_quotes = AsOfFxQuotes()
+            self.fx_quotes.error = '과거 USDT/KRW 호가가 없어 USDT 손익을 평가할 수 없습니다.'
 
     def _stream(self, venue, kind, paths, native, originals):
         con = self.stack.enter_context(parquet.connection())
@@ -127,6 +153,7 @@ class ReplaySource:
                 streams.append(self._stream(venue, kind, readable, source['source_kind']=='orderbook_1s', paths))
         if not self.counts.get('bithumb:book') or not self.counts.get('bithumb:tick'):
             raise DataError('빗썸 원본 호가와 틱이 모두 필요합니다.')
+        self._load_fx(end)
         return heapq.merge(*streams, key=lambda event:event['_key'])
 
     def verify(self):

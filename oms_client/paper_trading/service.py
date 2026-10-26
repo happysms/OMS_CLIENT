@@ -14,6 +14,7 @@ from ..market_data import parquet
 from ..market_data.validation import IDENTIFIER
 from ..market_data.quotes import PublicQuoteFeed
 from .reporting import evaluate_positions, valid_theories
+from .currency import FxQuote, UsdtLedger
 
 
 EXCHANGES = {"bithumb", "upbit"}
@@ -147,10 +148,11 @@ class PublicQuoteProvider:
 
 
 class PaperTradingService:
-    def __init__(self, store, quote_provider=None, clock=time.time, symbol_validator=None, theory_provider=None):
+    def __init__(self, store, quote_provider=None, clock=time.time, symbol_validator=None, theory_provider=None, fx_provider=None):
         self.store = store
         self.quote_provider = quote_provider if quote_provider is not None else PublicQuoteProvider()
         self.clock = clock
+        self.fx_provider = fx_provider if fx_provider is not None else self.quote_provider
         self.symbol_validator = symbol_validator if symbol_validator is not None else parquet.validate_symbol
         self.lock = threading.RLock()
         self.theory_provider = theory_provider
@@ -181,6 +183,9 @@ class PaperTradingService:
                     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                     fill_id TEXT NOT NULL UNIQUE, report TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS paper_usdt_state (
+                    id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL
+                );
             """)
             # Old fills have no historical marks. Preserve their known execution
             # fields explicitly, without inventing past valuations from today's book.
@@ -192,6 +197,33 @@ class PaperTradingService:
         provider = self.quote_provider
         quote = provider.get(exchange, ticker) if hasattr(provider, "get") else provider(exchange, ticker)
         return _fresh_quote(quote, exchange, ticker, int(self.clock() * 1000))
+
+    def _fx_input(self, timeout=0):
+        provider = self.fx_provider
+        try:
+            if hasattr(provider, 'get_many'):
+                return provider.get_many([('bithumb', 'USDT')], timeout=timeout).get(('bithumb', 'USDT'))
+            return provider.get('bithumb', 'USDT') if hasattr(provider, 'get') else provider('bithumb', 'USDT')
+        except (KeyError, RuntimeError, ValueError, OSError):
+            return None
+
+    @staticmethod
+    def _usdt_ledger(connection, account, positions, fx, force=False):
+        row = connection.execute('SELECT state FROM paper_usdt_state WHERE id=1').fetchone()
+        ledger = UsdtLedger(json.loads(row['state']) if row else None)
+        changed = False
+        if not ledger.initialized:
+            legacy = connection.execute('SELECT 1 FROM paper_orders LIMIT 1').fetchone() is not None
+            if legacy or fx is not None or force:
+                costs = {f"{p['exchange']}:{p['ticker']}": p['quantity'] * p['avg_price'] for p in positions}
+                ledger.initialize(account['cash'], costs, fx, legacy=legacy)
+                changed = True
+        return ledger, changed
+
+    @staticmethod
+    def _save_usdt(connection, ledger):
+        connection.execute('INSERT INTO paper_usdt_state VALUES (1,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state',
+                           (json.dumps(ledger.state(), allow_nan=False),))
 
     def _valuation_inputs(self, pairs, overrides=None):
         marks = dict(overrides or {})
@@ -244,21 +276,28 @@ class PaperTradingService:
 
     def snapshot(self, quotes_override=None):
         with self.lock, self.store.connection() as connection:
-            account = dict(connection.execute("SELECT * FROM paper_account WHERE id=1").fetchone())
-            account.pop("id", None)
             positions = [dict(row) for row in connection.execute("SELECT * FROM paper_positions ORDER BY exchange,ticker")]
-            orders = [dict(row) for row in connection.execute("SELECT * FROM paper_orders ORDER BY timestamp DESC,rowid DESC LIMIT 100")]
         pairs = [(position["exchange"], position["ticker"]) for position in positions]
         marks, theories = self._valuation_inputs(pairs, quotes_override)
-        now = int(self.clock() * 1000)
-        marks = self._marks_at(marks, now)
-        theories = valid_theories(theories, now, MAX_QUOTE_AGE_MS)
-        account, positions = evaluate_positions(account, positions, marks, theories)
+        fx_input = self._fx_input()
+        with self.lock, self.store.connection() as connection:
+            now = int(self.clock() * 1000)
+            fx = FxQuote.from_public(fx_input, now)
+            account = dict(connection.execute('SELECT * FROM paper_account WHERE id=1').fetchone())
+            account.pop('id', None)
+            positions = [dict(row) for row in connection.execute('SELECT * FROM paper_positions ORDER BY exchange,ticker')]
+            orders = [dict(row) for row in connection.execute('SELECT * FROM paper_orders ORDER BY timestamp DESC,rowid DESC LIMIT 100')]
+            ledger, changed = self._usdt_ledger(connection, account, positions, fx)
+            if changed:
+                self._save_usdt(connection, ledger)
+            account, positions = evaluate_positions(account, positions, self._marks_at(marks, now),
+                                                    valid_theories(theories, now, MAX_QUOTE_AGE_MS))
+            usdt = ledger.valuation(account, positions, fx)
+            fills = self.fills()
         valued = sum(position['mark_price'] is not None for position in positions)
         complete = valued == len(positions)
         equity = account['equity']
-        fills = self.fills()
-        return {"account": account, "positions": positions, "orders": orders, "equity": equity, "fills": fills["items"], "fill_count": fills["total"], "next_fill_before": fills["next_before"],
+        return {"account": account, "positions": positions, "orders": orders, "equity": equity, "usdt": usdt, "fills": fills["items"], "fill_count": fills["total"], "next_fill_before": fills["next_before"],
                 "quote_status": {"state": "fresh" if complete else "partial" if valued else "unavailable",
                                  "message": "보유 종목이 없습니다." if not positions else "실시간 호가로 평가했습니다." if complete else "일부 실시간 호가가 없어 전체 평가액을 표시하지 않습니다.",
                                  "updated_at": now},
@@ -288,7 +327,12 @@ class PaperTradingService:
             pairs = [(row['exchange'], row['ticker']) for row in connection.execute('SELECT exchange,ticker FROM paper_positions')]
         pairs = list(dict.fromkeys([*pairs, (exchange, ticker)]))
         marks, theories = self._valuation_inputs(pairs)
+        # Start the reference subscription before waiting for the execution book.
+        self._fx_input(timeout=1)
         quote = self._quote(exchange, ticker)
+        # The execution lookup may have waited: capture the latest observed FX,
+        # not the earlier quote used to start the subscription.
+        fx_input = self._fx_input()
         marks[(exchange, ticker)] = quote
         now = int(self.clock() * 1000)
         with self.lock, self.store.connection() as connection:
@@ -306,6 +350,9 @@ class PaperTradingService:
                 position = connection.execute("SELECT * FROM paper_positions WHERE exchange=? AND ticker=?", (exchange, ticker)).fetchone()
                 old_quantity = position["quantity"] if position else 0.0
                 average = position["avg_price"] if position else 0.0
+                before_positions = [dict(row) for row in connection.execute('SELECT * FROM paper_positions')]
+                fx = FxQuote.from_public(fx_input, now)
+                usdt_ledger, _ = self._usdt_ledger(connection, account, before_positions, fx, force=True)
                 slip = account["slippage_bps"] / 10000
                 price = quote["ask"] * (1 + slip) if side == "buy" else quote["bid"] * (1 - slip)
                 notional = quantity * price
@@ -346,12 +393,15 @@ class PaperTradingService:
                 positions = [dict(row) for row in connection.execute('SELECT * FROM paper_positions ORDER BY exchange,ticker')]
                 valuation, positions = evaluate_positions(after, positions, self._marks_at(marks, now),
                                                           valid_theories(theories, now, MAX_QUOTE_AGE_MS))
+                usdt_fill = usdt_ledger.record_fill(f'{exchange}:{ticker}', side, quantity, price, fee, old_quantity, fx)
+                self._save_usdt(connection, usdt_ledger)
                 report = dict(schema_version=1, valuation_status='recorded', as_of_ms=now,
                               fill=order, account=valuation, positions=positions,
                               before=dict(cash=account['cash'], quantity=old_quantity, avg_price=average),
                               execution_quote=quote,
                               execution_theory=valid_theories(theories, now, MAX_QUOTE_AGE_MS).get((exchange,ticker)),
-                              mark_basis='best_bid', cost_basis='weighted_average_including_buy_fees')
+                              mark_basis='best_bid', cost_basis='weighted_average_including_buy_fees',
+                              usdt=dict(usdt_ledger.valuation(valuation, positions, fx), fill=usdt_fill))
                 connection.execute('INSERT INTO paper_fill_reports(fill_id,report) VALUES (?,?)',
                                    (order['id'], json.dumps(report, ensure_ascii=False, allow_nan=False)))
         return {**self.snapshot({(exchange, ticker): quote}), "order": order, "fill_report": self._fill_report(order["id"])}
@@ -370,10 +420,13 @@ class PaperTradingService:
             connection.execute("DELETE FROM paper_fill_reports")
             connection.execute("DELETE FROM paper_orders")
             connection.execute("DELETE FROM paper_positions")
+            connection.execute("DELETE FROM paper_usdt_state")
             connection.execute("UPDATE paper_account SET initial_cash=?,cash=?,realized_pnl=0,quote_currency='KRW',fee_bps=?,slippage_bps=? WHERE id=1", (cash, cash, fee, slip))
         return self.snapshot()
 
     def close(self):
+        if self.fx_provider is not self.quote_provider and hasattr(self.fx_provider, 'close'):
+            self.fx_provider.close()
         if hasattr(self.quote_provider, "close"):
             self.quote_provider.close()
         if hasattr(self.theory_provider, 'close'):

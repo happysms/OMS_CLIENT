@@ -5,6 +5,7 @@ from typing import Mapping
 
 from ..market_data.validation import DataError
 from ..paper_trading.reporting import evaluate_positions
+from ..paper_trading.currency import UsdtLedger
 from ..strategies.simple_mm import (
     AccountView, MMConfig, QuoteView, SimpleMM, _amount,
 )
@@ -28,7 +29,7 @@ class ReplayEngine:
     composed objects. The service serializes commands and owns all external IO.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, fx_provider=None):
         self.config = config
         strategy = config.get('strategy')
         if strategy and (strategy.get('type') != 'single_exchange_maker' or not strategy.get('executable')):
@@ -50,6 +51,8 @@ class ReplayEngine:
         self.now = config['start_ms']
         self.fee_schedule = FeeSchedule.from_config(config)
         self.account = SpotLedger(D(config['initial_krw']), D(config['initial_coin']), self.fee_schedule)
+        self.usdt_ledger = UsdtLedger()
+        self.fx_provider = fx_provider or (lambda now: None)
         self.books = {}
         self.queues = {}
         self.queue_known = {}
@@ -434,7 +437,7 @@ class ReplayEngine:
                                     # Never subtract a consumed trade twice for a later order.
                                     self.depletion[key] = max(ZERO, self.depletion.get(key, ZERO) - D(str(before - after)))
                 if self.initial_equity is None and self.now >= self.config['start_ms']:
-                    self.account.initialize(D(str(event['bids'][0]['price'])))
+                    self._initialize_account(D(str(event['bids'][0]['price'])))
                 for key, nodes in self.queues.items() if not self.queue_cancel.enabled else []:
                     visible = self._visible(*key)
                     if visible is not None and (not self.queue_known.get(key)):
@@ -510,8 +513,17 @@ class ReplayEngine:
         self.advance(self.config['start_ms'])
         book = self.books.get('bithumb')
         if self.initial_equity is None and book and (self.now - book['time'] <= self.mm.config.max_quote_age_ms):
-            self.account.initialize(D(str(book['bids'][0]['price'])))
+            self._initialize_account(D(str(book['bids'][0]['price'])))
         self.auto()
+
+    def _initialize_account(self, bid):
+        self.account.initialize(bid)
+        costs = {f"bithumb:{self.config['ticker']}": self.cost} if self.coin else {}
+        self.usdt_ledger.initialize(self.cash, costs, self._fx_quote())
+
+    def _fx_quote(self):
+        quote = self.fx_provider(self.now)
+        return quote if quote and quote.valid_at(self.now) else None
 
     def auto(self):
         if self.closed or self.now < self.config['start_ms']:
@@ -622,7 +634,11 @@ class ReplayEngine:
             raise DataError('체결 10만 건 한도입니다. 기간을 줄여 주세요.')
         queue_position = self._public_order(order)
         price = order.price if price is None else price
+        before_quantity = self.coin
+        fx = self._fx_quote()
         settlement = self.account.settle(order, size, price, role)
+        usdt_fill = self.usdt_ledger.record_fill(f"bithumb:{self.config['ticker']}", order.side,
+                                                size, price, settlement.fee, before_quantity, fx)
         fee, realized = (settlement.fee, settlement.realized_pnl)
         if order.remaining == 0:
             self._terminal(order, 'filled', 'trade_tick' if role == 'maker' else 'arrival_liquidity')
@@ -650,6 +666,7 @@ class ReplayEngine:
             order_guard=self.guard.snapshot(self.now),
             queue_position={key: value for key, value in queue_position.items() if key.startswith('queue_')},
             queue_model=self.queue_cancel.summary(),
+            usdt=dict(valuation['usdt'], fill=usdt_fill),
         )
         self.last_fills.append(report)
         self.new_fills.append(report)
@@ -697,7 +714,8 @@ class ReplayEngine:
             coin=float(self.coin),
             initial_equity=float(self.initial_equity) if self.initial_equity is not None else None,
         )
-        return dict(account=account, positions=positions, theory=theory)
+        return dict(account=account, positions=positions, theory=theory,
+                    usdt=self.usdt_ledger.valuation(account, positions, self._fx_quote()))
 
     def finish(self, reason='end_of_run'):
         self.closed = True

@@ -159,6 +159,8 @@ class FillReportTests(unittest.TestCase):
         response = client.get('/api/paper/fills/csv')
         rows = list(csv.DictReader(io.StringIO(response.text.lstrip('\ufeff'))))
         self.assertAlmostEqual(float(rows[0]['theory_unrealized_pnl']), 7.798)
+        self.assertEqual(float(rows[0]['fx_krw_per_usdt']), 100)
+        self.assertAlmostEqual(float(rows[0]['usdt_fee']), .00202)
         provenance = json.loads(rows[0]['valuation_json'])
         self.assertEqual(provenance['execution_theory']['basis'], 'test_strategy')
         self.assertEqual(provenance['as_of_ms'], int(self.now * 1000))

@@ -341,6 +341,8 @@ class ReplayApiTests(unittest.TestCase):
         self.assertEqual(response.status_code,200)
         exported=list(csv.DictReader(io.StringIO(response.get_data(as_text=True).lstrip('\ufeff'))))
         self.assertEqual(len(exported),2)
+        self.assertEqual(exported[0]['fx_krw_per_usdt'], '')
+        self.assertEqual(exported[0]['usdt_price'], '')
         self.assertEqual(float(exported[0]['cumulative_realized_pnl']),fills[0]['account']['realized_pnl'])
         self.assertEqual(self.client.get(f'/api/replays/{identifier}/fills?before=-1').status_code,400)
         self.assertEqual(self.client.get('/api/replays/unknown').status_code,404)

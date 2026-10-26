@@ -1,3 +1,4 @@
+import {pnlCurrency,pnlAccount,pnlFill,fxDescription,pnlTheoryPrice} from '../../shared/dom.js';
 // Reuse ICU formatters across the hundreds of cells in every replay update.
 const numbers = new Intl.NumberFormat('ko-KR', {maximumFractionDigits: 8});
 const timestamps = new Intl.DateTimeFormat('ko-KR', {
@@ -41,6 +42,9 @@ export function initReplay({api,getCatalog}){
   let snapshot=null,id=null,visible=false,timer=null,polling=false,epoch=0,boundsEpoch=0,creating=false,controlTail=Promise.resolve();
   let historicalFills=null,nextBefore=null,historyCursor=null,historyEpoch=0;
   let renderedFills=null;
+  let unit=pnlCurrency('replay');
+  $('pnl-currency').value=unit;
+  $('pnl-currency').addEventListener('change',()=>{unit=pnlCurrency('replay',$('pnl-currency').value);if(snapshot)render(snapshot);history().catch(e=>error(e.message));});
   let strategyItems=[],strategyExtras=[],strategyEpoch=0;
   const limitSupported=()=>strategyItems.some(item=>item.limit_execution_supported);
   const queueSupported=()=>strategyItems.some(item=>item.queue_cancellation_supported);
@@ -110,13 +114,17 @@ export function initReplay({api,getCatalog}){
     // Fill reports are immutable. Live ticks alone do not change this table;
     // history navigation supplies a different page object even at the same count.
     const source=historicalFills??snapshot.fill_count;
-    if(!renderedFills||renderedFills.id!==snapshot.id||renderedFills.source!==source){
-      rows($('fills'),fills.map(f=>row([stamp(f.timestamp),f.order_id,side(f.side),num(f.price),num(f.quantity),num(f.fee),num(f.realized_pnl),num(f.account.realized_pnl),num(f.account.unrealized_pnl),num(f.account.theory_unrealized_pnl),num(f.account.total_pnl),num(f.account.equity),num(f.theory?.price??f.positions?.[0]?.theory_price),stamp(f.theory?.available_at_ms??f.positions?.[0]?.theory?.available_at_ms),f.liquidity??'maker'])),15,'아직 모의 체결이 없습니다.');
-      renderedFills={id:snapshot.id,source};
+    if(!renderedFills||renderedFills.id!==snapshot.id||renderedFills.source!==source||renderedFills.unit!==unit){
+      rows($('fills'),fills.map(f=>{
+        const value=pnlFill(f,unit),a=pnlAccount(f,unit),fx=f.usdt?.fill?.fx;
+        const theoryPrice=pnlTheoryPrice(f,unit);
+        return row([stamp(f.timestamp),f.order_id,side(f.side),num(value.price),num(f.quantity),num(value.fee),num(value.realized_pnl),num(a.realized_pnl),num(a.unrealized_pnl),num(a.theory_unrealized_pnl),num(a.total_pnl),num(a.equity),num(theoryPrice),stamp(f.theory?.available_at_ms??f.positions?.[0]?.theory?.available_at_ms),f.liquidity??'maker',num(fx?.krw_per_usdt)]);
+      }),16,'아직 모의 체결이 없습니다.');
+      renderedFills={id:snapshot.id,source,unit};
     }
     if(!historicalFills)nextBefore=fills.length===100?fills.at(-1).sequence:null;
     $('older').hidden=!nextBefore;$('newest').hidden=!historicalFills;
-    $('fill-count').textContent=`${num(snapshot.fill_count)}건 · ${historicalFills?'과거 체결 페이지':'최근 체결'}`;
+    $('fill-count').textContent=`${num(snapshot.fill_count)}건 · ${unit} · ${historicalFills?'과거 체결 페이지':'최근 체결'}`;
   }
   function render(next){
     if(next.id!==id||(snapshot&&next.revision<snapshot.revision))return;
@@ -145,8 +153,10 @@ export function initReplay({api,getCatalog}){
     const qm=next.queue_model;
     $('queue-status').textContent=qm?`${qm.mode==='probabilistic'?'확률 취소 모형':'기존 보수 모형'} · 시드 ${qm.seed} · 앞쪽 가중치 ${qm.front_bias} · ${qm.chunks}분할 · 취소 추정 ${num(qm.cancellation_events)}건 / ${num(qm.cancelled_external_quantity)}개`:'이전 실행 · 대기열 취소 추정 기록 없음';
     rows($('queue-events'),(next.queue_cancel_events||[]).map(event=>row([stamp(event.timestamp),side(event.side),num(event.price),num(event.trade_quantity),num(event.inferred_cancel_quantity),num(event.applied_cancel_quantity)])),6,'아직 취소로 추정한 잔량 감소가 없습니다.');
-    const a=next.account||{};
-    const metrics=[['평가액 · 원',a.equity],['주문 가능 원화',a.free_cash],['예약 원화',(a.cash??0)-(a.free_cash??0)],['보유 코인',a.coin],['주문 가능 코인',a.free_coin],['실현손익 · 원',a.realized_pnl],['미실현손익 · 원',a.unrealized_pnl],['이론가 미실현 · 원',a.theory_unrealized_pnl],['총손익 · 원',a.total_pnl]];
+    const a=pnlAccount(next,unit),base=next.account||{};
+    const metrics=[['평가액 · '+unit,a.equity],['주문 가능 현금 · '+unit,a.free_cash],['예약 원화 · KRW',Number.isFinite(base.cash)&&Number.isFinite(base.free_cash)?base.cash-base.free_cash:null],['보유 코인',base.coin],['주문 가능 코인',base.free_coin],['실현손익 · '+unit,a.realized_pnl],['미실현손익 · '+unit,a.unrealized_pnl],['이론가 미실현 · '+unit,a.theory_unrealized_pnl],['매매 총손익 · '+unit,a.total_pnl]];
+    if(unit==='USDT')metrics.push(['원화 현금 환산손익 · USDT',a.cash_fx_pnl],['초기 대비 평가액 변화 · USDT',a.equity_change_pnl]);
+    $('fx-info').textContent=fxDescription(next,unit);
     $('stats').replaceChildren(...metrics.map(([title,value])=>{const article=document.createElement('article'),label=document.createElement('span'),strong=document.createElement('strong');label.textContent=title;strong.textContent=num(value);article.append(label,strong);return article;}));
     const theory=next.theory;
     $('theory-info').textContent=theory?`전략 이론가 ${num(theory.price)}원 · ${stamp(theory.available_at_ms)} KST · ${theory.formula||theory.basis}`:'전략 이론가 미평가 · 전략이 값을 제공하지 않았거나 유효시간이 지났습니다.';
@@ -171,7 +181,7 @@ export function initReplay({api,getCatalog}){
     try{const result=await api('/api/replays/'+selected);if(version===epoch)render(result);}catch(e){if(version===epoch)error(e.message);}finally{polling=false;if(version!==epoch&&visible&&id)poll();}
   }
   function schedule(){clearInterval(timer);if(visible)timer=setInterval(()=>{if(id&&(!snapshot||!terminal(snapshot.status)))poll();},250);}
-  async function select(identifier){epoch++;id=identifier;snapshot=null;historicalFills=null;error('');await poll();schedule();}
+  async function select(identifier){epoch++;id=identifier;snapshot=null;historicalFills=null;renderedFills=null;error('');await poll();schedule();}
   async function history(restore=false,append=false){
     if(append&&!historyCursor)return;
     const version=++historyEpoch,cursor=append?historyCursor:null;
@@ -180,9 +190,9 @@ export function initReplay({api,getCatalog}){
       const list=await api('/api/replays'+(cursor?'?before='+cursor:''));
       if(version!==historyEpoch)return;
       const elements=list.items.map(item=>{
-        const metadata=item.virtual_account||{},account=item.account||{};
+        const metadata=item.virtual_account||{},account=pnlAccount(item,unit);
         const tr=row(['',`${item.config.strategy?item.config.strategy.name+' v'+item.config.strategy.revision+' / ':''}${item.config.ticker} · ${stamp(item.config.start_ms)}`,(states[item.status]||item.status)+(item.uncertain?' · 체결 판정 불가':''),
-          `${num(metadata.initial_krw)}원 / ${num(metadata.initial_coin)}개`,num(item.fill_count),num(account.equity),num(account.realized_pnl),num(account.unrealized_pnl),num(account.total_pnl)]);
+          `${num(metadata.initial_krw)}원 / ${num(metadata.initial_coin)}개`,num(item.fill_count),num(account.equity)+' '+unit,num(account.realized_pnl)+' '+unit,num(account.unrealized_pnl)+' '+unit,num(account.total_pnl)+' '+unit]);
         const button=document.createElement('button');button.type='button';button.className='quiet-button';button.textContent=metadata.name||item.config.ticker+' 모의계좌';button.title=metadata.id||item.id;button.addEventListener('click',()=>select(item.id));tr.firstChild.append(button);return tr;
       });
       if(append)$('history').append(...elements);else rows($('history'),elements,9,'저장된 모의계좌가 없습니다.');

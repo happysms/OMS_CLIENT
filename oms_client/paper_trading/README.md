@@ -17,3 +17,7 @@
 기준값이 없는 보유 포지션은 null로 기록하고 계좌 전체 평가도 null로 남깁니다. 잔고가 없는 포지션의 미실현손익은 0입니다. 미래 수신 시각·오래된 평가값을 사용하지 않습니다. 이론가의 평균 괴리율·기간 종료·표본 수·충족률·OKX/USDT 기준 호가도 기록합니다. 7일 충족률이 100% 미만이면 관측된 부분 구간의 평균이라는 사실이 보고서에 남습니다. `theory_provider.get_many(pairs)` 주입으로 전략별 이론가를 공급할 수 있으며 각 값에 `price`, `available_at_ms`, `basis`를 제공합니다.
 
 `snapshot()`은 현재 평가와 최근 100개 체결 보고서를 반환합니다. `fills(before=sequence,limit=100)`은 같은 밀리초의 체결도 누락 없이 순번으로 페이지를 넘깁니다. `/api/paper/fills/csv`는 전체 기록과 평가 근거 JSON을 내보냅니다. 이전 버전 체결은 알려진 거래값만 보존하고 `legacy_unavailable`로 표시하며 현재 시세로 과거 손익을 생성하지 않습니다. 기존 명시적 계좌 초기화 기능은 포지션·주문·체결 보고서를 함께 삭제합니다. 서버 재시작은 기록을 유지합니다.
+
+## KRW / USDT 보고 통화
+
+`currency.py`의 `FxQuote`·`UsdtLedger`가 체결 당시 빗썸 USDT 중간가에 따른 별도 가중 원가를 관리한다. KRW 결제 원장을 유지하면서 `usdt.account`, `usdt.positions`, 체결 `usdt.fill.fx`를 추가한다. 실시간 상태 `paper_usdt_state`와 체결 보고서는 KRW 정산과 같은 트랜잭션에 저장한다. 환율 결측은 null이며 오늘 환율로 과거 원가를 복원하지 않는다. `fx_provider`를 선택적으로 주입할 수 있고 기본값은 공개 실행 시세 공급자다. [환율 계산·저장 계약·미결정 쿼리](../../docs/pnl_currency.ko.md)를 참고한다.

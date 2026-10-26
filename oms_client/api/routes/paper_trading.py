@@ -6,6 +6,7 @@ import json
 from flask import jsonify, request, Response, stream_with_context
 
 from ..validation import _json_object
+from ...paper_trading.currency import USDT_CSV_FIELDS, usdt_csv_values
 
 
 def register(app, paper_service):
@@ -24,7 +25,7 @@ def register(app, paper_service):
         fields = ['sequence', 'fill_id', 'timestamp_ms', 'exchange', 'ticker', 'side', 'price', 'quantity', 'fee',
                   'realized_pnl', 'realized_pnl_cumulative', 'unrealized_pnl', 'theory_unrealized_pnl',
                   'total_pnl', 'theory_total_pnl', 'cash', 'equity', 'theory_equity', 'fees_paid',
-                  'valuation_status', 'valuation_json']
+                  'valuation_status', 'valuation_json'] + USDT_CSV_FIELDS
 
         def generate():
             output = io.StringIO(newline='')
@@ -40,7 +41,7 @@ def register(app, paper_service):
                                      *[fill[key] for key in ('exchange','ticker','side','price','quantity','fee','realized_pnl')],
                                      *[account.get(key) for key in ('realized_pnl','unrealized_pnl','theory_unrealized_pnl',
                                                                    'total_pnl','theory_total_pnl','cash','equity','theory_equity','fees_paid')],
-                                     report['valuation_status'], row['report']])
+                                     report['valuation_status'], row['report']] + usdt_csv_values(report))
                     yield output.getvalue()
         return Response(stream_with_context(generate()), mimetype='text/csv',
                         headers={'Content-Disposition': 'attachment; filename=paper-fills.csv'})

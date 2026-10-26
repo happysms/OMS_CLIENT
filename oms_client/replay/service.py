@@ -24,6 +24,7 @@ class ReplaySession:
         self.virtual_account = account_metadata(identifier, config, int(time.time()*1000))
         self.engine = ReplayEngine(config)
         self.source = source_factory(config)
+        self.engine.fx_provider = getattr(self.source, 'fx_at', self.engine.fx_provider)
         self.condition = threading.Condition(threading.RLock())
         self.clock = None
         self.status = 'loading'
