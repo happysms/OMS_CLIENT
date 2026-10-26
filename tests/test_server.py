@@ -765,6 +765,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in modules], ["data", "quality", "analysis", "backtest", "strategies", "replay", "paper", "manual", "oms"])
         self.assertEqual(modules[-1]["status"], "planned")
         self.assertFalse(self.client.get("/api/oms/status").json["live_orders"])
+        self.assertFalse(self.client.get("/api/session").json["capabilities"]["manual_spot_orders"])
         self.assertEqual(self.client.post("/api/oms/orders", json={}, headers=self.headers()).status_code, 405)
 
     def test_application_version_requires_auth_and_reports_deployed_revision(self):

@@ -1,4 +1,6 @@
-# 실시간 수동 현물 매매
+# 실시간 공개 시세와 직접 매매 호환 모듈
+
+**현재 배포 방향 변경:** 실제 매매는 별도 실행 서버에서 수행한다. `MANUAL_DIRECT_TRADING_ENABLED=False`가 기본이며 이 서버의 키 등록·개인 잔고·주문·취소·조회는 HTTP에서 차단한다. 공개 시세만 사용할 수 있다. [원격 소켓 정의서](../../docs/remote_execution_socket.ko.md)가 현행 운영 계약이다. 아래 직접 주문 설명은 app config를 명시적으로 켠 호환 모듈의 동작이며 현재 이 PC에서 사용할 운영 방식이 아니다. 기존 키와 장부는 삭제하거나 원격으로 복사하지 않는다.
 
 `실시간 수동매매` 탭에서 빗썸 KRW 현물과 OKX 글로벌 USDT 현물의 공개 5호가·체결 틱을 보면서 직접 지정가 매수·매도·취소를 요청한다. 시작 상태는 시세 보기다. 키 등록이나 화면 진입 자체로 주문하지 않으며, 사용자가 주문마다 **실제 계좌로 주문**을 선택하고 전송해야 실제 거래소로 요청한다. 기존 가상계좌·전략 실행·과거 오더북 시뮬레이터와 별도 서비스 및 장부를 사용한다.
 
@@ -113,7 +115,7 @@ stateDiagram-v2
 | `POST /api/manual/orders/{key}/{client}/refresh` | 거래소 주문 상태 조회 |
 | `POST /api/manual/orders/{key}/{client}/cancel` | 거래소 취소 접수 |
 
-계정은 기존 대시보드 관리자 로그인에 귀속된다. 여러 독립 사용자의 키 분리나 서버 다중 워커 운영은 이번 범위에 넣지 않았다. 분석용 OKX SWAP 피드와 분리한 현물 피드라 수량에 선물 계약 승수를 적용하지 않는다. `session.capabilities.manual_spot_orders=true`가 새 기능을 나타내며 기존 OMS 자동 주문 capability는 여전히 false다.
+계정은 기존 대시보드 관리자 로그인에 귀속된다. 여러 독립 사용자의 키 분리나 서버 다중 워커 운영은 이번 범위에 넣지 않았다. 분석용 OKX SWAP 피드와 분리한 현물 피드라 수량에 선물 계약 승수를 적용하지 않는다. `session.capabilities.manual_market_view=true`는 공개 화면, `manual_spot_orders`는 직접 주문 플래그를 나타내며 기존 OMS 자동 주문 capability는 여전히 false다.
 
 ## 기본값 및 후속 질문
 

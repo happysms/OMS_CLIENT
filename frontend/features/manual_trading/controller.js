@@ -15,7 +15,12 @@ export function comparePrice(left, right) {
   return x===y?0:x<y?-1:1;
 }
 
-export function initManualTrading({api}) {
+export function initManualTrading({api,allowDirectTrading=false}) {
+  if(!allowDirectTrading){
+    document.querySelector("#module-manual .manual-key-panel").hidden=true;
+    for(const input of $("order-form").querySelectorAll("input,select,button"))input.disabled=true;
+    $("order-status").textContent="실제 매매는 별도 실행 서버에서 수행합니다. 현재 공개 시세 조회만 가능하며 원격 주문·파라미터 제어 소켓은 연결 전입니다.";
+  }
   let visible=false,timer=null,loading=false,version=0,busy=false,snapshot=null,pending=null;
   const error=value=>{$('error').hidden=!value;$('error').textContent=value||'';};
   const exchange=()=>$('exchange').value;
@@ -23,10 +28,10 @@ export function initManualTrading({api}) {
   const selectedKey=()=>snapshot?.keys.find(key=>key.id===$('key-id').value);
   function controls(){
     const key=selectedKey(),market=snapshot?.market;
-    const ready=key?.verified_ms&&market?.can_order&&market.ticker===ticker()&&market.exchange===exchange();
+    const ready=allowDirectTrading&&key?.verified_ms&&market?.can_order&&market.ticker===ticker()&&market.exchange===exchange();
     $('submit').disabled=busy||!ready||!$('confirm').checked||Boolean(pending?.unresolved);
-    $('order-help').textContent=ready?'지정가 GTC · 가격×수량과 별도로 거래 수수료가 적용됩니다. 실제 주문임을 선택한 뒤 전송하세요.':'해당 거래소의 키 연결 확인과 2초 이내 호가가 필요합니다. 공개 시세만 연결해 볼 수도 있습니다.';
-    for(const id of ['key-save','connect'])$(id).disabled=busy;
+    $('order-help').textContent=!allowDirectTrading?'원격 실행 서버 연결 전입니다. 이 PC에서는 거래소 키와 실제 주문을 처리하지 않습니다.':ready?'지정가 GTC · 가격×수량과 별도로 거래 수수료가 적용됩니다. 실제 주문임을 선택한 뒤 전송하세요.':'해당 거래소의 키 연결 확인과 2초 이내 호가가 필요합니다. 공개 시세만 연결해 볼 수도 있습니다.';
+    for(const id of ['key-save','connect'])$(id).disabled=busy||(id==='key-save'&&!allowDirectTrading);
   }
   async function command(action){
     if(busy)return;
@@ -37,7 +42,7 @@ export function initManualTrading({api}) {
     const previous=$('key-id').value;
     $('key-id').replaceChildren(...snapshot.keys.filter(key=>key.exchange===exchange()).map(key=>new Option(`${key.label} · ${key.key_hint}${key.verified_ms?'':' · 연결 확인 필요'}`,key.id)));
     if([...$('key-id').options].some(option=>option.value===previous))$('key-id').value=previous;
-    $('keys').replaceChildren(...snapshot.keys.map(key=>{
+    $('keys').replaceChildren(...(allowDirectTrading?snapshot.keys:[]).map(key=>{
       const tr=row([key.exchange,key.label,key.key_hint,stamp(key.verified_ms),'']);
       tr.lastChild.append(button('잔고 조회·연결 확인',()=>command(async()=>{
         const data=await api(`/api/manual/keys/${key.id}/verify`,{method:'POST',body:{}});
@@ -94,7 +99,7 @@ export function initManualTrading({api}) {
         $('order-status').textContent=`${result.client_order_id} · ${states[result.status]}${result.error?' · '+result.error:''}`;
       });
       const refresh=button('상태 조회',()=>action('refresh')),cancel=button('취소 요청',()=>action('cancel'));
-      cancel.disabled=terminal.has(order.status);tr.lastChild.append(refresh,cancel);return tr;
+      refresh.disabled=!allowDirectTrading;cancel.disabled=!allowDirectTrading||terminal.has(order.status);tr.lastChild.append(refresh,cancel);return tr;
     }));
     controls();
   }
@@ -119,6 +124,7 @@ export function initManualTrading({api}) {
   $('key-form').addEventListener('submit',event=>{
     event.preventDefault();
     command(async()=>{
+      if(!allowDirectTrading)return;
       const body={exchange:$('key-exchange').value,label:$('key-label').value,api_key:$('api-key').value,secret:$('secret').value,passphrase:$('passphrase').value};
       try{await api('/api/manual/keys',{method:'POST',body});$('key-status').textContent='등록했습니다. 잔고 조회·연결 확인을 실행하세요.';}
       finally{for(const id of ['api-key','secret','passphrase'])$(id).value='';}

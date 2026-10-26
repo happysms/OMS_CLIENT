@@ -10,10 +10,10 @@ import {initTabs} from './tabs.js';
 
 export async function initManualFeature({api,session}) {
   let message='실시간 수동매매를 사용하려면 진행 중인 시뮬레이션이 끝난 뒤 서버를 재시작하고 새로고침하세요.';
-  if(session?.capabilities?.manual_spot_orders){
+  if(session?.capabilities?.manual_market_view||session?.capabilities?.manual_spot_orders){
     try {
       const {initManualTrading}=await import('../features/manual_trading/controller.js');
-      return initManualTrading({api});
+      return initManualTrading({api,allowDirectTrading:session?.capabilities?.manual_spot_orders===true});
     } catch {
       message='수동매매 화면을 불러오지 못했습니다. 서버 버전과 연결을 확인한 뒤 새로고침하세요.';
     }

@@ -53,7 +53,7 @@ def register(app, csrf_token):
 
     @app.get("/api/session")
     def session_information():
-        return jsonify(authenticated=True, user="admin", csrf_token=csrf_token(), mode="server", capabilities={"server_analysis": True, "live": True, "saved_presets": True, "backtest": True, "paper": True, "funding": True, "funding_live": False, "candles": True, "candle_live": False, "live_orders": False, "manual_spot_orders": True})
+        return jsonify(authenticated=True, user="admin", csrf_token=csrf_token(), mode="server", capabilities={"server_analysis": True, "live": True, "saved_presets": True, "backtest": True, "paper": True, "funding": True, "funding_live": False, "candles": True, "candle_live": False, "live_orders": False, "manual_market_view": True, "manual_spot_orders": bool(app.config.get("MANUAL_DIRECT_TRADING_ENABLED", False)), "execution_mode": "remote" if not app.config.get("MANUAL_DIRECT_TRADING_ENABLED", False) else "direct"})
 
     @app.get("/api/version")
     def version_information():

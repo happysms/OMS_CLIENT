@@ -14,7 +14,9 @@ def register(app, directory):
                 app.extensions['manual_trading'] = factory(directory)
             return app.extensions['manual_trading']
 
-    def command(callback):
+    def command(callback, *, private=True):
+        if private and not app.config.get("MANUAL_DIRECT_TRADING_ENABLED", False):
+            return jsonify(error="이 서버는 원격 실행 서버를 제어하는 역할입니다. 로컬 API 키 등록과 거래소 개인 요청은 비활성화되어 있습니다.", code="REMOTE_EXECUTION_REQUIRED"), 409
         if not command_slot.acquire(blocking=False):
             return (jsonify(error='다른 수동 매매 요청을 처리 중입니다. 상태 확인 후 다시 시도하세요.'), 429)
         try:
@@ -56,7 +58,7 @@ def register(app, directory):
                 raise ValueError('시세 구독 항목을 확인하세요.')
             service().market.subscribe(data['exchange'], data['ticker'])
             return dict(status='connecting')
-        return command(run)
+        return command(run, private=False)
 
     @app.post('/api/manual/keys')
     def add_key():

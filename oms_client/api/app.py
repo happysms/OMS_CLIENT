@@ -24,6 +24,7 @@ def create_app(config=None):
     app.session_interface = TransportAwareSessionInterface()
     trusted_hosts = os.environ.get("DASHBOARD_TRUSTED_HOSTS", "")
     app.config.update(
+        MANUAL_DIRECT_TRADING_ENABLED=False,
         STATE_DIR=os.environ.get("DASHBOARD_STATE_DIR", str(ROOT / ".state")),
         PASSWORD=os.environ.get("DASHBOARD_PASSWORD"),
         PASSWORD_HASH=os.environ.get("DASHBOARD_PASSWORD_HASH"),

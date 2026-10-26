@@ -97,3 +97,22 @@ try {
   assert.equal($('key-save').disabled,true);
   console.log('Manual trading DOM: public-only default, credential clearing, explicit orders, stale gate, double-submit, unknown reconciliation, cancel ACK and out-of-depth overlay passed.');
 } finally {view.onLeave();dom.window.close();}
+
+// Default deployment can view public books but cannot enter credentials or trade.
+const remoteDom = new JSDOM(await readFile(new URL('../../frontend/index.html', import.meta.url), 'utf8'), {url:'http://localhost/#manual',pretendToBeVisual:true});
+for(const name of ['window','document','Option','Event'])globalThis[name]=remoteDom.window[name];
+const remoteRequests=[];
+const remoteView=await initManualFeature({session:{capabilities:{manual_market_view:true,manual_spot_orders:false}},api:async(path,options={})=>{remoteRequests.push({path,options});return structuredClone(snapshot);}});
+try{
+  remoteView.onEnter();await flush();
+  assert.equal($('submit').disabled,true);
+  assert.equal($('key-save').disabled,true);
+  assert.equal(document.querySelector('#module-manual .manual-key-panel').hidden,true);
+  assert.match($('order-status').textContent,/별도 실행 서버/);
+  assert.equal($('book').rows.length,2);
+  submit('connect-form');await flush();
+  assert.equal(remoteRequests.filter(r=>r.options.method==='POST').length,1);
+  assert.equal(remoteRequests.find(r=>r.options.method==='POST').path,'/api/manual/market');
+  assert.equal($('confirm').disabled,true);
+  console.log('Remote default DOM: public-only subscription, hidden credentials and disabled private controls passed.');
+}finally{remoteView.onLeave();remoteDom.window.close();}

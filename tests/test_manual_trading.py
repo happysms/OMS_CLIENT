@@ -278,12 +278,35 @@ class ManualApiTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.broker = FakeBroker()
         self.market = FakeMarket()
-        self.app = create_app(dict(TESTING=True, STATE_DIR=self.temp.name, PASSWORD='manual-test', MANUAL_TRADING_FACTORY=lambda directory: ManualTradingService(directory, self.market, self.broker)))
+        self.app = create_app(dict(TESTING=True, MANUAL_DIRECT_TRADING_ENABLED=True, STATE_DIR=self.temp.name, PASSWORD='manual-test', MANUAL_TRADING_FACTORY=lambda directory: ManualTradingService(directory, self.market, self.broker)))
         self.addCleanup(self.app.extensions['close_services'])
         self.client = self.app.test_client()
         csrf = re.search('name="csrf_token" value="([^"]+)"', self.client.get('/login').text)[1]
         self.client.post('/login', data=dict(password='manual-test', csrf_token=csrf))
         self.headers = {'X-CSRF-Token': self.client.get('/api/session').json['csrf_token']}
+
+    def test_remote_default_blocks_every_private_action_before_creating_service(self):
+        self.app.config['MANUAL_DIRECT_TRADING_ENABLED'] = False
+        capability = self.client.get('/api/session').json['capabilities']
+        self.assertFalse(capability['manual_spot_orders'])
+        self.assertTrue(capability['manual_market_view'])
+        for path, method, body in [
+            ('/api/manual/keys', 'post', KEY),
+            ('/api/manual/keys/key/verify', 'post', {}),
+            ('/api/manual/keys/key', 'delete', {}),
+            ('/api/manual/orders', 'post', {}),
+            ('/api/manual/orders/key/client/refresh', 'post', {}),
+            ('/api/manual/orders/key/client/cancel', 'post', {}),
+        ]:
+            response = getattr(self.client, method)(path, json=body, headers=self.headers)
+            self.assertEqual(response.status_code, 409, path)
+            self.assertEqual(response.json['code'], 'REMOTE_EXECUTION_REQUIRED')
+        self.assertNotIn('manual_trading', self.app.extensions)
+        self.assertEqual(self.broker.balance_calls, 0)
+        self.assertEqual(self.broker.places, [])
+        response = self.client.post('/api/manual/market', json={'exchange':'bithumb','ticker':'BTC'}, headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.market.subscriptions, [('bithumb','BTC')])
 
     def test_auth_csrf_register_verify_market_order_cancel_and_secrets_never_return(self):
         self.assertEqual(self.app.test_client().get('/api/manual').status_code, 401)
