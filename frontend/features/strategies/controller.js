@@ -44,7 +44,7 @@ export function initStrategies({api}){
       for(const value of [item.name,templates.find(t=>t.type===item.type)?.label||item.type,'v'+item.revision,item.archived?'보관됨':item.executable?'실행 가능':'등록됨 · 실행 연결 필요']){const td=document.createElement('td');td.textContent=value;tr.append(td);}
       const td=document.createElement('td');td.className='table-pages';
       td.append(button('편집',()=>edit(item)),button('모의계좌에 적용',()=>{
-        document.dispatchEvent(new CustomEvent('oms:select-strategy',{detail:item}));document.getElementById('tab-replay').click();
+        document.dispatchEvent(new CustomEvent('oms:select-strategy',{detail:item}));document.dispatchEvent(new CustomEvent('oms:paper-mode',{detail:'historical'}));document.getElementById('tab-paper').click();
       }),button(item.archived?'복원':'보관',async()=>{
         try{await api(`/api/strategies/${item.id}/archive`,{method:'POST',body:{archived:!item.archived}});await refresh();if(editing?.id===item.id)edit(items.find(i=>i.id===item.id));}catch(e){error(e.message);}
       }));

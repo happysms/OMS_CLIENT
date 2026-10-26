@@ -25,9 +25,7 @@ MODULES = [
     {"id": "analysis", "label": "분석", "status": "ready"},
     {"id": "backtest", "label": "백테스트", "status": "ready"},
     {"id": "strategies", "label": "전략 관리", "status": "ready"},
-    {"id": "replay", "label": "시뮬레이션", "status": "ready"},
     {"id": "paper", "label": "모의투자", "status": "ready"},
-    {"id": "manual", "label": "실시간 수동매매", "status": "ready"},
     {"id": "oms", "label": "OMS", "status": "planned"},
 ]
 

@@ -1,4 +1,6 @@
-# 실시간 수동매매 화면
+# 모의투자 실시간 공개 시세 화면
+
+독립 실시간 수동매매 탭을 없애고 모의투자 실시간 시세 방식 안에서 공개 호가·틱을 표시한다. 작업 공간은 이전 direct capability가 있어도 항상 `allowDirectTrading=false`로 연결해 개인 키·실주문 입력과 기록을 숨긴다. 별도 테스트용 controller의 명시적 direct 경로만 호환 용도로 남는다. 원격 실제 매매 서버 제어는 OMS 책임이다.
 
 기본 배포는 원격 실행 방식이다. `manual_market_view`로 공개 시세 화면만 활성화하고 `manual_spot_orders=false`이면 키 입력·개인 조회·주문을 비활성화한다. 원격 소켓 제어는 [정의서](../../../docs/remote_execution_socket.ko.md)에 따라 후속 연결한다. 아래 직접 주문 동작은 명시적으로 활성화한 호환 모드에 한한다.
 

@@ -12,7 +12,7 @@
 <body>
   <header class="topbar">
     <a class="brand" href="./" aria-label="OMS Client 홈"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 24V12l8 8L22 5l6 10"/></svg><span>OMS<span class="brand-light"> Client</span><small>RESEARCH &amp; TRADING WORKSPACE</small></span></a>
-    <nav class="module-nav" aria-label="워크스페이스" role="tablist"><button id="tab-data" type="button" data-module="data" role="tab" aria-controls="module-data" aria-selected="false" tabindex="-1">데이터</button><button id="tab-quality" type="button" data-module="quality" role="tab" aria-controls="module-quality" aria-selected="false" tabindex="-1">데이터 품질</button><button id="tab-analysis" type="button" class="active" data-module="analysis" role="tab" aria-controls="module-analysis" aria-selected="true">분석</button><button id="tab-backtest" type="button" data-module="backtest" role="tab" aria-controls="module-backtest" aria-selected="false" tabindex="-1">백테스트</button><button id="tab-strategies" type="button" data-module="strategies" role="tab" aria-controls="module-strategies" aria-selected="false" tabindex="-1">전략 관리</button><button id="tab-replay" type="button" data-module="replay" role="tab" aria-controls="module-replay" aria-selected="false" tabindex="-1">시뮬레이션</button><button id="tab-paper" type="button" data-module="paper" role="tab" aria-controls="module-paper" aria-selected="false" tabindex="-1">모의투자</button><button id="tab-manual" type="button" data-module="manual" role="tab" aria-controls="module-manual" aria-selected="false" tabindex="-1">실시간 수동매매</button><button id="tab-oms" type="button" data-module="oms" role="tab" aria-controls="module-oms" aria-selected="false" tabindex="-1">OMS <small>예정</small></button></nav>
+    <nav class="module-nav" aria-label="워크스페이스" role="tablist"><button id="tab-data" type="button" data-module="data" role="tab" aria-controls="module-data" aria-selected="false" tabindex="-1">데이터</button><button id="tab-quality" type="button" data-module="quality" role="tab" aria-controls="module-quality" aria-selected="false" tabindex="-1">데이터 품질</button><button id="tab-analysis" type="button" class="active" data-module="analysis" role="tab" aria-controls="module-analysis" aria-selected="true">분석</button><button id="tab-backtest" type="button" data-module="backtest" role="tab" aria-controls="module-backtest" aria-selected="false" tabindex="-1">백테스트</button><button id="tab-strategies" type="button" data-module="strategies" role="tab" aria-controls="module-strategies" aria-selected="false" tabindex="-1">전략 관리</button><button id="tab-paper" type="button" data-module="paper" role="tab" aria-controls="module-paper" aria-selected="false" tabindex="-1">모의투자</button><button id="tab-oms" type="button" data-module="oms" role="tab" aria-controls="module-oms" aria-selected="false" tabindex="-1">OMS <small>예정</small></button></nav>
     <div class="top-actions"><span class="private-tag" id="account-label">개인 워크스페이스</span><button id="refresh-data" class="quiet-button" type="button">↻ 새 데이터 확인</button><button id="logout-button" class="small-button" type="button">로그아웃</button></div>
   </header>
   <div id="app-layout" class="app-layout">
@@ -191,8 +191,11 @@
     </form>
     <section class="panel"><div class="panel-heading"><h2>등록한 전략</h2><button id="strategies-refresh" type="button" class="small-button">새로고침</button></div><div class="table-scroll"><table><thead><tr><th>이름</th><th>유형</th><th>버전</th><th>실행 지원</th><th>동작</th></tr></thead><tbody id="strategies-list"></tbody></table></div></section>
   </main>
-  <main id="module-replay" class="module-page" role="tabpanel" aria-labelledby="tab-replay" hidden>
-    <div class="page-heading"><div><div class="eyebrow">SIMULATION / MARKET REPLAY</div><h1>호가와 틱을 따라 모의 매매하세요.</h1><p>빗썸 MM · 실행마다 독립 가상계좌 · 원본 이벤트 순서로 계산</p></div></div>
+  <main id="module-paper" class="module-page" role="tabpanel" aria-labelledby="tab-paper" hidden>
+    <div class="page-heading"><div><div class="eyebrow">PAPER TRADING</div><h1>모의투자</h1><p>가상계좌로 전략·주문을 실행하고 거래내역과 손익을 확인합니다.</p></div></div>
+    <div class="panel paper-mode-controls"><label for="paper-data-mode">사용할 시세</label><select id="paper-data-mode"><option value="historical">과거 데이터</option><option value="live">실시간 시세</option></select><p id="paper-mode-help" class="tiny-help" role="status">과거 호가·틱을 선택한 기간과 속도로 재생합니다.</p></div>
+  <section id="module-replay" aria-label="과거 데이터로 모의투자">
+    <div class="page-heading"><div><div class="eyebrow">SIMULATION / MARKET REPLAY</div><h2>과거 호가·틱으로 모의투자</h2><p>빗썸 MM · 실행마다 독립 가상계좌 · 원본 이벤트 순서로 계산</p></div></div>
     <form id="replay-form" class="panel module-form">
       <div class="field"><label for="replay-strategy">등록 전략</label><select id="replay-strategy" required></select></div><p id="replay-strategy-help" class="form-caption">전략을 불러오고 있습니다.</p>
       <div class="field"><label for="replay-account-name">새 모의계좌 이름</label><input id="replay-account-name" maxlength="80" placeholder="예: BTC MM 첫 실험 · 비우면 자동 생성"></div>
@@ -257,9 +260,9 @@
     </section>
     <section class="panel"><div class="panel-heading"><h2>체결 순간의 거래·손익</h2><span id="replay-fill-count" class="subtle"></span><button id="replay-csv" class="small-button" type="button" disabled>전체 체결 CSV</button></div><p class="tiny-help">체결 시각을 클릭하면 전후 각 1분의 호가·틱·내 체결을 확인합니다. 최근 100건. 각 부분체결 직후의 잔고와 손익을 저장합니다. 시장 평가는 최우선 매수호가, 초기 코인의 원가는 시작 평가가격입니다. 미실현 이론가 손익은 별도 평가 기준입니다.</p><div class="table-scroll"><table><thead><tr><th>체결 시각 · KST</th><th>주문</th><th>방향</th><th>가격</th><th>수량</th><th>수수료</th><th>이번 실현</th><th>누적 실현</th><th>미실현</th><th>이론가 미실현</th><th>총손익</th><th>평가액</th><th>당시 전략 이론가</th><th>이론가 기준 시각</th><th>Maker/Taker</th><th>체결 환율 (KRW/USDT)</th><th>이번 거래대금</th></tr></thead><tbody id="replay-fills"></tbody></table></div><button id="replay-older" class="small-button" type="button" hidden>이전 체결 100건 보기</button><button id="replay-newest" class="small-button" type="button" hidden>실시간 체결로 돌아가기</button></section>
     <section class="panel"><div class="panel-heading"><h2>모의계좌별 저장 결과</h2><button id="replay-history-refresh" type="button" class="small-button">목록 새로고침</button></div><p class="tiny-help">화면을 나가도 서버 재생은 계속됩니다. 종료 정책에 따라 마지막 주문 상태·예약을 유지하거나 모형상 취소합니다. 판정 불가 잔량은 위험·예약을 유지하고 보유 코인은 평가 상태로 남깁니다.</p><div class="table-scroll"><table><thead><tr><th>계좌 / 결과 열기</th><th>전략 / 종목·기간 시작</th><th>상태</th><th>초기 원화 / 코인</th><th>체결 수</th><th>평가액</th><th>실현손익</th><th>미실현손익</th><th>총손익</th><th>누적 거래대금</th></tr></thead><tbody id="replay-history"></tbody></table></div><button id="replay-history-more" type="button" class="small-button" hidden>이전 계좌 20개 더 보기</button></section>
-  </main>
-  <main id="module-paper" class="module-page" role="tabpanel" aria-labelledby="tab-paper" hidden>
-    <div class="page-heading"><div><div class="eyebrow">TRADING / PAPER ACCOUNT</div><h1>모의 계좌로 주문을 연습하세요.</h1><p>서버가 조회한 시세로 가상 체결하며, 실제 거래소에 주문을 보내지 않습니다.</p></div><button id="paper-refresh" class="quiet-button" type="button">↻ 잔고·시세 새로고침</button></div>
+  </section>
+  <section id="paper-live" aria-label="실시간 시세로 모의투자" hidden>
+    <div class="page-heading"><div><div class="eyebrow">TRADING / PAPER ACCOUNT</div><h2>실시간 시세로 모의투자</h2><p>서버가 조회한 시세로 가상 체결하며, 실제 거래소에 주문을 보내지 않습니다.</p></div><button id="paper-refresh" class="quiet-button" type="button">↻ 잔고·시세 새로고침</button></div>
     <div class="notice">KRW 현물형 모의 계좌입니다. 빗썸·업비트에서 매수와 보유 수량 이내 매도를 지원하며, 잔고와 체결 내역은 서버에 저장됩니다.</div>
     <div class="field"><label for="paper-pnl-currency">손익·거래대금 표시 통화</label><select id="paper-pnl-currency"><option value="KRW">원화 (KRW)</option><option value="USDT">테더 (USDT)</option></select></div><p id="paper-fx-info" class="tiny-help" role="status"></p>
     <p id="paper-message" class="module-message" role="status">모의 계좌를 불러오고 있습니다.</p><div id="paper-error" class="error-box" role="alert" hidden></div>
@@ -270,10 +273,10 @@
     <section class="panel paper-account-panel"><div class="panel-heading"><h2>계좌 설정</h2></div><form id="paper-reset-form" class="paper-form"><p class="tiny-help">초기화하면 현재 모의 잔고, 포지션과 주문 내역이 삭제됩니다.</p><div class="field"><label for="paper-reset-currency">기준 통화</label><select id="paper-reset-currency"><option value="KRW">KRW</option></select></div><div class="field"><label for="paper-reset-cash">초기 자금</label><input id="paper-reset-cash" type="number" min="0.01" step="any" value="1000000" required></div><label class="reset-confirm"><input id="paper-reset-confirm" type="checkbox" required> 현재 모의 계좌를 초기화합니다.</label><button id="paper-reset" class="save-button" type="submit">모의 계좌 초기화</button></form></section></div>
     <section class="panel module-table"><div class="panel-heading"><h2>보유 포지션</h2><span id="paper-position-count" class="subtle">0 POSITIONS</span></div><div class="table-scroll"><table><thead><tr><th>거래소 / 종목</th><th>수량</th><th>평균 매수가</th><th>평가 시세</th><th>평가액</th><th>평가 손익</th><th>이론가</th><th>이론가 미실현손익</th><th>시세 기준</th></tr></thead><tbody id="paper-positions"><tr><td colspan="9" class="empty-cell">모의 계좌를 불러오면 표시됩니다.</td></tr></tbody></table></div></section>
     <section class="panel module-table"><div class="panel-heading"><h2>체결별 거래·손익 기록</h2><span id="paper-order-count" class="subtle">0 FILLS</span><button id="paper-fills-csv" class="small-button" type="button">전체 CSV</button></div><p class="tiny-help">체결 직후 계좌 상태를 고정 저장합니다. 최근 100건부터 표시하며, 과거 기록은 현재 시세로 다시 계산하지 않습니다. 이전 버전 체결의 평가 기록은 빈 값입니다.</p><div class="table-scroll"><table><thead><tr><th>체결 시간 (KST)</th><th>거래소 / 종목</th><th>방향</th><th>수량</th><th>체결가</th><th>수수료</th><th>이번 실현손익</th><th>누적 실현손익</th><th>계좌 미실현손익</th><th>계좌 이론가 미실현</th><th>계좌 총손익</th><th>계좌 이론가 총손익</th><th>체결 후 현금</th><th>체결 후 평가액</th><th>체결 후 보유량</th><th>체결 당시 이론가</th><th>평가 상태</th><th>체결 환율 (KRW/USDT)</th><th>이번 거래대금</th></tr></thead><tbody id="paper-orders"><tr><td colspan="19" class="empty-cell">아직 모의 체결이 없습니다.</td></tr></tbody></table></div><button id="paper-fills-more" class="small-button" type="button" hidden>이전 체결 100건 더 보기</button></section>
-  </main>
-  <main id="module-manual" class="module-page" role="tabpanel" aria-labelledby="tab-manual" hidden>
-    <div class="page-heading"><div><div class="eyebrow">LIVE / MANUAL SPOT TRADING</div><h1>실시간 호가와 주문 상태를 확인하세요.</h1><p>빗썸·OKX 공개 현물 시세 · 원격 실행 서버 연동 예정</p></div></div>
-    <div class="notice">이 대시보드는 원격 실행 서버를 제어·관찰하는 역할입니다. 거래소 API 키와 실제 주문 실행은 원격 서버에서 관리합니다. 현재 공개 시세를 볼 수 있으며 원격 소켓 제어 기능은 정의 후 연결 예정입니다.</div>
+
+  <section id="module-manual" aria-label="실시간 공개 호가와 틱">
+    <div class="page-heading"><div><div class="eyebrow">LIVE / PUBLIC MARKET DATA</div><h2>실시간 호가·틱</h2><p>빗썸·OKX 공개 현물 시세</p></div></div>
+    <div class="notice">공개 호가·틱은 API 키 없이 조회합니다. 위 가상계좌의 모의 주문과 실제 거래소 주문은 별개이며, 여기서는 거래소에 실제 주문을 전송하지 않습니다. OKX는 현재 시세 관찰만 지원합니다.</div>
     <div id="manual-error" class="error-box" role="alert" hidden></div>
     <form id="manual-connect-form" class="panel module-form">
       <div class="field"><label for="manual-exchange">거래소 / 현물 시장</label><select id="manual-exchange"><option value="bithumb">빗썸 · KRW</option><option value="okx">OKX · USDT 현물</option></select></div>
@@ -281,7 +284,7 @@
       <button id="manual-connect" class="primary-button" type="submit">호가·틱 연결</button>
       <p class="form-caption">시세는 공개 WebSocket으로 수신하므로 API 키가 없어도 연결할 수 있습니다. 표시 수량은 코인 수량이며 OKX 선물 계약이 아닙니다.</p>
     </form>
-    <details class="panel manual-key-panel"><summary>API 키 등록·관리</summary>
+    <details class="panel manual-key-panel" hidden><summary>API 키 등록·관리</summary>
       <form id="manual-key-form" class="module-form">
         <div class="field"><label for="manual-key-exchange">키 거래소</label><select id="manual-key-exchange"><option value="bithumb">빗썸</option><option value="okx">OKX 글로벌</option></select></div>
         <div class="field"><label for="manual-key-label">키 이름</label><input id="manual-key-label" maxlength="40" placeholder="내 현물 계좌"></div>
@@ -297,10 +300,10 @@
     </details>
     <p id="manual-feed-status" class="module-message" role="status">시세 연결을 기다리고 있습니다.</p>
     <div class="replay-grid">
-      <section class="panel"><div class="panel-heading"><h2>실시간 5호가</h2></div><p class="tiny-help">가격을 누르면 주문 가격에 입력됩니다. 내 주문은 마지막 거래소 조회 상태이며 5호가 밖의 주문은 위에 별도로 표시합니다.</p><div id="manual-outside" class="table-scroll" hidden><table><thead><tr><th>5호가 밖 내 주문</th><th>가격</th><th>잔량 / 상태</th></tr></thead><tbody id="manual-outside-rows"></tbody></table></div><div class="table-scroll"><table><thead><tr><th>방향</th><th>가격</th><th>시장 잔량</th><th>내 주문</th></tr></thead><tbody id="manual-book"></tbody></table></div></section>
+      <section class="panel"><div class="panel-heading"><h2>실시간 5호가</h2></div><p id="manual-book-help" class="tiny-help">공개 시장의 양쪽 5호가와 잔량입니다. 실시간 가상 시장가 주문은 위 가상계좌에서 입력합니다.</p><div id="manual-outside" class="table-scroll" hidden><table><thead><tr><th>5호가 밖 내 주문</th><th>가격</th><th>잔량 / 상태</th></tr></thead><tbody id="manual-outside-rows"></tbody></table></div><div class="table-scroll"><table><thead><tr><th>방향</th><th>가격</th><th>시장 잔량</th><th>내 주문</th></tr></thead><tbody id="manual-book"></tbody></table></div></section>
       <section class="panel"><div class="panel-heading"><h2>실시간 틱</h2><span id="manual-tick-count" class="subtle"></span></div><div class="table-scroll fill-context-table"><table><thead><tr><th>시각 · KST</th><th>방향</th><th>가격</th><th>수량</th></tr></thead><tbody id="manual-ticks"></tbody></table></div><p class="tiny-help">공개 시장 체결이며 내 주문 체결과는 별개입니다. 같은 거래 ID의 재수신은 중복 표시하지 않습니다.</p></section>
     </div>
-    <form id="manual-order-form" class="panel module-form">
+    <form id="manual-order-form" class="panel module-form" hidden>
       <div class="field"><label for="manual-key-id">실제 주문 계좌</label><select id="manual-key-id" required></select></div>
       <div class="field"><label for="manual-side">방향</label><select id="manual-side"><option value="buy">매수</option><option value="sell">매도</option></select></div>
       <div class="field"><label for="manual-price">지정가 · 선택 시장 통화</label><input id="manual-price" type="number" step="any" min="0.000000000000000001" required></div>
@@ -310,7 +313,9 @@
       <p id="manual-order-help" class="form-caption">키 연결 확인과 신선한 호가가 필요합니다. 가격·수량 단위와 잔고는 거래소에서도 검증합니다. 접수 응답은 체결 완료가 아닙니다.</p>
       <p id="manual-order-status" class="form-caption" role="status"></p>
     </form>
-    <section class="panel"><div class="panel-heading"><h2>이 창에서 전송한 실제 주문</h2><button id="manual-refresh" class="small-button" type="button">저장 목록 갱신</button></div><p class="tiny-help">최근 100건과 모든 미종결 주문. ‘상태 조회’로 실제 누적 체결·잔량을 확인하세요. 취소 접수와 취소 완료는 다릅니다. 응답이 끊긴 주문은 새 주문으로 반복하지 않고 상태 조회로 확인합니다. 다른 앱에서 낸 주문은 이 목록에 포함하지 않습니다.</p><div class="table-scroll"><table><thead><tr><th>전송 시각 · KST</th><th>거래소 / 종목</th><th>방향</th><th>지정가</th><th>주문 수량</th><th>누적 체결</th><th>잔량</th><th>상태</th><th>최근 확인</th><th>작업</th></tr></thead><tbody id="manual-orders"></tbody></table></div></section>
+    <section id="manual-private-orders" class="panel" hidden><div class="panel-heading"><h2>이 창에서 전송한 실제 주문</h2><button id="manual-refresh" class="small-button" type="button">저장 목록 갱신</button></div><p class="tiny-help">최근 100건과 모든 미종결 주문. ‘상태 조회’로 실제 누적 체결·잔량을 확인하세요. 취소 접수와 취소 완료는 다릅니다. 응답이 끊긴 주문은 새 주문으로 반복하지 않고 상태 조회로 확인합니다. 다른 앱에서 낸 주문은 이 목록에 포함하지 않습니다.</p><div class="table-scroll"><table><thead><tr><th>전송 시각 · KST</th><th>거래소 / 종목</th><th>방향</th><th>지정가</th><th>주문 수량</th><th>누적 체결</th><th>잔량</th><th>상태</th><th>최근 확인</th><th>작업</th></tr></thead><tbody id="manual-orders"></tbody></table></div></section>
+  </section>
+  </section>
   </main>
   <main id="module-oms" class="module-page" role="tabpanel" aria-labelledby="tab-oms" hidden><div class="page-heading"><div><div class="eyebrow">OPERATIONS / OMS</div><h1>OMS를 연결할 공간입니다.</h1><p>매매 운영과 리서치를 하나의 워크스페이스에서 관리할 수 있도록 준비했습니다.</p></div><span class="module-badge planned">연결 예정</span></div><section class="panel oms-planned"><span class="planned-icon" aria-hidden="true">⌘</span><h2>OMS 운영 기능은 아직 연결되지 않았습니다.</h2><p>주문·체결 상태, 포지션과 리스크, 전략 실행 제어를 이 탭에 추가할 수 있습니다.</p><p>현재 사용할 수 있는 기능은 가격·펀딩비율 조회, 과거·실시간 분석, 백테스트와 모의투자입니다.</p><div class="planned-items"><span>주문·체결 모니터링</span><span>포지션·리스크</span><span>전략 운영</span></div></section></main>
     </div>

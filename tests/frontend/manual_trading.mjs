@@ -45,7 +45,7 @@ async function api(path,options={}) {
   return structuredClone(order);
 }
 const {initManualFeature}=await import('../../frontend/shell/workspace.js');
-const view=await initManualFeature({api,session:{capabilities:{manual_spot_orders:true}}});
+const view=initManualTrading({api,allowDirectTrading:true});
 try {
   assert.equal(requests.length,0,'creating hidden module must not connect or use credentials');
   assert.equal($('submit').disabled,true);

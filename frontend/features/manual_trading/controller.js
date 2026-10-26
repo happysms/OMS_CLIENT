@@ -16,10 +16,13 @@ export function comparePrice(left, right) {
 }
 
 export function initManualTrading({api,allowDirectTrading=false}) {
+  document.querySelector("#module-manual .manual-key-panel").hidden=!allowDirectTrading;
+  $("order-form").hidden=!allowDirectTrading;
+  $("private-orders").hidden=!allowDirectTrading;
+  if(allowDirectTrading)$("book-help").textContent="가격을 누르면 주문 가격에 입력됩니다. 내 주문은 마지막 거래소 조회 상태이며 5호가 밖의 주문은 위에 별도로 표시합니다.";
   if(!allowDirectTrading){
-    document.querySelector("#module-manual .manual-key-panel").hidden=true;
     for(const input of $("order-form").querySelectorAll("input,select,button"))input.disabled=true;
-    $("order-status").textContent="실제 매매는 별도 실행 서버에서 수행합니다. 현재 공개 시세 조회만 가능하며 원격 주문·파라미터 제어 소켓은 연결 전입니다.";
+    $("order-status").textContent="실제 매매는 별도 실행 서버에서 수행합니다. 모의투자에서는 공개 호가·틱만 조회하고 가상계좌로 주문합니다.";
   }
   let visible=false,timer=null,loading=false,version=0,busy=false,snapshot=null,pending=null;
   const error=value=>{$('error').hidden=!value;$('error').textContent=value||'';};
@@ -55,8 +58,9 @@ export function initManualTrading({api,allowDirectTrading=false}) {
       return tr;
     }));
   }
-  function mine(){return (snapshot?.orders||[]).filter(order=>order.key_id===$('key-id').value&&order.exchange===exchange()&&order.ticker===ticker()&&!terminal.has(order.status));}
+  function mine(){return (allowDirectTrading?snapshot?.orders||[]:[]).filter(order=>order.key_id===$('key-id').value&&order.exchange===exchange()&&order.ticker===ticker()&&!terminal.has(order.status));}
   function priceCell(tr, price){
+    if(!allowDirectTrading)return;
     tr.cells[1].replaceChildren(button(price,()=>{$('price').value=price;$('confirm').checked=false;controls();}));
   }
   function renderBook(){
