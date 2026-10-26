@@ -1,5 +1,7 @@
 # point2_st 모의트레이딩 모듈 상세 명세
 
+[그림으로 보는 문서 안내](visual_guide.ko.md)
+
 작성일: 2026-10-26 KST\
 문서 버전: 설계 초안 1.3 — 가상계좌 생성·초기조건 버전·실행 계좌·초기화 반영\
 대상: OMS_CLIENT에 추가할 과거 이벤트 재생형 모의매매 엔진\
@@ -126,6 +128,12 @@
 선택 venue는 가상계좌 revision의 거래소 부분집합이어야 한다. 거래용 venue마다 실행 계좌 하나를 생성하며, 참조 전용 venue는 주문 지갑·초기자산 없이 source만 제공하고 최대2개에 포함한다. 선택하지 않은 venue 자산은 평가·담보에 넣지 않는다.
 
 ## 4. 전체 구조와 책임 경계
+
+<!-- diagram: module-pipeline -->
+
+![모듈 제안서를 데이터 흐름으로 읽기](figures/module-pipeline.svg)
+
+**그림 읽기 · 모듈 제안 · 단계별 구현:** 전체 모듈 명세의 목표 지도다. 현재 Python 실행 객체와 제안된 cjs 모듈 목록을 동일한 구현 목록으로 읽지 않는다. [수정용 Mermaid 원본](figures/module-pipeline.mmd).
 
 ```mermaid
 flowchart TD
@@ -431,6 +439,12 @@ Python→Node는 배치 메타데이터와 파일 경로를 전달하고 Node가
 
 ## 9. 가상시계와 스케줄러
 
+<!-- diagram: clock-pacing -->
+
+![실제 재생 속도와 사건의 가상 시각은 다르다](figures/clock-pacing.svg)
+
+**그림 읽기 · 현행 재생 제어:** 명령을 누른 실제 시각이 아니라 같은 가상 시각의 명령을 비교해야 한다. 관측 사이의 가짜 호가·체결은 만들지 않는다. [수정용 Mermaid 원본](figures/clock-pacing.mmd).
+
 ### 9.1 `clock.cjs`
 
 **상태:** 현재 가상시각, 타이머 ID 순번, 활성 타이머 목록.\
@@ -487,6 +501,12 @@ raw best의 표시상 교차와 `execution_depth`의 실제 가용량을 구분�
 
 ## 11. 공공 정합·소진 부채 모듈
 
+<!-- diagram: depth-debt -->
+
+![원본 호가가 반복돼도 내 소비량은 되살아나지 않는다](figures/depth-debt.svg)
+
+**그림 읽기 · 현행 모형 가정:** 내 가상 소비와 원본 외부 틱 소비는 다른 근거다. 이 보수 모형은 현실의 재보충을 완벽히 복원하지 않는다. [수정용 Mermaid 원본](figures/depth-debt.mmd).
+
 ### 11.1 `reconciliation.cjs`
 
 **목적:** 원본 체결 틱과 원본 스냅샷 감소를 두 번 차감하지 않으면서, 내 공격 주문이 쓴 잔량을 다시 쓰지 못하게 한다.
@@ -535,6 +555,12 @@ effective_depth = max(0, raw_qty - self_depletion - pending_public_depletion)
 **검증:** tick→snapshot, snapshot→tick, 같은 snapshot 반복, 내 소진 후 증가, top5 이탈·복귀, 창 종료 후 늦은 틱, 내 가상 체결이 원본 체결 설명량을 줄이지 않는 사례.
 
 ## 12. 가격별 공유 대기열
+
+<!-- diagram: queue-budget -->
+
+![반대 틱 125개의 배분](figures/queue-budget.svg)
+
+**그림 읽기 · 현행 공유 FIFO:** 각 주문에 원본 틱 125개를 다시 주면 과체결이다. 더 우선한 외부 가격대가 없고 큐 위치를 아는 합성 예시다. [수정용 Mermaid 원본](figures/queue-budget.mmd).
 
 ### 12.1 `queue.cjs`
 
@@ -593,6 +619,12 @@ F(x) = x^gamma / (x^gamma + (1-x)^gamma), gamma > 0
 
 ## 13. 즉시 체결·가상 거래소
 
+<!-- diagram: fok-atomic -->
+
+![FOK는 일부를 먼저 체결하고 실패하면 되돌리는 방식이 아니다](figures/fok-atomic.svg)
+
+**그림 읽기 · 현행 FOK 원자성:** 전량 가능 여부 확인 전에 부분 정산을 하면 수수료·잔고·기존 maker 주문에 부작용이 남는다. [수정용 Mermaid 원본](figures/fok-atomic.mmd).
+
 ### 13.1 `matching.cjs`
 
 **책임:** 현재 유효한 execution depth와 queue 상태에서 체결 제안을 만든다. 원장을 직접 수정하지 않는다.
@@ -650,6 +682,18 @@ OKX 내부 `limit+gtc`, `limit+ioc`, `limit+post_only`는 각각 프로필의 na
 공식 현재 문서를 확인한 것과 해당 과거 기간의 모든 규칙을 복원한 것은 다르다. 최소 주문·수수료·보호가격을 현재 값으로 자동 채우지 않는다. 자기 체결은 거래소별 고정 정책으로 신규 충돌 수량 취소 등을 처리하고 수익 체결을 만들지 않는다.
 
 ## 14. 주문 상태·수량·예약
+
+<!-- diagram: limit-lifecycle -->
+
+![한 주문의 수량은 어디로 가는가](figures/limit-lifecycle.svg)
+
+**그림 읽기 · 현행 수량 분해:** 그림의 취소·거절·미확인은 서로 다른 상태다. 부분체결 후에는 체결량과 남은 수량을 따로 추적한다. [수정용 Mermaid 원본](figures/limit-lifecycle.mmd).
+
+<!-- diagram: cancel-race -->
+
+![취소 버튼을 누른 시각과 취소 효력은 다르다](figures/cancel-race.svg)
+
+**그림 읽기 · 현행 취소 지연:** 취소 요청만으로 주문을 지우면 지연 중의 실제 모의체결을 놓친다. 종료된 체결을 취소 응답으로 되돌리지 않는다. [수정용 Mermaid 원본](figures/cancel-race.mmd).
 
 ### 14.1 `orders.cjs`: 수량 분해가 상태 이름보다 우선
 
@@ -711,6 +755,12 @@ truth와 observed가 각자 같은 수량 분해를 가진다. observed에는 �
 계획 계산·예약 갱신은 이벤트 경계에서 직렬 처리한다. **한 주문의 전체 생명주기가 끝나야 다음 주문을 낼 수 있다는 제약은 두지 않는다.** 취소 요청 중인 주문은 효력/관측 확인 전까지 약정에 포함한다. 배치 API를 쓰더라도 child별 접수·거절·도착·통지를 기록한다.
 
 ## 15. 체결 확정과 원장
+
+<!-- diagram: account-settlement -->
+
+![한 번의 부분체결이 계좌와 보고서에 반영되는 순서](figures/account-settlement.svg)
+
+**그림 읽기 · 현행 정산·보고:** 화면 새로고침은 체결을 다시 만들지 않는다. 저장 실패는 현재 저장 계약에 따라 마지막 확정 결과와 구분한다. [수정용 Mermaid 원본](figures/account-settlement.mmd).
 
 ### 15.1 `execution.cjs`: 단일 상태 변경 경로
 
@@ -809,6 +859,12 @@ net_pnl = E_KRW(t)-E_KRW(start)-net_external_flows_KRW
 초기화는 과거 기록 삭제가 아닌 새 revision 생성이다. 같은 조건 재실행은 새 run, pause/resume은 같은 살아 있는 worker다. 종료 잔고만 복사해 미완료 주문·큐·예약·통지를 버린 상태를 정상 resume으로 표시하지 않는다. 자세한 API·스키마·수치 예시·VA01~VA20 검증은 [가상계좌 상세 설계](point2_virtual_accounts.ko.md)를 따른다.
 
 ## 16. 지연된 통지와 관측 상태
+
+<!-- diagram: truth-observed -->
+
+![가상 거래소의 실제 상태와 전략이 아는 상태](figures/truth-observed.svg)
+
+**그림 읽기 · 통지 설계 · 현재 미지원:** 포지션만 먼저 늘리거나 약정만 먼저 줄인 중간 상태로 헤지를 계산하면 중복 또는 과소 주문이 발생한다. 지연 통지망은 현행 미연결이다. [수정용 Mermaid 원본](figures/truth-observed.mmd).
 
 ### 16.1 `observations.cjs`
 
@@ -922,6 +978,12 @@ ask_limit = tick_ceil(base*(1+(baseline_bps+buffer_bps+pricing_fee_bps)/10000))
 원본 난수 client ID는 접두사·소유권 의미를 유지하는 순번 ID로 치환한다. ID 생성 경로만 바꿨는지 golden 비교로 확인한다.
 
 ## 18. 헤지·리스크 모듈
+
+<!-- diagram: hedge-exposure -->
+
+![헤지 주문을 냈어도 아직 헤지된 것은 아니다](figures/hedge-exposure.svg)
+
+**그림 읽기 · 양 거래소 헤지 설계 · 미연결:** 코인 환산 수량이 같은 단순 예시다. 계약 승수·반올림·가격·환율 위험을 별도로 처리해야 한다. [수정용 Mermaid 원본](figures/hedge-exposure.mmd).
 
 ### 18.1 `hedge_controller.cjs`
 
@@ -1172,6 +1234,12 @@ API 명령을 수락한 것과 worker가 적용한 것은 다르다. `202 accept
 
 ## 22. 저장 스키마·manifest·결과 파일
 
+<!-- diagram: committed-snapshot -->
+
+![화면은 저장에 성공한 스냅샷을 읽는다](figures/committed-snapshot.svg)
+
+**그림 읽기 · 현행 저장·조회:** 리플레이 저장·조회 경로의 설명이다. 저장하기 전의 가변 원장 객체를 HTTP 응답과 공유하지 않는다. [수정용 Mermaid 원본](figures/committed-snapshot.mmd).
+
 ### 22.1 제어 DB와 경제적 기록 분리
 
 SQLite에는 실행·소유권·상태·설정 위치·명령 receipt·결과 인덱스를 둔다. worker의 틱별 경제적 이벤트를 Flask의 공유 DB에 매번 commit하지 않는다.
@@ -1248,6 +1316,12 @@ immutable experiment manifest와 wall clock 실행 진단을 구분한다. manif
 Parquet는 고정 Decimal 스케일을 사용하고 초과값은 저장 전 검사한다. 저널·IPC의 문자열과 변환한 뒤 합계가 일치해야 한다. 파일은 임시 이름에 쓴 뒤 완결·검증 후 원자적 rename한다. 부분 chunk는 식별 가능한 이름·상태로 남긴다.
 
 ## 23. 화면 구성과 결과 지표
+
+<!-- diagram: orderbook-overlay -->
+
+![5호가 밖의 내 주문은 별도 영역에 둔다](figures/orderbook-overlay.svg)
+
+**그림 읽기 · 현행 리플레이 UI:** 내 주문 위치를 보여 주는 화면 규칙이다. 5호가 밖 물량을 실제 관측된 상대 호가처럼 매칭에 사용하지 않는다. [수정용 Mermaid 원본](figures/orderbook-overlay.mmd).
 
 ### 23.1 실행 설정 화면
 
@@ -1828,6 +1902,12 @@ git -C ../Tsystem2 show d7dcd97a35fa32b56813d16b92ee53e1604d5c06:sys_v2/okx_trad
 개발 티켓에는 해당 모듈의 입력·출력·상태 소유권, 관련 테스트 ID, 산출 파일, 통과 기준을 붙인다. 이 문서를 실제 구현 상태표로 사용할 때는 기능별로 미구현/구현 중/검증 완료와 근거를 추가하고, 설계 제안을 이미 동작하는 기능으로 표시하지 않는다.
 
 ## 후속 모듈 계약: 실제 거래 피드백
+
+<!-- diagram: feedback-paths -->
+
+![실제 체결 피드백에는 서로 다른 두 실험이 필요하다](figures/feedback-paths.svg)
+
+**그림 읽기 · 후속 피드백 제안:** 체결 목록만으로는 미체결 주문·취소의 분모를 알 수 없다. 현재 업로드·비교·자동 보정 기능은 구현 전이다. [수정용 Mermaid 원본](figures/feedback-paths.mmd).
 
 [실제 체결 피드백 계획](real_execution_feedback.ko.md)을 후속 명세로 연결한다. 제안된 `oms_client/execution_feedback/`의 수입·정규화·시간/주문 대응·고정 의도 재생·오차 비교·보정·프로필 관리 모듈은 아직 구현 파일이 아니다. 기존 `replay`의 계좌 초기조건, 원본 manifest, 주문/체결 결과와 버전을 참조하되 실제 자료를 가상계좌 원장과 분리한다.
 

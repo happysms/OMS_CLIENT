@@ -1,0 +1,7 @@
+%% minmaxma-signal: minmaxma: 저점 반등 또는 고점 하락과 MA를 함께 본다
+flowchart LR
+    N0["참조 최우선 호가<br/>수량 가중 microprice 계산<br/>min·max·시간 가중 MA 갱신"]
+    N1["매수: 저점 대비 배수 초과 + MA 위<br/>매도: 고점 대비 하락 + MA 아래<br/>동일 경계값은 신호 아님"]
+    N2["신호·주문 규칙 연결 필요<br/>현재는 등록·버전 보관만<br/>단일 메이커로 대신 실행 안 함"]
+    N0 --> N1
+    N1 --> N2

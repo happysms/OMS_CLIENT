@@ -1,0 +1,7 @@
+%% truth-observed: 가상 거래소의 실제 상태와 전략이 아는 상태
+flowchart LR
+    N0["설계: 거래소 truth<br/>주문 10 중 4개 체결<br/>실제 position +4 · live 6"]
+    N1["통지가 지연 중<br/>전략 observed는 position 0<br/>미체결 약정 10으로 알고 있음"]
+    N2["통지 후 같은 버전으로 전환<br/>position 0→4 / commitment 10→6<br/>합계 10은 그대로"]
+    N0 --> N1
+    N1 --> N2

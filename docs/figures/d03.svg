@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="544" viewBox="0 0 1040 544" role="img" aria-labelledby="title description">
+<title id="title">D03 · 같은 가격 O1 전량, O2 일부/전량</title>
+<desc id="description">실행·차단 연결。외부 100 → O1 20 → O2 10 / 반대 틱 125 → 외부 100 → O1 20 → O2 5 / 하나의 예산을 순차 소비 → O1 전량 + O2 부분 5 / O2 live 5</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"/></marker></defs>
+<rect width="1040" height="100%" rx="16" fill="#fff"/>
+<g font-family="Noto Sans CJK KR, Noto Sans KR, sans-serif">
+<text font-size="14" fill="#64748b" font-weight="600"><tspan x="32" y="32">OMS SIMULATION  /  D03</tspan></text>
+<text font-size="24" fill="#0f172a" font-weight="700"><tspan x="32" y="68">D03 · 같은 가격 O1 전량, O2 일부/전량</tspan></text>
+<rect x="32" y="89" width="976" height="30" rx="7" fill="#ecfdf5"/>
+<text font-size="15" fill="#0f766e" font-weight="600"><tspan x="46" y="110">실행·차단 연결</tspan></text>
+<rect x="32" y="132" width="312" height="134" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="32" y="132" width="312" height="5" rx="2" fill="#0f766e"/>
+<text font-size="16" fill="#0f766e" font-weight="700"><tspan x="52" y="167">01  상황·입력</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="52" y="204">외부 100 → O1 20 → O2 10</tspan><tspan x="52" y="232">반대 틱 125</tspan></text>
+<path d="M347 199 L358 199" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="364" y="132" width="312" height="134" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="364" y="132" width="312" height="5" rx="2" fill="#0f766e"/>
+<text font-size="16" fill="#0f766e" font-weight="700"><tspan x="384" y="167">02  판단·변화</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="384" y="204">외부 100 → O1 20 → O2 5</tspan><tspan x="384" y="232">하나의 예산을 순차 소비</tspan></text>
+<path d="M679 199 L690 199" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="696" y="132" width="312" height="134" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="696" y="132" width="312" height="5" rx="2" fill="#0f766e"/>
+<text font-size="16" fill="#0f766e" font-weight="700"><tspan x="716" y="167">03  결과·보존</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="716" y="204">O1 전량 + O2 부분 5</tspan><tspan x="716" y="232">O2 live 5</tspan></text>
+<text font-size="17" fill="#0f172a" font-weight="600"><tspan x="32" y="304">수량 비교  ·  반대 틱 125개  ·  막대는 같은 축척</tspan></text>
+<text font-size="16" fill="#334155" font-weight="600"><tspan x="32" y="347">처리 전</tspan></text>
+<rect x="132.000" y="322" width="538.462" height="34" fill="#64748b" stroke="#fff"/>
+<text font-size="16" fill="#fff" font-weight="600"><tspan x="140" y="346">100</tspan></text>
+<rect x="670.462" y="322" width="107.692" height="34" fill="#2563eb" stroke="#fff"/>
+<text font-size="16" fill="#fff" font-weight="600"><tspan x="678.462" y="346">20</tspan></text>
+<rect x="778.154" y="322" width="53.846" height="34" fill="#0f766e" stroke="#fff"/>
+<text font-size="16" fill="#fff" font-weight="600"><tspan x="786.154" y="346">10</tspan></text>
+<text font-size="14" fill="#475569" font-weight="400"><tspan x="132" y="373">앞 외부 100 · O1 20 · O2 10</tspan></text>
+<text font-size="16" fill="#334155" font-weight="600"><tspan x="32" y="407">처리 후</tspan></text>
+<rect x="132.000" y="382" width="26.923" height="34" fill="#0f766e" stroke="#fff"/>
+<text font-size="14" fill="#475569" font-weight="400"><tspan x="132" y="433">O2 5</tspan></text>
+<text font-size="16" fill="#0f172a" font-weight="600"><tspan x="32" y="455">내 확정 체결 25개 / 다음 가격·후순위로 넘길 틱 예산 0개</tspan></text>
+<text font-size="15" fill="#475569" font-weight="400"><tspan x="32" y="480">왼쪽에서 오른쪽으로 읽습니다. 수치는 조건을 설명하는 합성 예시이며 거래 성과 예측이 아닙니다.</tspan><tspan x="32" y="504">현재 지원 상태와 세부 조건은 이 그림 아래의 본문·사례 대조표를 함께 확인하세요.</tspan></text>
+</g></svg>

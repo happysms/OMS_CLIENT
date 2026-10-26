@@ -1,5 +1,7 @@
 # 가상계좌 생성과 모의 시뮬레이션 상세 설계
 
+[그림으로 보는 문서 안내](visual_guide.ko.md)
+
 작성일: 2026-10-26 KST\
 상태: 전체 가상계좌 모델의 구현 명세. 현재 [최소 MM 재생 모듈](../oms_client/replay/README.md)은 실행마다 이름·고유번호·초기잔고가 있는 별도 빗썸 계좌를 생성하고 체결·손익 결과를 저장한다. 계좌별 결과 조회·전체 결과 다운로드·초기조건 복사를 지원한다. 아래 별도 템플릿 revision 관리·OKX 거래 계좌·선물 모델 전체가 구현됐다는 뜻은 아니다.\
 관련 문서: [전체 구상](point2_replay_design.ko.md), [모듈 명세](point2_replay_modules.ko.md), [지정가 체결 사례](point2_limit_fill_cases.ko.md)
@@ -27,6 +29,12 @@
 ```
 
 ## 2. 가상계좌 설정과 실행 계좌를 분리
+
+<!-- diagram: account-isolation -->
+
+![실험마다 새 가상계좌를 만든다](figures/account-isolation.svg)
+
+**그림 읽기 · 현행 실행 계좌 · 확장 설계 구분:** 현행 리플레이의 실행별 계좌 흐름이다. 별도 템플릿 revision 서비스와 OKX 선물 계좌 생성은 제안 범위다. [수정용 Mermaid 원본](figures/account-isolation.mmd).
 
 | 객체 | 식별자 | 저장 내용·역할 |
 |---|---|---|
@@ -174,6 +182,12 @@
 
 ## 6. 주문·체결에 따른 가상계좌 변화
 
+<!-- diagram: account-settlement -->
+
+![한 번의 부분체결이 계좌와 보고서에 반영되는 순서](figures/account-settlement.svg)
+
+**그림 읽기 · 현행 정산·보고:** 화면 새로고침은 체결을 다시 만들지 않는다. 저장 실패는 현재 저장 계약에 따라 마지막 확정 결과와 구분한다. [수정용 Mermaid 원본](figures/account-settlement.mmd).
+
 | 사건 | 계좌에 반영할 내용 |
 |---|---|
 | 주문 의도 전송 | 현지 미확인 예약 생성, 여러 주문의 자금 중복 사용 방지 |
@@ -264,6 +278,12 @@ Python·Node가 각자 현재 잔고를 수정하는 이중 소유 구조를 만
 위 ID·hash는 형식 설명용이다. 실제 생성 응답의 값을 사용한다. run 요청은 virtual_account_ref와 inline 초기계좌 값을 동시에 받지 않는다. 예전 inline account 형식을 지원해야 한다면 명시적 변환으로 새 revision을 먼저 생성하고 그 ID를 사용한다. 조용한 override는 금지한다.
 
 ## 10. 저장 스키마·스냅샷·재현성
+
+<!-- diagram: committed-snapshot -->
+
+![화면은 저장에 성공한 스냅샷을 읽는다](figures/committed-snapshot.svg)
+
+**그림 읽기 · 현행 저장·조회:** 리플레이 저장·조회 경로의 설명이다. 저장하기 전의 가변 원장 객체를 HTTP 응답과 공유하지 않는다. [수정용 Mermaid 원본](figures/committed-snapshot.mmd).
 
 | 테이블/파일 | 핵심 필드 |
 |---|---|

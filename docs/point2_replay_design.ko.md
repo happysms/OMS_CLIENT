@@ -1,5 +1,7 @@
 # point2_st 과거 재생 모의매매 구현 설계
 
+[그림으로 보는 문서 안내](visual_guide.ko.md)
+
 작성일: 2026-10-26 KST\
 대상: 빗썸 현물 및 OKX 선형 USDT 무기한선물의 복수 지정가·IOC·Post-only·시장가 실행과 헤지\
 전략 기준: Tsystem2 `btc_market`, `d7dcd97a35fa32b56813d16b92ee53e1604d5c06`\
@@ -40,6 +42,12 @@
 확인한 원본은 `point_st2`가 아니라 `sys_v2/strategy/point2_st.js`다. `Point2Strategy`, `quotes`, `makerQuotes`, `hedgePlan` 등의 함수를 내보내며 시계와 거래소를 외부에서 주입받는다. 개인 API·실시간 소켓·DB를 시작하는 `main()`은 재생기에 연결하지 않는다.
 
 ### 2.1 가격 조건
+
+<!-- diagram: point-pricing -->
+
+![Point 가격: 해외 기준가격과 USDT 환율에서 매수·매도 한계가로](figures/point-pricing.svg)
+
+**그림 읽기 · 원본 Point 설계 · 현재 실행 미연결:** 가격계산 수수료 보정과 원장에서 실제 차감하는 수수료는 다르다. Point 원본 microprice와 손익 보고용 USDT 중간가도 목적이 다른 기준이며 섞지 않는다. [수정용 Mermaid 원본](figures/point-pricing.mmd).
 
 해외 기준가격과 빗썸 USDT 환율은 1호가 수량을 교차 가중한 가격이다.
 
@@ -96,6 +104,12 @@ README의 운영 프로필과 클래스 기본값은 다르다. 비공개 운영
 첫 실행 예시는 `원본 신호 + 빗썸 GTC + OKX 시장가`다. `빗썸 GTC + OKX 일반 지정가 GTC/IOC/Post-only`, `빗썸 IOC + OKX 시장가`, 다중 가격·같은 가격 분할 주문도 선택할 수 있다. 매수·매도 각각 주문 수를 하나로 제한하지 않는다.
 
 ## 3. 권장 구조
+
+<!-- diagram: design-system -->
+
+![전체 제안: 시장 자료와 가상 체결을 분리한다](figures/design-system.svg)
+
+**그림 읽기 · 전체 제안 · 일부 구현:** 전체 목표 구조의 개념도다. 현재 실행은 Python 빗썸 현물이며 제안서의 Node 워커·OKX 실행·지연 통지망은 구현 완료가 아니다. [수정용 Mermaid 원본](figures/design-system.mmd).
 
 ```text
 OMS_CLIENT 화면 / Flask API
@@ -191,6 +205,18 @@ MarketEvent {
 
 ## 5. 가상 시계와 이벤트 순서
 
+<!-- diagram: clock-pacing -->
+
+![실제 재생 속도와 사건의 가상 시각은 다르다](figures/clock-pacing.svg)
+
+**그림 읽기 · 현행 재생 제어:** 명령을 누른 실제 시각이 아니라 같은 가상 시각의 명령을 비교해야 한다. 관측 사이의 가짜 호가·체결은 만들지 않는다. [수정용 Mermaid 원본](figures/clock-pacing.mmd).
+
+<!-- diagram: time-order -->
+
+![동일 밀리초 사건의 현행 처리 순서](figures/time-order.svg)
+
+**그림 읽기 · 현행 순서 · 설계안과 구분:** 현행 빗썸 재생기의 결정적 가정이다. 초기 제안서의 시장 우선 순서와 다르며, 실제 거래소의 미세 순서를 복원한 것은 아니다. [수정용 Mermaid 원본](figures/time-order.mmd).
+
 ### 5.1 도착·통지 시각
 
 ```text
@@ -243,6 +269,12 @@ LIVE / PARTIALLY_FILLED -> CANCEL_SENT -> CANCELED 또는 FILLED
 
 ## 7. 원본 호가와 내 주문을 반영한 가상 호가
 
+<!-- diagram: depth-debt -->
+
+![원본 호가가 반복돼도 내 소비량은 되살아나지 않는다](figures/depth-debt.svg)
+
+**그림 읽기 · 현행 모형 가정:** 내 가상 소비와 원본 외부 틱 소비는 다른 근거다. 이 보수 모형은 현실의 재보충을 완벽히 복원하지 않는다. [수정용 Mermaid 원본](figures/depth-debt.mmd).
+
 한 개의 호가 객체를 덮어쓰지 말고 다음 계층을 둔다.
 
 | 계층 | 역할 |
@@ -285,6 +317,12 @@ raw 표시상 교차와 실제 execution depth를 구분한다. 이미 대기 �
 이 delta 기반 부채 정책은 동시에 일어난 보충·취소를 완전히 알 수 없어 체결용 잔량을 작게 볼 수 있다. 더 유연한 절대 스냅샷 재앵커 모형은 별도 버전으로 비교할 수 있지만, 첫 버전에서 부채를 조용히 초기화하지 않는다. 원본 고정 재생의 한계를 결과에 보존하기 위한 선택이다.
 
 ## 8. 지정가 대기열: 첫 버전의 핵심 알고리즘
+
+<!-- diagram: queue-budget -->
+
+![반대 틱 125개의 배분](figures/queue-budget.svg)
+
+**그림 읽기 · 현행 공유 FIFO:** 각 주문에 원본 틱 125개를 다시 주면 과체결이다. 더 우선한 외부 가격대가 없고 큐 위치를 아는 합성 예시다. [수정용 Mermaid 원본](figures/queue-budget.mmd).
 
 이 알고리즘은 빗썸·OKX 모두에 적용한다. 큐는 거래소·종목·방향·가격별로 분리하며 한 거래소의 tick을 다른 거래소 주문 체결에 쓰지 않는다. 가격 우선, 같은 가격 접수순 FIFO를 적용하고 여러 매수·매도 주문의 부분체결·개별 취소를 독립 처리한다.
 
@@ -347,6 +385,18 @@ raw 표시상 교차와 실제 execution depth를 구분한다. 이미 대기 �
 이 모형은 체결을 적게 보는 경향이 있지만 손익의 보장된 하한은 아니다. 불리한 거래를 덜 체결시키면 오히려 손익이 높아질 수 있다.
 
 ## 9. 주문 로그 없이 추가할 수 있는 취소 위치 모형
+
+<!-- diagram: cancel-inference -->
+
+![잔량 100에서 70으로 줄었을 때](figures/cancel-inference.svg)
+
+**그림 읽기 · 현행 확률 취소 모형:** 체결과 취소가 함께 발생하면 순변화만 추정한다. 틱 유실·수신 역전이 있으면 실제 취소량과 다를 수 있다. [수정용 Mermaid 원본](figures/cancel-inference.mmd).
+
+<!-- diagram: cancel-probability -->
+
+![앞 30 · 뒤 70: 취소는 어느 쪽에서 빠질까](figures/cancel-probability.svg)
+
+**그림 읽기 · 가정 · 실제 취소 위치 미관측:** 30%는 다음 취소 추첨의 앞쪽 선택 확률이다. 내 주문 체결 확률 또는 전체 취소량의 고정 비율이 아니다. [수정용 Mermaid 원본](figures/cancel-probability.mmd).
 
 두 번째 모형은 `queue_model = proportional_cancel`이다. 거래량 전용 모형과 항상 나란히 비교한다. 이 모형의 파라미터를 실제 취소 확률을 추정한 값으로 표시하지 않는다.
 
@@ -437,6 +487,12 @@ OKX 시장가 헤지는 거래소 가격 보호·네이티브 계약 단위의 �
 
 ## 11. 가상 계좌: 실제 상태와 전략이 아는 상태
 
+<!-- diagram: truth-observed -->
+
+![가상 거래소의 실제 상태와 전략이 아는 상태](figures/truth-observed.svg)
+
+**그림 읽기 · 통지 설계 · 현재 미지원:** 포지션만 먼저 늘리거나 약정만 먼저 줄인 중간 상태로 헤지를 계산하면 중복 또는 과소 주문이 발생한다. 지연 통지망은 현행 미연결이다. [수정용 Mermaid 원본](figures/truth-observed.mmd).
+
 사용자가 만든 가상계좌 설정은 이름·소유자·거래소별 초기자산·원가·포지션·레버리지를 revision으로 저장한다. 실행은 계좌ID·revision·hash를 고정하고 거래용 venue별 run_account_id를 만든다. 다른 실행의 가변 잔고는 공유하지 않는다. 참조 전용 venue는 source만 제공하고 주문 지갑·자산을 갖지 않으며 최대2개에는 포함한다.
 
 시작 시각에 OPENING_BALANCE/OPENING_POSITION을 한 번 적용하고 초기평가·사용증거금·truth/observed를 일치시킨 뒤 전략을 시작한다. 초기 주문 예약은0이지만 비영 초기 선물 포지션의 사용 증거금은 계산한다. 기존 보유 평가손익과 초기 자금은 기간 수익으로 만들지 않는다.
@@ -506,6 +562,12 @@ OKX 시장가 헤지는 거래소 가격 보호·네이티브 계약 단위의 �
 초기화는 과거 실행·원장 삭제가 아니라 지정 초기조건으로 새 revision을 만드는 동작이다. 같은 조건 재실행은 새 run 계좌, pause/resume은 동일한 살아 있는 worker를 사용한다. 가용 잔고만 복사해 대기 주문·예약·미통지·미확인을 버린 채 이어 실행하지 않는다.
 
 ## 12. 부분체결에 따른 OKX 헤지
+
+<!-- diagram: hedge-exposure -->
+
+![헤지 주문을 냈어도 아직 헤지된 것은 아니다](figures/hedge-exposure.svg)
+
+**그림 읽기 · 양 거래소 헤지 설계 · 미연결:** 코인 환산 수량이 같은 단순 예시다. 계약 승수·반올림·가격·환율 위험을 별도로 처리해야 한다. [수정용 Mermaid 원본](figures/hedge-exposure.mmd).
 
 원본 신호와 수량 조건을 유지하면서 시장가 또는 지정가 헤지 실행을 지원한다. 하나의 헤지 목표량을 여러 가격의 주문으로 나눌 수 있고, 양 거래소에 일반 매수·매도 호가도 여러 개 동시에 존재할 수 있다. 실제 헤지 위험과 새 주문 필요량은 다른 값이다.
 
@@ -712,6 +774,12 @@ def on_new_order_arrival(order):
 거절/취소 통지 후 미확인 예약을 해제하되 계좌 버전과 맞춰 중복 잠금을 막는다. 위 의사코드는 책임 경계 설명이며, 실제 구현에서는 각 경로의 예약 해제·누적 체결량·종료 통지가 빠지지 않도록 상태기계로 묶는다.
 
 ## 15. 화면·API·저장 결과
+
+<!-- diagram: orderbook-overlay -->
+
+![5호가 밖의 내 주문은 별도 영역에 둔다](figures/orderbook-overlay.svg)
+
+**그림 읽기 · 현행 리플레이 UI:** 내 주문 위치를 보여 주는 화면 규칙이다. 5호가 밖 물량을 실제 관측된 상대 호가처럼 매칭에 사용하지 않는다. [수정용 Mermaid 원본](figures/orderbook-overlay.mmd).
 
 제안 API:
 

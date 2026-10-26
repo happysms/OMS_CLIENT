@@ -1,5 +1,7 @@
 # minmaxma 전략 — point_st 등록 프로필
 
+[그림으로 보는 문서 안내](visual_guide.ko.md)
+
 표시 이름은 사용자 지정대로 **minmaxma 전략**, 내부 유형은 `minmaxma`, 기본 등록 ID는 `builtin_minmaxma`다. 기존 `point2`/`builtin_point2`와 독립적이다. `전략 관리`에서 이름을 붙여 여러 설정으로 등록하고 수정·복사·버전 보관·복원할 수 있다.
 
 ## 확인한 원본과 선택
@@ -14,6 +16,18 @@
 운영 환경파일이나 개인 거래 계정을 읽거나 전략의 `main()`을 실행하지 않았다. 원본의 모든 운영 옵션을 현재 등록 스키마에 이식한 것은 아니다. 추가된 FX 신호와 복합 신호는 이번 minmaxma 기본 프로필에서 사용하지 않고 `signal_mode=original`로 기록한다.
 
 ## 신호 의미
+
+<!-- diagram: minmaxma-signal -->
+
+![minmaxma: 저점 반등 또는 고점 하락과 MA를 함께 본다](figures/minmaxma-signal.svg)
+
+**그림 읽기 · 등록 지원 · 실행 미연결:** 기준 거래소는 시세 참조용이다. Binance/OKX를 선택했다고 그곳에 자동 헤지 주문을 만드는 전략이 아니다. [수정용 Mermaid 원본](figures/minmaxma-signal.mmd).
+
+<!-- diagram: minmaxma-ma -->
+
+![ma_ms는 봉 개수가 아니라 시간 상수다](figures/minmaxma-ma.svg)
+
+**그림 읽기 · 원본 신호 수식 설명:** 원본 수식을 설명하는 합성 예시다. 극값 재설정·주문·취소까지 구현됐다는 의미는 아니다. [수정용 Mermaid 원본](figures/minmaxma-ma.mmd).
 
 기준 거래소의 최우선 호가로 가격을 계산한다.
 

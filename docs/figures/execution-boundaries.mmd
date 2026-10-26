@@ -1,0 +1,7 @@
+%% execution-boundaries: 객체가 상태를 바꾸는 경계를 분리한다
+flowchart LR
+    N0["전략·계획<br/>전략은 주문 의도와 이론가<br/>Planner는 부작용 없는 체결 계획"]
+    N1["실행 조율·정산<br/>Engine이 순서 조율<br/>Order는 상태 · Ledger는 잔고"]
+    N2["서비스·저장·화면<br/>DB commit 뒤 스냅샷 공개<br/>UI 조회는 정산을 호출하지 않음"]
+    N0 --> N1
+    N1 --> N2

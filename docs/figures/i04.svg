@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="396" viewBox="0 0 1040 396" role="img" aria-labelledby="title description">
+<title id="title">I04 · 빗썸 매수 일부/전량, OKX 매도 지정가 미체결</title>
+<desc id="description">설계 제안 · 현재 실행 미지원。설계: 현물 매수 30개 체결 / OKX 숏 30개 주문은 대기 → 확정 현물 +30 / 확정 선물 0 → 실제 수량 노출 +30 / 대기 매도를 완료 헤지로 세지 않음</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"/></marker></defs>
+<rect width="1040" height="100%" rx="16" fill="#fff"/>
+<g font-family="Noto Sans CJK KR, Noto Sans KR, sans-serif">
+<text font-size="14" fill="#64748b" font-weight="600"><tspan x="32" y="32">OMS SIMULATION  /  I04</tspan></text>
+<text font-size="24" fill="#0f172a" font-weight="700"><tspan x="32" y="68">I04 · 빗썸 매수 일부/전량, OKX 매도 지정가 미체결</tspan></text>
+<rect x="32" y="89" width="976" height="30" rx="7" fill="#faf5ff"/>
+<text font-size="15" fill="#6b21a8" font-weight="600"><tspan x="46" y="110">설계 제안 · 현재 실행 미지원</tspan></text>
+<rect x="32" y="132" width="312" height="162" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="6 4"/>
+<rect x="32" y="132" width="312" height="5" rx="2" fill="#6b21a8"/>
+<text font-size="16" fill="#6b21a8" font-weight="700"><tspan x="52" y="167">01  상황·입력</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="52" y="204">설계: 현물 매수 30개 체결</tspan><tspan x="52" y="232">OKX 숏 30개 주문은 대기</tspan></text>
+<path d="M347 213 L358 213" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6 4"/>
+<rect x="364" y="132" width="312" height="162" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="6 4"/>
+<rect x="364" y="132" width="312" height="5" rx="2" fill="#6b21a8"/>
+<text font-size="16" fill="#6b21a8" font-weight="700"><tspan x="384" y="167">02  판단·변화</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="384" y="204">확정 현물 +30</tspan><tspan x="384" y="232">확정 선물 0</tspan></text>
+<path d="M679 213 L690 213" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6 4"/>
+<rect x="696" y="132" width="312" height="162" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="6 4"/>
+<rect x="696" y="132" width="312" height="5" rx="2" fill="#6b21a8"/>
+<text font-size="16" fill="#6b21a8" font-weight="700"><tspan x="716" y="167">03  결과·보존</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="716" y="204">실제 수량 노출 +30</tspan><tspan x="716" y="232">대기 매도를 완료 헤지로 세지</tspan><tspan x="716" y="260"> 않음</tspan></text>
+<text font-size="15" fill="#475569" font-weight="400"><tspan x="32" y="332">왼쪽에서 오른쪽으로 읽습니다. 수치는 조건을 설명하는 합성 예시이며 거래 성과 예측이 아닙니다.</tspan><tspan x="32" y="356">현재 지원 상태와 세부 조건은 이 그림 아래의 본문·사례 대조표를 함께 확인하세요.</tspan></text>
+</g></svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="480" viewBox="0 0 1040 480" role="img" aria-labelledby="title description">
+<title id="title">Point 가격: 해외 기준가격과 USDT 환율에서 매수·매도 한계가로</title>
+<desc id="description">원본 Point 설계 · 현재 실행 미연결。OKX 종목 microprice / × 빗썸 USDT microprice / 예: 원화 기준 base = 1,000 → 기준 −100bp · 버퍼 10bp / 가격 보정 수수료 0bp 예시 / 매수 한계 989 · 매도 한계 991 → 매수 한계 tick 내림 · 매도 tick 올림 / 현물 best와 원본 목표가 조건 결합 / 이후 잔고·주문 조건·헤지 계획 검사</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"/></marker></defs>
+<rect width="1040" height="100%" rx="16" fill="#fff"/>
+<g font-family="Noto Sans CJK KR, Noto Sans KR, sans-serif">
+<text font-size="14" fill="#64748b" font-weight="600"><tspan x="32" y="32">OMS SIMULATION  /  POINT-PRICING</tspan></text>
+<text font-size="24" fill="#0f172a" font-weight="700"><tspan x="32" y="68">Point 가격: 해외 기준가격과 USDT 환율에서 매수·매도 한계가로</tspan></text>
+<rect x="32" y="89" width="976" height="30" rx="7" fill="#f1f5f9"/>
+<text font-size="15" fill="#334155" font-weight="600"><tspan x="46" y="110">원본 Point 설계 · 현재 실행 미연결</tspan></text>
+<rect x="32" y="132" width="312" height="246" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="32" y="132" width="312" height="5" rx="2" fill="#334155"/>
+<text font-size="16" fill="#334155" font-weight="700"><tspan x="52" y="167">01  상황·입력</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="52" y="204">OKX 종목 microprice</tspan><tspan x="52" y="232">× 빗썸 USDT microprice</tspan><tspan x="52" y="260">예: 원화 기준 base = 1,000</tspan></text>
+<path d="M347 255 L358 255" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="364" y="132" width="312" height="246" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="364" y="132" width="312" height="5" rx="2" fill="#334155"/>
+<text font-size="16" fill="#334155" font-weight="700"><tspan x="384" y="167">02  판단·변화</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="384" y="204">기준 −100bp · 버퍼 10bp</tspan><tspan x="384" y="232">가격 보정 수수료 0bp 예시</tspan><tspan x="384" y="260">매수 한계 989 · 매도 한계 99</tspan><tspan x="384" y="288">1</tspan></text>
+<path d="M679 255 L690 255" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="696" y="132" width="312" height="246" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="696" y="132" width="312" height="5" rx="2" fill="#334155"/>
+<text font-size="16" fill="#334155" font-weight="700"><tspan x="716" y="167">03  결과·보존</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="716" y="204">매수 한계 tick 내림 · 매도 t</tspan><tspan x="716" y="232">ick 올림</tspan><tspan x="716" y="260">현물 best와 원본 목표가 조건</tspan><tspan x="716" y="288"> 결합</tspan><tspan x="716" y="316">이후 잔고·주문 조건·헤지 계</tspan><tspan x="716" y="344">획 검사</tspan></text>
+<text font-size="15" fill="#475569" font-weight="400"><tspan x="32" y="416">왼쪽에서 오른쪽으로 읽습니다. 수치는 조건을 설명하는 합성 예시이며 거래 성과 예측이 아닙니다.</tspan><tspan x="32" y="440">현재 지원 상태와 세부 조건은 이 그림 아래의 본문·사례 대조표를 함께 확인하세요.</tspan></text>
+</g></svg>

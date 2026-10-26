@@ -1,0 +1,7 @@
+%% committed-snapshot: 화면은 저장에 성공한 스냅샷을 읽는다
+flowchart LR
+    N0["워커의 주문·체결 처리<br/>체결·상태 변경을 모아서<br/>저장 스냅샷 구성"]
+    N1["SQLite 트랜잭션 commit<br/>성공 후 직렬화 JSON 반환<br/>실패한 결과를 먼저 공개하지 않음"]
+    N2["단일 공개 JSON<br/>조회 API는 같은 내용을 반환<br/>배속·UI 조회가 체결을 재계산하지 않음"]
+    N0 --> N1
+    N1 --> N2

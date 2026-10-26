@@ -1,0 +1,7 @@
+%% tif-comparison: 같은 매수 7개도 주문 조건에 따라 결과가 달라진다
+flowchart LR
+    N0["관측 ask: 100원 4개<br/>다음 ask: 101원 6개<br/>매수 7개 · limit 100원"]
+    N1["도착 시 100원에서만 매칭 가능<br/>GTC·IOC는 4개 즉시 체결<br/>Post-only는 교차 조건 위반"]
+    N2["GTC: fill 4 + live 3<br/>IOC: fill 4 + 취소 3<br/>Post-only: 현행 거절 7 · fill 0"]
+    N0 --> N1
+    N1 --> N2

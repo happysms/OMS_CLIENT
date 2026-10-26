@@ -1,0 +1,7 @@
+%% limit-lifecycle: 한 주문의 수량은 어디로 가는가
+flowchart LR
+    N0["요청 수량 Q<br/>전송 중에는 in_flight<br/>자금·코인은 예약"]
+    N1["도착과 후속 사건<br/>확정 체결 F / 대기 live<br/>거절 R / 취소 C / 미확인 U"]
+    N2["항상 수량 보존<br/>Q = F + in_flight + live + C + R + U<br/>U의 예약·위험을 임의 해제하지 않음"]
+    N0 --> N1
+    N1 --> N2

@@ -1,5 +1,7 @@
 # 빗썸 최우선 호가 단순 MM 전략
 
+[그림으로 보는 문서 안내](visual_guide.ko.md)
+
 작성일: 2026-10-26 KST\
 전략 ID: `bithumb_simple_mm`\
 현재 구현: [시작 입력·전략 코어](../oms_client/strategies/simple_mm.py), [검증 테스트](../tests/test_simple_mm.py)\
@@ -47,6 +49,12 @@
 
 ## 3. 주문 가격과 수량
 
+<!-- diagram: mm-quotes -->
+
+![단일 메이커는 보유한 자산만 양쪽에 낸다](figures/mm-quotes.svg)
+
+**그림 읽기 · 현행 단일 거래소 MM:** 매수로 코인을 미리 확보하거나 공매도·차입으로 매도 물량을 만들지 않는다. 기존 예약금은 신규 주문 예산이 아니다. [수정용 Mermaid 원본](figures/mm-quotes.mmd).
+
 ### 3.1 가격
 
 ```text
@@ -76,6 +84,12 @@ GTC는 전송 후 도착할 때 가격이 바뀌어 taker가 될 수 있으므�
 최소수량·최소금액은 새 주문에만 적용한다. 이미 유효하게 제출된 주문이 부분체결로 작아졌다고 자동 취소하지 않는다. 최소금액 미만의 새 가용 자금은 누적 대기한다.
 
 ## 4. 기존 주문 관리
+
+<!-- diagram: mm-requote -->
+
+![호가가 바뀌면 해당 방향 주문만 교체한다](figures/mm-requote.svg)
+
+**그림 읽기 · 현행 MM 변경 관리:** 기존 주문 가격이 목표와 같으면 순번을 유지한다. 같은 가격에 새 가용잔고가 생기면 별도 주문을 뒤에 추가할 수 있다. [수정용 Mermaid 원본](figures/mm-requote.mmd).
 
 | 현재 상태 | 처리 |
 |---|---|
@@ -174,6 +188,12 @@ python3 -m unittest discover -s tests -p 'test_simple_mm.py' -v
 후속 실행 연결은 [가상계좌 계약](point2_virtual_accounts.ko.md), [지정가 체결142개 사례](point2_limit_fill_cases.ko.md), [공통 모듈 명세](point2_replay_modules.ko.md)를 따른다. 주문 조건의 native 매핑 기준은 [빗썸 주문 요청](https://apidocs.bithumb.com/reference/주문-요청)이다.
 
 ## 체결별 거래·손익 보고 요구사항
+
+<!-- diagram: account-settlement -->
+
+![한 번의 부분체결이 계좌와 보고서에 반영되는 순서](figures/account-settlement.svg)
+
+**그림 읽기 · 현행 정산·보고:** 화면 새로고침은 체결을 다시 만들지 않는다. 저장 실패는 현재 저장 계약에 따라 마지막 확정 결과와 구분한다. [수정용 Mermaid 원본](figures/account-settlement.mmd).
 
 모든 체결과 부분체결에 고유 `fill_id`, 동일 시각의 순서를 구분하는 `fill_sequence`를 부여한다. 주문 1개가 여러 번 체결되면 체결마다 별도 행을 기록하고 주문 ID로 묶는다. 취소 요청·미체결 주문을 거래 내역에 가짜 체결로 추가하지 않는다. fill·현금·보유량·원가·손익 스냅샷을 한 번만 원자적으로 반영한다.
 

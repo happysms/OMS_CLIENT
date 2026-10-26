@@ -16,7 +16,7 @@ class LimitExecutionTests(unittest.TestCase):
         import re
         from pathlib import Path
         design=Path('docs/point2_limit_fill_cases.ko.md').read_text()
-        expected=set(re.findall(r'^\| ([A-L]\d\d) \|',design,re.M))
+        expected=set(re.findall(r'^\| \[([A-L]\d\d)\]\(illustrated/limit-[a-l]\.ko\.md#[a-l]\d\d\) \|',design,re.M))
         report=capabilities();actual=[row['id'] for row in report['cases']]
         self.assertEqual(len(actual),142);self.assertEqual(set(actual),expected)
         self.assertEqual(sum(report['counts'].values()),142)

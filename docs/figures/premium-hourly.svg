@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="452" viewBox="0 0 1040 452" role="img" aria-labelledby="title description">
+<title id="title">공통 종목 괴리: 1초 표본에서 시간별 누적과 3일·7일 평균으로</title>
+<desc id="description">현행 공통 종목 분석。같은 초의 세 유효 호가 / 빗썸 종목 / OKX 종목 / 빗썸 USDT / 중간가 괴리율을 초당 한 표본으로 계산 → 매시간 합계와 표본 수 저장 / 같은 시간은 갱신해 중복 누적 방지 / 누락 초는 이전 호가로 채우지 않음 → 완료된 72시간 / 168시간 / 전체 합계 ÷ 전체 유효 표본 수 / 관측 충족률·오류를 함께 표시</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"/></marker></defs>
+<rect width="1040" height="100%" rx="16" fill="#fff"/>
+<g font-family="Noto Sans CJK KR, Noto Sans KR, sans-serif">
+<text font-size="14" fill="#64748b" font-weight="600"><tspan x="32" y="32">OMS SIMULATION  /  PREMIUM-HOURLY</tspan></text>
+<text font-size="24" fill="#0f172a" font-weight="700"><tspan x="32" y="68">공통 종목 괴리: 1초 표본에서 시간별 누적과 3일·7일 평균으로</tspan></text>
+<rect x="32" y="89" width="976" height="30" rx="7" fill="#f1f5f9"/>
+<text font-size="15" fill="#334155" font-weight="600"><tspan x="46" y="110">현행 공통 종목 분석</tspan></text>
+<rect x="32" y="132" width="312" height="218" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="32" y="132" width="312" height="5" rx="2" fill="#334155"/>
+<text font-size="16" fill="#334155" font-weight="700"><tspan x="52" y="167">01  상황·입력</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="52" y="204">같은 초의 세 유효 호가</tspan><tspan x="52" y="232">빗썸 종목 / OKX 종목 / 빗썸</tspan><tspan x="52" y="260">USDT</tspan><tspan x="52" y="288">중간가 괴리율을 초당 한 표본</tspan><tspan x="52" y="316">으로 계산</tspan></text>
+<path d="M347 241 L358 241" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="364" y="132" width="312" height="218" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="364" y="132" width="312" height="5" rx="2" fill="#334155"/>
+<text font-size="16" fill="#334155" font-weight="700"><tspan x="384" y="167">02  판단·변화</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="384" y="204">매시간 합계와 표본 수 저장</tspan><tspan x="384" y="232">같은 시간은 갱신해 중복 누적</tspan><tspan x="384" y="260"> 방지</tspan><tspan x="384" y="288">누락 초는 이전 호가로 채우지</tspan><tspan x="384" y="316"> 않음</tspan></text>
+<path d="M679 241 L690 241" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="696" y="132" width="312" height="218" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="696" y="132" width="312" height="5" rx="2" fill="#334155"/>
+<text font-size="16" fill="#334155" font-weight="700"><tspan x="716" y="167">03  결과·보존</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="716" y="204">완료된 72시간 / 168시간</tspan><tspan x="716" y="232">전체 합계 ÷ 전체 유효 표본</tspan><tspan x="716" y="260">수</tspan><tspan x="716" y="288">관측 충족률·오류를 함께 표시</tspan></text>
+<text font-size="15" fill="#475569" font-weight="400"><tspan x="32" y="388">왼쪽에서 오른쪽으로 읽습니다. 수치는 조건을 설명하는 합성 예시이며 거래 성과 예측이 아닙니다.</tspan><tspan x="32" y="412">현재 지원 상태와 세부 조건은 이 그림 아래의 본문·사례 대조표를 함께 확인하세요.</tspan></text>
+</g></svg>

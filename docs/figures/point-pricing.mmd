@@ -1,0 +1,7 @@
+%% point-pricing: Point 가격: 해외 기준가격과 USDT 환율에서 매수·매도 한계가로
+flowchart LR
+    N0["OKX 종목 microprice<br/>× 빗썸 USDT microprice<br/>예: 원화 기준 base = 1,000"]
+    N1["기준 −100bp · 버퍼 10bp<br/>가격 보정 수수료 0bp 예시<br/>매수 한계 989 · 매도 한계 991"]
+    N2["매수 한계 tick 내림 · 매도 tick 올림<br/>현물 best와 원본 목표가 조건 결합<br/>이후 잔고·주문 조건·헤지 계획 검사"]
+    N0 --> N1
+    N1 --> N2

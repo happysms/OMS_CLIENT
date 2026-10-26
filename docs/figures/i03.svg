@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="396" viewBox="0 0 1040 396" role="img" aria-labelledby="title description">
+<title id="title">I03 · 두 거래소가 같은 ms에 체결</title>
+<desc id="description">설계 제안 · 현재 실행 미지원。설계: 빗썸 fill과 OKX fill / 둘 다 같은 ms → 고정 전역 순번으로 정렬 / venue별 예산·원장은 분리 → 각 체결을 한 번씩 정산 / 한 거래소 틱을 다른 곳에 재사용 금지</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"/></marker></defs>
+<rect width="1040" height="100%" rx="16" fill="#fff"/>
+<g font-family="Noto Sans CJK KR, Noto Sans KR, sans-serif">
+<text font-size="14" fill="#64748b" font-weight="600"><tspan x="32" y="32">OMS SIMULATION  /  I03</tspan></text>
+<text font-size="24" fill="#0f172a" font-weight="700"><tspan x="32" y="68">I03 · 두 거래소가 같은 ms에 체결</tspan></text>
+<rect x="32" y="89" width="976" height="30" rx="7" fill="#faf5ff"/>
+<text font-size="15" fill="#6b21a8" font-weight="600"><tspan x="46" y="110">설계 제안 · 현재 실행 미지원</tspan></text>
+<rect x="32" y="132" width="312" height="162" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="6 4"/>
+<rect x="32" y="132" width="312" height="5" rx="2" fill="#6b21a8"/>
+<text font-size="16" fill="#6b21a8" font-weight="700"><tspan x="52" y="167">01  상황·입력</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="52" y="204">설계: 빗썸 fill과 OKX fill</tspan><tspan x="52" y="232">둘 다 같은 ms</tspan></text>
+<path d="M347 213 L358 213" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6 4"/>
+<rect x="364" y="132" width="312" height="162" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="6 4"/>
+<rect x="364" y="132" width="312" height="5" rx="2" fill="#6b21a8"/>
+<text font-size="16" fill="#6b21a8" font-weight="700"><tspan x="384" y="167">02  판단·변화</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="384" y="204">고정 전역 순번으로 정렬</tspan><tspan x="384" y="232">venue별 예산·원장은 분리</tspan></text>
+<path d="M679 213 L690 213" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6 4"/>
+<rect x="696" y="132" width="312" height="162" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="6 4"/>
+<rect x="696" y="132" width="312" height="5" rx="2" fill="#6b21a8"/>
+<text font-size="16" fill="#6b21a8" font-weight="700"><tspan x="716" y="167">03  결과·보존</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="716" y="204">각 체결을 한 번씩 정산</tspan><tspan x="716" y="232">한 거래소 틱을 다른 곳에 재</tspan><tspan x="716" y="260">사용 금지</tspan></text>
+<text font-size="15" fill="#475569" font-weight="400"><tspan x="32" y="332">왼쪽에서 오른쪽으로 읽습니다. 수치는 조건을 설명하는 합성 예시이며 거래 성과 예측이 아닙니다.</tspan><tspan x="32" y="356">현재 지원 상태와 세부 조건은 이 그림 아래의 본문·사례 대조표를 함께 확인하세요.</tspan></text>
+</g></svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="452" viewBox="0 0 1040 452" role="img" aria-labelledby="title description">
+<title id="title">오래된 파일도 현재 읽고 있으면 삭제를 미룬다</title>
+<desc id="description">현행 저장 공간 관리。기본: 자동 삭제 꺼짐 / 보관일수·대상 저장소 선택 / 먼저 삭제 대상 미리보기 → 경로·나이·파일 종류 검사 / 계좌·결과 DB는 제외 / 공통 데이터 읽기 보호 확인 → 읽는 작업이 있으면 보류 / 허용된 오래된 시세 파일만 삭제 / 삭제 수와 현재 디스크 용량 표시</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"/></marker></defs>
+<rect width="1040" height="100%" rx="16" fill="#fff"/>
+<g font-family="Noto Sans CJK KR, Noto Sans KR, sans-serif">
+<text font-size="14" fill="#64748b" font-weight="600"><tspan x="32" y="32">OMS SIMULATION  /  RETENTION-GATE</tspan></text>
+<text font-size="24" fill="#0f172a" font-weight="700"><tspan x="32" y="68">오래된 파일도 현재 읽고 있으면 삭제를 미룬다</tspan></text>
+<rect x="32" y="89" width="976" height="30" rx="7" fill="#f1f5f9"/>
+<text font-size="15" fill="#334155" font-weight="600"><tspan x="46" y="110">현행 저장 공간 관리</tspan></text>
+<rect x="32" y="132" width="312" height="218" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="32" y="132" width="312" height="5" rx="2" fill="#334155"/>
+<text font-size="16" fill="#334155" font-weight="700"><tspan x="52" y="167">01  상황·입력</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="52" y="204">기본: 자동 삭제 꺼짐</tspan><tspan x="52" y="232">보관일수·대상 저장소 선택</tspan><tspan x="52" y="260">먼저 삭제 대상 미리보기</tspan></text>
+<path d="M347 241 L358 241" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="364" y="132" width="312" height="218" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="364" y="132" width="312" height="5" rx="2" fill="#334155"/>
+<text font-size="16" fill="#334155" font-weight="700"><tspan x="384" y="167">02  판단·변화</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="384" y="204">경로·나이·파일 종류 검사</tspan><tspan x="384" y="232">계좌·결과 DB는 제외</tspan><tspan x="384" y="260">공통 데이터 읽기 보호 확인</tspan></text>
+<path d="M679 241 L690 241" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="696" y="132" width="312" height="218" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<rect x="696" y="132" width="312" height="5" rx="2" fill="#334155"/>
+<text font-size="16" fill="#334155" font-weight="700"><tspan x="716" y="167">03  결과·보존</tspan></text>
+<text font-size="19" fill="#1e293b" font-weight="400"><tspan x="716" y="204">읽는 작업이 있으면 보류</tspan><tspan x="716" y="232">허용된 오래된 시세 파일만 삭</tspan><tspan x="716" y="260">제</tspan><tspan x="716" y="288">삭제 수와 현재 디스크 용량</tspan><tspan x="716" y="316">표시</tspan></text>
+<text font-size="15" fill="#475569" font-weight="400"><tspan x="32" y="388">왼쪽에서 오른쪽으로 읽습니다. 수치는 조건을 설명하는 합성 예시이며 거래 성과 예측이 아닙니다.</tspan><tspan x="32" y="412">현재 지원 상태와 세부 조건은 이 그림 아래의 본문·사례 대조표를 함께 확인하세요.</tspan></text>
+</g></svg>
