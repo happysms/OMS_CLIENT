@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {replayPeriod, formatReplayPeriod} from '../features/replay/period.js';
+import {replayPeriod, formatReplayPeriod} from '../features/replay/controller.js';
 
 test('KST input preserves the full requested dates across years', () => {
   const period = replayPeriod('2026-12-31T23:59:59', '2027-01-01T00:00:01');
