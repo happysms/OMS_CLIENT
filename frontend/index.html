@@ -158,7 +158,7 @@
       <div class="field"><label for="strategies-name">전략 이름</label><input id="strategies-name" maxlength="80" required placeholder="예: BTC 양방향 메이커"></div>
       <div class="field"><label for="strategies-type">전략 유형</label><select id="strategies-type" required></select></div>
       <div class="field"><label for="strategies-description">설명 · 선택</label><textarea id="strategies-description" maxlength="2000" rows="3" placeholder="전략 목적과 비교할 조건"></textarea></div>
-      <p id="strategies-type-help" class="form-caption"></p><div id="strategies-parameters" class="module-form replay-settings"></div>
+      <p id="strategies-type-help" class="form-caption"></p><p id="strategies-timing-preview" class="form-caption" hidden></p><div id="strategies-parameters" class="module-form replay-settings"></div>
       <button id="strategies-save" type="submit" class="primary-button">전략 등록</button><button id="strategies-copy" type="button" class="small-button" disabled>새 전략으로 복사</button>
       <p id="strategies-message" class="form-caption" role="status">유형을 선택하고 설정을 등록하세요. 종목·초기잔고·기간은 계좌 생성 시 지정합니다.</p>
     </form>
@@ -193,6 +193,7 @@
     </div>
     <section class="panel replay-controls"><p id="replay-account-info" role="status">실행할 때마다 새 계좌를 생성하고 초기잔고·거래내역·손익을 계좌별로 자동 저장합니다.</p><button id="replay-copy" type="button" class="small-button" disabled>같은 초기조건으로 새 계좌 준비</button><button id="replay-result" type="button" class="small-button" disabled>계좌·매매 결과 다운로드</button></section>
     <div id="replay-error" class="error-box" role="alert" hidden></div><p id="replay-status" class="module-message" role="status">실행을 기다리고 있습니다.</p><progress id="replay-progress" max="100" value="0" aria-label="재생 진행률"></progress>
+    <section class="panel replay-controls"><p id="replay-guard-status" role="status">시세 시간차 보호 상태를 기다리고 있습니다.</p><p class="tiny-help">기준은 호가의 desktopTime − serverTime입니다. 네트워크 왕복 RTT와 다르며, 시각 누락·음수·오래된 호가도 차단합니다. 취소 요청은 계속 허용하고 취소 확정 전 체결은 발생할 수 있습니다.</p><details class="replay-settings"><summary>최근 주문 차단·재개 기록</summary><div class="table-scroll"><table><thead><tr><th>시각 · KST</th><th>신규 주문</th><th>이유</th><th>시세 시간차 · ms</th><th>직전 대비 · ms</th></tr></thead><tbody id="replay-guard-events"></tbody></table></div></details></section>
     <div class="stats-grid" id="replay-stats"></div><p id="replay-theory-info" class="tiny-help">전략 이론가를 기다리고 있습니다.</p>
     <div class="replay-grid">
       <section class="panel"><div class="panel-heading"><h2 id="replay-book-title">빗썸 호가</h2><span id="replay-book-time" class="subtle"></span></div>

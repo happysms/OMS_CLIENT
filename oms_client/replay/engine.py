@@ -7,6 +7,7 @@ from ..strategies.simple_mm import (SimpleMM, MMConfig, QuoteView, AccountView,
                                     WorkingOrder, StartInputs, _amount)
 from ..paper_trading.reporting import evaluate_positions
 from ..market_data.validation import DataError, parse_date
+from .order_guard import FeedDelayGuard
 
 D = Decimal
 ZERO = D(0)
@@ -54,6 +55,7 @@ class ReplayEngine:
         if strategy and (strategy.get('type')!='single_exchange_maker' or not strategy.get('executable')):
             raise ValueError('이 실행기에서 지원하지 않는 전략입니다.')
         self.strategy_parameters=strategy['parameters'] if strategy else {'direction':'both','max_quote_age_ms':1000}
+        self.guard=FeedDelayGuard(self.strategy_parameters)
         self.strategy_theory=None
         self.now=config['start_ms']
         self.cash=D(config['initial_krw']); self.coin=D(config['initial_coin'])
@@ -92,6 +94,9 @@ class ReplayEngine:
     def place(self, side, price, quantity, owner='manual'):
         if self.closed or self.initial_equity is None:
             raise ValueError('유효한 초기 호가가 도착한 뒤 주문할 수 있습니다.')
+        if not self.guard.check(self.now,self.mm.config.max_quote_age_ms):
+            self.guard.blocked_submissions+=1
+            raise ValueError('시세 시간차 보호로 신규 주문을 차단했습니다: '+self.guard.reason)
         if len(self.working())>=100:
             raise ValueError('미체결 주문은 최대 100개입니다.')
         if self.order_sequence>=100000:
@@ -138,6 +143,8 @@ class ReplayEngine:
 
     def _activate(self, order):
         if order['status'] not in {'in_flight','cancel_pending'}: return
+        # A local guard cannot recall an already transmitted order. It can only
+        # send a cancellation, which keeps its normal latency and fill race.
         book=self.books.get('bithumb')
         if not book or self.now-book['time']>self.mm.config.max_quote_age_ms:
             self._terminal(order,'rejected','stale_book'); return
@@ -195,6 +202,7 @@ class ReplayEngine:
             previous=self.books.get(event['venue'])
             self.books[event['venue']]={k:v for k,v in event.items() if k!='_key'}
             if event['venue']=='bithumb':
+                self.guard.observe(event['time'],event.get('server_time'),self.mm.config.max_quote_age_ms)
                 self.accept_theory(self.mm.theoretical_quote(
                     QuoteView(self.config['ticker'],str(self.event_sequence),str(event['bids'][0]['price']),
                               str(event['asks'][0]['price']),event['time']),now_ms=self.now))
@@ -232,7 +240,13 @@ class ReplayEngine:
         self.auto()
 
     def auto(self):
-        if self.closed or not self.config['auto_mm'] or self.initial_equity is None or self.now<self.config['start_ms']: return
+        if self.closed or self.now<self.config['start_ms']: return
+        if not self.guard.check(self.now,self.mm.config.max_quote_age_ms):
+            if self.guard.cancel_working:
+                for order in self.working():
+                    if order['status']!='cancel_pending': self.cancel(order['id'])
+            return
+        if not self.config['auto_mm'] or self.initial_equity is None: return
         book=self.books.get('bithumb')
         if not book: return
         cash,coin=self.free()
@@ -297,7 +311,7 @@ class ReplayEngine:
         valuation=self.valuation()
         report=dict(sequence=self.fill_count,fill_id=f'F{self.fill_count:08d}',order_id=order['id'],timestamp=self.now,
                     side=order['side'],price=float(order['price']),quantity=float(size),fee=float(fee),realized_pnl=float(realized),
-                    remaining=float(order['remaining']),source_tick=tick['source_id'],account=valuation['account'],positions=valuation['positions'],theory=valuation['theory'])
+                    remaining=float(order['remaining']),source_tick=tick['source_id'],account=valuation['account'],positions=valuation['positions'],theory=valuation['theory'],order_guard=self.guard.snapshot(self.now))
         self.last_fills.append(report); self.new_fills.append(report)
 
     def accept_theory(self, output):
@@ -331,6 +345,7 @@ class ReplayEngine:
         for order in self.working(): self._terminal(order,'cancelled',reason)
 
     def snapshot(self):
-        return dict(virtual_time_ms=self.now,books=self.books,orders=[self._public_order(o) for o in self.working()],
+        return dict(virtual_time_ms=self.now,order_guard=self.guard.snapshot(self.now),guard_events=list(reversed(self.guard.events)),
+                    hedge_timing=None,books=self.books,orders=[self._public_order(o) for o in self.working()],
                     order_events=list(reversed(self.order_log)),ticks=list(reversed(self.last_ticks)),
                     fills=list(reversed(self.last_fills)),fill_count=self.fill_count,event_count=self.event_sequence,**self.valuation())

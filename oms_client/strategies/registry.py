@@ -9,6 +9,7 @@ import time
 import uuid
 
 from .simple_mm import _amount
+from ..replay.hedge_timing import HedgeTimingModel, TIMING_DEFAULTS
 
 DEFAULT_ID = 'builtin_single_maker'
 
@@ -19,7 +20,7 @@ def field(key, label, kind, default, **constraints):
 
 TEMPLATES = {
     'single_exchange_maker': dict(
-        label='일반 단일 거래소 메이커', executable=True, engine_version='bithumb-maker-v1',
+        label='일반 단일 거래소 메이커', executable=True, engine_version='bithumb-maker-v2',
         description='가용 원화로 최우선 매수호가, 가용 코인으로 최우선 매도호가에 주문합니다. 현재 실행 거래소는 빗썸입니다.',
         required_venues=['bithumb'], execution_note='빗썸 현물 maker 모형으로 실행 가능 · OKX는 선택적 참조용',
         fields=[field('direction','매매 방향','choice','both',options={'both':'양방향','buy':'매수만','sell':'매도만'}),
@@ -62,6 +63,25 @@ TEMPLATES = {
 }
 
 
+GUARD_FIELDS = [
+    field('ping_guard_mode','핑 급등 시 신규 주문 차단','choice','enabled',options={'enabled':'사용','disabled':'사용 안 함'}),
+    field('max_feed_delay_ms','시세 시간차 상한 · ms (RTT 아님)','integer',500,min=1,max=60000),
+    field('feed_delay_spike_ms','직전 대비 급증 차단 · ms 이상','integer',250,min=1,max=60000),
+    field('feed_delay_resume_ms','재개 가능한 시세 시간차 · ms 이하','integer',200,min=0,max=60000),
+    field('feed_delay_stable_ms','정상 시세 유지 후 재개 · ms','integer',1000,min=0,max=60000),
+    field('ping_existing_orders','핑 차단 시 기존 미체결 주문','choice','cancel',options={'cancel':'취소 요청 · 확인 전 체결 가능','keep':'유지 · 신규 주문만 차단'})
+]
+for _template in TEMPLATES.values():
+    _template['fields'].extend(deepcopy(GUARD_FIELDS))
+TEMPLATES['point2']['fields'].extend([
+    field('hedge_fill_notice_ms','현물 체결 → 통지 지연 · ms','integer',20,min=0,max=60000),
+    field('hedge_decision_ms','헤지 판단·전송 준비 지연 · ms','integer',0,min=0,max=60000),
+    field('hedge_submit_ms','헤지 전송 → 거래소 도착 · ms','integer',20,min=0,max=60000),
+    field('hedge_ack_ms','헤지 도착 → 접수 응답 · ms','integer',20,min=0,max=60000),
+    field('hedge_timeout_ms','원체결 → 헤지 완료 제한 · ms','integer',1000,min=1,max=60000)
+])
+
+
 def templates():
     return [dict(type=key,**deepcopy(value)) for key,value in TEMPLATES.items()]
 
@@ -92,6 +112,9 @@ def validate(payload):
             if not Decimal(spec['min'])<=amount<=Decimal(spec['max']): raise ValueError(spec['label']+' 범위를 확인하세요.')
             value=str(amount)
         normalized[key]=value
+    if normalized['feed_delay_resume_ms']>normalized['max_feed_delay_ms']:
+        raise ValueError('재개 시간차는 차단 상한 이하여야 합니다.')
+    if kind=='point2': HedgeTimingModel.from_parameters(normalized)
     if kind=='point2' and Decimal(normalized['baseline_bps'])-Decimal(normalized['buffer_bps'])-Decimal(normalized['pricing_fee_bps'])<=-10000:
         raise ValueError('Point 매수 한계가격이 양수가 되도록 기준 조정·버퍼를 설정하세요.')
     if kind=='single_exchange_maker':
@@ -110,12 +133,18 @@ def validate(payload):
         specification=dict(quote_mode='fx',reference_source='okx_swap',fx_source='bithumb:USDT',ma_enabled=False,
                            spot_execution='gtc',theory_source='strategy_output',source_reference=TEMPLATES[kind]['source_reference'],
                            variant='original_post_only_hedge' if normalized['hedge_execution']=='post_only' else 'modified_hedge_execution')
+    specification['order_guard_basis']='desktopTime-serverTime; not RTT'
+    if kind=='point2':
+        specification['hedge_timing_basis']='spot fill -> notice -> decision -> exchange arrival -> ack; fills observed separately'
+        specification['hedge_ping_policy']='block_new_orders_keep_unhedged_exposure_visible'
     return dict(name=name.strip(),type=kind,description=description.strip(),parameters=normalized,specification=specification)
 
 
 def present(identifier,revision,definition,archived=False):
     template=TEMPLATES[definition['type']]
-    return dict(id=identifier,revision=revision,archived=bool(archived),**definition,
+    timing=HedgeTimingModel.from_parameters(definition['parameters']).plan(0) if definition['type']=='point2' and set(TIMING_DEFAULTS)<=set(definition['parameters']) else None
+    return dict(id=identifier,revision=revision,archived=bool(archived),hedge_timing_preview=timing,
+                guard_configured='ping_guard_mode' in definition['parameters'],**definition,
                 executable=template['executable'],execution_note=template['execution_note'],
                 engine_version=template['engine_version'],
                 required_venues=['bithumb',definition['parameters']['reference_exchange']] if definition['type']=='minmaxma' else template['required_venues'])
@@ -134,7 +163,19 @@ class StrategyRegistry:
             ''')
             con.execute('BEGIN IMMEDIATE')
             for identifier,kind in [(DEFAULT_ID,'single_exchange_maker'),('builtin_point2','point2'),('builtin_minmaxma','minmaxma')]:
-                if con.execute('SELECT 1 FROM strategies WHERE id=?',(identifier,)).fetchone(): continue
+                existing=con.execute('SELECT latest_revision FROM strategies WHERE id=?',(identifier,)).fetchone()
+                if existing:
+                    # Only untouched builtin v1 profiles receive a new default version.
+                    # Old revisions and all user-created/edited profiles remain unchanged.
+                    raw=con.execute('SELECT definition FROM strategy_revisions WHERE strategy_id=? AND revision=?',(identifier,existing[0])).fetchone()[0]
+                    prior=json.loads(raw)
+                    if existing[0]==1 and 'ping_guard_mode' not in prior['parameters']:
+                        upgraded=validate({key:prior[key] for key in ('name','type','description','parameters')})
+                        upgraded['created_at_ms']=int(time.time()*1000)
+                        upgraded['migration_note']='Order admission and hedge timing defaults added as v2; v1 remains unchanged.'
+                        con.execute('INSERT INTO strategy_revisions VALUES (?,2,?)',(identifier,json.dumps(upgraded)))
+                        con.execute('UPDATE strategies SET latest_revision=2 WHERE id=?',(identifier,))
+                    continue
                 definition=validate(dict(name=TEMPLATES[kind]['label'],type=kind))
                 definition['created_at_ms']=int(time.time()*1000)
                 con.execute('INSERT INTO strategies(id,latest_revision) VALUES (?,1)',(identifier,))

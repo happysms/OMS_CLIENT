@@ -3,6 +3,15 @@ export function initStrategies({api}){
   let templates=[],items=[],editing=null,loading=0,saving=false;
   const error=text=>{$('error').hidden=!text;$('error').textContent=text||'';};
   const template=()=>templates.find(t=>t.type===$('type').value);
+  function timingPreview(){
+    const isPoint=$('type').value==='point2';$('timing-preview').hidden=!isPoint;
+    if(!isPoint)return;
+    const values=['hedge_fill_notice_ms','hedge_decision_ms','hedge_submit_ms','hedge_ack_ms','hedge_timeout_ms'].map(key=>Number(document.getElementById('strategy-param-'+key)?.value));
+    if(values.some(value=>!Number.isFinite(value))){$('timing-preview').textContent='헤지 지연 값을 입력하세요.';return;}
+    const entry=values[0]+values[1]+values[2],ack=entry+values[3];
+    $('timing-preview').textContent=`설정상 원체결 → 헤지 도착 ${entry}ms / 접수 응답 ${ack}ms / 완료 제한 ${values[4]}ms. 주문 차단·대기열·부분체결 시간은 별도입니다. Point 실행 연결 전이며 실제 체결시간을 뜻하지 않습니다.`;
+  }
+  $('parameters').addEventListener('input',timingPreview);
   function parameters(values={}){
     const t=template();$('type-help').textContent=t?`${t.description} ${t.execution_note}`:'';
     $('parameters').replaceChildren(...(t?.fields||[]).map(field=>{
@@ -13,6 +22,7 @@ export function initStrategies({api}){
       else{input.type='number';input.min=field.min;input.max=field.max;input.step=field.kind==='integer'?'1':'any';}
       input.value=values[field.key]??field.default;div.append(label,input);return div;
     }));
+    timingPreview();
   }
   function edit(item=null){
     editing=item;error('');$('type').disabled=Boolean(item);$('name').value=item?.name||'';$('description').value=item?.description||'';

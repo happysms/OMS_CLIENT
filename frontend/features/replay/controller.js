@@ -4,6 +4,7 @@ const stamp=value=>value===null||value===undefined?'—':new Intl.DateTimeFormat
 const local=value=>new Date(value+9*3600000).toISOString().slice(0,19);
 const side=value=>value==='buy'?'매수':'매도';
 const states={in_flight:'접수 중',live:'대기',cancel_pending:'취소 중',filled:'체결 완료',cancelled:'취소 완료',rejected:'거절',loading:'원본 로딩',running:'재생 중',paused:'일시정지',finished:'완료',stopped:'중지',failed:'실패',interrupted:'서버 중단'};
+const guardReasons={waiting_sample:'시각 표본 대기',healthy:'정상',disabled:'보호 비활성',missing_timestamp:'시각 누락·단위 미확인',negative_delay:'음수 시간차',delay_limit:'시간차 상한 초과',delay_spike:'시간차 급증',above_resume:'재개 기준 초과',recovering:'정상 시세 유지 확인 중',stale_sample:'호가 갱신 지연'};
 const terminal=s=>['finished','stopped','failed','interrupted'].includes(s);
 const cell=value=>{const td=document.createElement('td');td.textContent=String(value??'—');return td;};
 function row(values,className=''){const tr=document.createElement('tr');tr.className=className;tr.append(...values.map(cell));return tr;}
@@ -33,7 +34,7 @@ export function initReplay({api,getCatalog}){
   const strategyKey=item=>item.id+'@'+item.revision;
   const selectedStrategy=()=>[...strategyItems,...strategyExtras].find(item=>strategyKey(item)===$('strategy').value);
   function updateRunButton(){const strategy=selectedStrategy();$('run').disabled=creating||Boolean(snapshot&&!terminal(snapshot.status))||!strategy||strategy.archived||!strategy.executable;}
-  function strategyHelp(){const item=selectedStrategy();$('strategy-help').textContent=item?`${item.name} · v${item.revision} · ${item.archived?'보관한 전략입니다. 복원 후 사용하세요.':item.execution_note}`:'전략 관리에서 실행 가능한 전략을 등록하세요.';updateRunButton();}
+  function strategyHelp(){const item=selectedStrategy();$('strategy-help').textContent=item?`${item.name} · v${item.revision} · ${item.archived?'보관한 전략입니다. 복원 후 사용하세요.':item.execution_note}${item.guard_configured===false?' · 이전 버전: 핑 보호 미설정, 새 버전 저장 시 적용':''}`:'전략 관리에서 실행 가능한 전략을 등록하세요.';updateRunButton();}
   function strategyOptions(items=strategyItems,preferred=$('strategy').value){
     strategyItems=items;
     const choices=new Map(items.map(item=>[strategyKey(item),item]));
@@ -99,7 +100,7 @@ export function initReplay({api,getCatalog}){
     snapshot=next;
     const active=!terminal(next.status),loaded=active&&next.status!=='loading';
     updateRunButton();
-    $('pause').disabled=!loaded;$('stop').disabled=!active;$('mm-toggle').disabled=!loaded;$('order').disabled=!loaded;
+    $('pause').disabled=!loaded;$('stop').disabled=!active;$('mm-toggle').disabled=!loaded;$('order').disabled=!loaded||Boolean(next.order_guard?.blocked);
     $('pause').textContent=next.paused?'재개':'일시정지';$('mm-toggle').textContent=next.config.auto_mm?'MM 중지':'MM 시작';
     $('csv').disabled=!next.fill_count;
     $('result').disabled=false;$('copy').disabled=active;
@@ -113,6 +114,9 @@ export function initReplay({api,getCatalog}){
     const elapsed=Math.max(0,next.virtual_time_ms-next.config.start_ms),duration=next.config.end_ms-next.config.start_ms;
     $('progress').value=Math.min(100,elapsed/duration*100);
     $('status').textContent=`${states[next.status]||next.status} · ${next.config.ticker} · ${stamp(next.virtual_time_ms)} KST · ${next.fast?'빠른 일괄 실행':next.speed+'×'} · ${num(next.event_count)}/${num(next.total_events)} 이벤트 · 제외 ${num(next.skipped_events)}${next.lag_ms>250?' · 처리 지연 '+num(next.lag_ms)+'ms':''}${next.error?' · '+next.error:''}`;
+    const guard=next.order_guard;
+    $('guard-status').textContent=guard?`${guard.enabled?(guard.blocked?'신규 주문 차단':'신규 주문 허용'):'핑 보호 비활성'} · ${guardReasons[guard.reason]||guard.reason} · 시세 시간차 ${num(guard.delta_ms)}ms · 직전 대비 ${num(guard.jump_ms)}ms${guard.recovery_remaining_ms!==null?' · 안정 확인 잔여 '+num(guard.recovery_remaining_ms)+'ms':''} · 차단된 주문 시도 ${num(guard.blocked_submissions)}건`:'이전 실행 · 핑 보호 기록 없음';
+    rows($('guard-events'),(next.guard_events||[]).map(event=>row([stamp(event.timestamp),event.blocked?'차단':'허용',guardReasons[event.reason]||event.reason,num(event.delta_ms),num(event.jump_ms)])),5,'아직 차단·재개 기록이 없습니다.');
     const a=next.account||{};
     const metrics=[['평가액 · 원',a.equity],['주문 가능 원화',a.free_cash],['예약 원화',(a.cash??0)-(a.free_cash??0)],['보유 코인',a.coin],['주문 가능 코인',a.free_coin],['실현손익 · 원',a.realized_pnl],['미실현손익 · 원',a.unrealized_pnl],['이론가 미실현 · 원',a.theory_unrealized_pnl],['총손익 · 원',a.total_pnl]];
     $('stats').replaceChildren(...metrics.map(([title,value])=>{const article=document.createElement('article'),label=document.createElement('span'),strong=document.createElement('strong');label.textContent=title;strong.textContent=num(value);article.append(label,strong);return article;}));
@@ -126,7 +130,7 @@ export function initReplay({api,getCatalog}){
       const td=document.createElement('td'),button=document.createElement('button');button.type='button';button.className='small-button';button.textContent='취소';button.dataset.cancel=o.id;button.disabled=!loaded||o.status==='cancel_pending';td.append(button);tr.append(td);return tr;
     }),8,'미체결 주문이 없습니다.');
     const reasons={requested:'취소 요청',trade_tick:'시장 틱에 의한 체결',post_only_cross:'도착 시 반대 호가와 교차',self_cross:'내 반대 주문과 교차',stale_book:'호가 지연',end_of_run:'기간 종료',stopped:'실행 중지',failed:'실행 실패'};
-    rows($('order-events'),(next.order_events||[]).map(o=>row([stamp(o.closed_at),o.id,states[o.status],reasons[o.reason]||o.reason])),4);
+    rows($('order-events'),(next.order_events||[]).map(o=>row([stamp(o.closed_at),o.id,states[o.status],o.reason?.startsWith('ping_guard:')?'시세 시간차 보호: '+(guardReasons[o.reason.slice(11)]||o.reason.slice(11)):reasons[o.reason]||o.reason])),4);
     renderFills();
     if(justFinished)history().catch(e=>error(e.message));
   }

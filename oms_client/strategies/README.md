@@ -63,7 +63,7 @@
 - 기존 전략의 유형은 바꾸지 않는다. 다른 유형은 새 전략으로 등록한다.
 - 복사는 새 ID로 등록할 폼을 준비한다. 저장 버튼을 눌러야 실제 등록한다.
 - 보관은 되돌릴 수 있다. 보관한 전략으로 새 실행은 시작할 수 없고 과거 결과는 남는다.
-- 없는 기본 전략만 최초 한 번 생성한다. 서버 재시작으로 사용자 편집이나 보관 상태를 초기화하지 않는다.
+- 없는 기본 전략은 최초 한 번 생성한다. 보호 설정이 없는 미편집 기본 v1에는 보호·헤지 시간 기본값을 담은 v2를 추가한다. v1 및 사용자 편집·보관 상태는 유지한다.
 
 새 실행 요청은 `strategy_id`와 `strategy_revision`을 보내며, 서비스는 등록 상태·실행 지원을 확인한 뒤 전체 설정을 `config.strategy`와 `initial_config.strategy`에 고정한다. 실행 중 다른 화면에서 전략을 수정해도 기존 worker 설정과 과거 체결 보고는 바뀌지 않는다. 설정 복사 재실험도 원래 버전을 명시적으로 선택한다.
 
@@ -119,3 +119,9 @@ Point의 이론가 출력식은 미결정이며 아직 가격을 출력하지 �
 ## 검증
 
 `tests/test_strategy_registry.py`에서 등록/재시작, 유형·수치 검증, 버전 보존·동시 수정 충돌, 보관/복원, Point 실행 차단, 새 계좌와 버전 연결, 실제 메이커 방향·신선도 적용, 전략 이론가 입력·만료·미래 시각·체결 보고 고정, 인증·CSRF를 검증한다.
+
+## 핑 보호와 헤지 시간 설정
+
+모든 전략 유형에 `ping_guard_mode`, `max_feed_delay_ms`, `feed_delay_spike_ms`, `feed_delay_resume_ms`, `feed_delay_stable_ms`, `ping_existing_orders`를 등록한다. 신규 기본값은 사용, 500ms, 250ms, 200ms, 1000ms, 취소 요청이다. 현재 실행 연결은 빗썸 메이커에 적용되며 관측 기준은 RTT가 아닌 `desktopTime − serverTime`이다. 보호 설정 없는 이전 버전은 비활성으로 유지하고 새 버전 저장 시 설정을 포함한다.
+
+Point에는 `hedge_fill_notice_ms=20`, `hedge_decision_ms=0`, `hedge_submit_ms=20`, `hedge_ack_ms=20`, `hedge_timeout_ms=1000`을 추가한다. 입력 즉시 예상 도착 40ms·응답 60ms를 계산해 표시한다. 접수 응답과 실제 첫/전체 체결 시간은 별개다. **Point 실행 연결 전이므로 실제 헤지 체결을 생성하지 않는다.** 상세 단계·복구·저장 계약은 [지연·보호 문서](../../docs/execution_latency_controls.ko.md)를 따른다.
